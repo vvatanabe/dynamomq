@@ -2,6 +2,7 @@ package sdk
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -219,4 +220,55 @@ func (c *QueueSDKClient) GetDLQStats(ctx context.Context) (*model.DLQResult, err
 		First100IDsInQueue: listBANs,
 		TotalRecordsInDLQ:  totalDLQSize,
 	}, nil
+}
+
+// Get retrieves a shipment record from the database by its ID.
+//
+// If the provided 'id' is empty, it returns nil and an error indicating that
+// the ID is not provided.
+//
+// Parameters:
+//   - ctx (context.Context): The context for the request.
+//   - id (string): The unique identifier of the shipment record to retrieve.
+//
+// Returns:
+//   - (*appdata.Shipment): A pointer to the retrieved shipment record.
+//   - (error): An error if any occurred during the retrieval process, including
+//     if the 'id' is empty, the database query fails, or unmarshaling the response
+//     fails.
+//
+// Example JSON DynamoDB API Request:
+//
+//	{
+//	  "TableName": "ActualTableName",
+//	  "Key": {
+//	    "ID": {
+//	      "S": "your-id-value"
+//	    }
+//	  }
+//	}
+func (c *QueueSDKClient) Get(ctx context.Context, id string) (*appdata.Shipment, error) {
+	if id == "" {
+		return nil, errors.New("id is not provided ... cannot retrieve the shipment record")
+	}
+
+	input := &dynamodb.GetItemInput{
+		TableName: &c.logicalTableName,
+		Key: map[string]types.AttributeValue{
+			"ID": &types.AttributeValueMemberS{Value: id},
+		},
+	}
+
+	resp, err := c.dynamoDB.GetItem(ctx, input)
+	if err != nil {
+		return nil, fmt.Errorf("failed to dynamodb get item: %s", err)
+	}
+
+	item := appdata.Shipment{}
+	err = attributevalue.UnmarshalMap(resp.Item, &item)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal map: %s", err)
+	}
+
+	return &item, nil
 }
