@@ -373,3 +373,144 @@ func (c *QueueSDKClient) PutImpl(ctx context.Context, shipment *appdata.Shipment
 
 	return nil
 }
+
+// UpdateStatus changes the status of a record with a given ID to a new status.
+// This method is primarily intended for situations where there are operational
+// issues or live incidents that need addressing. It is advised not to use this
+// call unless explicitly necessary for such circumstances.
+//
+// The method tries to retrieve the record using the provided ID. If the ID is
+// not provided or if the record cannot be found, an appropriate error status is
+// returned. If the current status of the record matches the new status, the
+// method returns without making any changes. Otherwise, it updates the status
+// and the associated metadata.
+//
+// Parameters:
+//   - ctx: The context object, used for timeout, cancellation, and value sharing for the operation.
+//   - id: The ID of the record to update.
+//   - newStatus: The new status to set for the record.
+//
+// Returns:
+//   - A pointer to a ReturnResult object containing the result of the update operation.
+//   - An error if one occurs during the process. A nil error indicates successful completion.
+//
+// Example JSON DynamoDB API Request:
+//
+//	{
+//	 "TableName": "ActualTableName",
+//	 "Key": {
+//	   "id": {
+//	     "S": "YourIdValue"
+//	   }
+//	 },
+//	 "UpdateExpression": "ADD #sys.#v :inc SET #sys.#st = :st, #sys.last_updated_timestamp = :lut, last_updated_timestamp = :lut",
+//	 "ExpressionAttributeNames": {
+//	   "#v": "version",
+//	   "#st": "status",
+//	   "#sys": "system_info"
+//	 },
+//	 "ExpressionAttributeValues": {
+//	   ":inc": {
+//	     "N": "1"
+//	   },
+//	   ":v": {
+//	     "N": "YourVersionValue"
+//	   },
+//	   ":lut": {
+//	     "S": "LastUpdatedTimestamp"
+//	   },
+//	   ":st": {
+//	     "S": "LastUpdatedTimestamp"
+//	   }
+//	 },
+//	 "ConditionExpression": "#sys.#v = :v",
+//	 "ReturnValues": "ALL_NEW"
+//	}
+func (c *QueueSDKClient) UpdateStatus(ctx context.Context, id string, newStatus model.StatusEnum) (*model.ReturnResult, error) {
+	result := &model.ReturnResult{
+		ID: id,
+	}
+
+	if id == "" {
+		fmt.Println("ERROR: ID is not provided ... cannot retrieve the record!")
+		result.ReturnValue = model.ReturnStatusEnumFailedIDNotFound
+		return result, nil
+	}
+
+	shipment, err := c.Get(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	if shipment == nil {
+		fmt.Printf("ERROR: Customer with ID [%s] cannot be found!\n", id)
+		result.ReturnValue = model.ReturnStatusEnumFailedIDNotFound
+		return result, nil
+	}
+
+	prevStatus := shipment.SystemInfo.Status
+	version := shipment.SystemInfo.Version
+
+	result.Status = newStatus
+
+	if prevStatus == newStatus {
+		result.Version = version
+		result.LastUpdatedTimestamp = shipment.SystemInfo.LastUpdatedTimestamp
+		result.ReturnValue = model.ReturnStatusEnumSUCCESS
+		return result, nil
+	}
+
+	now := time.Now().UTC()
+
+	builder := expression.NewBuilder().
+		WithUpdate(
+			expression.Add(expression.Name("system_info.version"), expression.Value(1)).
+				Set(expression.Name("system_info.status"), expression.Value(newStatus)).
+				Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(now.Format(time.RFC3339))).
+				Set(expression.Name("last_updated_timestamp"), expression.Value(now.Format(time.RFC3339))),
+		).
+		WithCondition(
+			expression.Name("system_info.version").Equal(expression.Value(version)),
+		)
+
+	expr, err := builder.Build()
+	if err != nil {
+		return nil, fmt.Errorf("error building expression: %v", err)
+	}
+
+	input := &dynamodb.UpdateItemInput{
+		Key: map[string]types.AttributeValue{
+			"id": &types.AttributeValueMemberS{
+				Value: id,
+			},
+		},
+		TableName:                 aws.String(c.actualTableName),
+		ExpressionAttributeNames:  expr.Names(),
+		ExpressionAttributeValues: expr.Values(),
+		UpdateExpression:          expr.Update(),
+		ConditionExpression:       expr.Condition(),
+		ReturnValues:              types.ReturnValueAllNew,
+	}
+
+	outcome, err := c.dynamoDB.UpdateItem(ctx, input)
+	if err != nil {
+		fmt.Printf("updateFullyConstructedFlag() - failed to update multiple attributes in %s\n", c.actualTableName)
+		fmt.Println(err)
+
+		result.ReturnValue = model.ReturnStatusEnumFailedDynamoError
+		return result, nil
+	}
+
+	item := appdata.Shipment{}
+	err = attributevalue.UnmarshalMap(outcome.Attributes, &item)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal map: %s", err)
+	}
+
+	result.Status = item.SystemInfo.Status
+	result.Version = item.SystemInfo.Version
+	result.LastUpdatedTimestamp = item.SystemInfo.LastUpdatedTimestamp
+
+	result.ReturnValue = model.ReturnStatusEnumSUCCESS
+	return result, nil
+}
