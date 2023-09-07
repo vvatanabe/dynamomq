@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
@@ -253,10 +254,11 @@ func (c *QueueSDKClient) Get(ctx context.Context, id string) (*appdata.Shipment,
 	}
 
 	input := &dynamodb.GetItemInput{
-		TableName: &c.logicalTableName,
 		Key: map[string]types.AttributeValue{
 			"ID": &types.AttributeValueMemberS{Value: id},
 		},
+		TableName:      aws.String(c.actualTableName),
+		ConsistentRead: aws.Bool(true),
 	}
 
 	resp, err := c.dynamoDB.GetItem(ctx, input)
@@ -271,4 +273,75 @@ func (c *QueueSDKClient) Get(ctx context.Context, id string) (*appdata.Shipment,
 	}
 
 	return &item, nil
+}
+
+// PutImpl is a method provided by QueueSDKClient that adds or updates a Shipment object
+// in a DynamoDB table. The Shipment object is stored in the table with the specified ID,
+// creating a new entry if it doesn't exist. If the useUpsert parameter is true, it attempts
+// to update an existing Shipment if one is present, incrementing the version.
+// If false, it deletes the Shipment.
+//
+// Parameters:
+//   - ctx: The context object is used for timeout, cancellation, and value sharing for the operation.
+//   - shipment: The Shipment object to add or update.
+//   - useUpsert: A boolean indicating whether to attempt an update if an existing Shipment is present.
+//
+// Returns:
+//   - (error): An error if one occurs, otherwise, it returns nil on success.
+func (c *QueueSDKClient) PutImpl(ctx context.Context, shipment *appdata.Shipment, useUpsert bool) error {
+	if shipment == nil {
+		return errors.New("shipment object cannot be nil")
+	}
+
+	// Check if already present
+	retrievedShipment, err := c.Get(ctx, shipment.ID)
+	if err != nil {
+		return fmt.Errorf("failed to get a shipment: %s", err)
+	}
+
+	var version int
+
+	// Upsert or delete
+	if retrievedShipment != nil {
+		if useUpsert {
+			version = retrievedShipment.SystemInfo.Version
+		} else {
+			_, err := c.dynamoDB.DeleteItem(ctx, &dynamodb.DeleteItemInput{
+				TableName: aws.String(c.actualTableName),
+				Key: map[string]types.AttributeValue{
+					"ID": &types.AttributeValueMemberS{Value: shipment.ID},
+				},
+			})
+			if err != nil {
+				return fmt.Errorf("failed to delete item: %w", err)
+			}
+		}
+	}
+
+	now := time.Now().UTC()
+
+	system := &model.SystemInfo{
+		Version:              version + 1,
+		InQueue:              false,
+		SelectedFromQueue:    false,
+		Status:               shipment.SystemInfo.Status,
+		CreationTimestamp:    now.Format(time.RFC3339),
+		LastUpdatedTimestamp: now.Format(time.RFC3339),
+	}
+
+	shipment.SystemInfo = system
+
+	item, err := attributevalue.MarshalMap(shipment)
+	if err != nil {
+		return fmt.Errorf("failed to marshal map: %w", err)
+	}
+	_, err = c.dynamoDB.PutItem(ctx, &dynamodb.PutItemInput{
+		TableName: aws.String(c.actualTableName),
+		Item:      item,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to put item: %w", err)
+	}
+
+	return nil
 }
