@@ -275,6 +275,34 @@ func (c *QueueSDKClient) Get(ctx context.Context, id string) (*appdata.Shipment,
 	return &item, nil
 }
 
+// Put stores a given Shipment object in a DynamoDB table using the PutImpl method.
+// The object is stored in the table with its specified ID, creating a new entry if it
+// doesn't exist. If an entry with the same ID exists, the method will delete it.
+//
+// Parameters:
+//   - ctx: Context used for timeout, cancellation, and value sharing for the operation.
+//   - shipment: The Shipment object to be stored.
+//
+// Returns:
+//   - error: Returns an error if one occurs, otherwise, it returns nil on successful storage.
+func (c *QueueSDKClient) Put(ctx context.Context, shipment *appdata.Shipment) error {
+	return c.PutImpl(ctx, shipment, false)
+}
+
+// Upsert attempts to update an existing Shipment object in a DynamoDB table or inserts it
+// if it doesn't exist. It uses the PutImpl method to perform this upsert operation.
+// If an entry with the same ID exists, the method will update it.
+//
+// Parameters:
+//   - ctx: Context used for timeout, cancellation, and value sharing for the operation.
+//   - shipment: The Shipment object to be upserted.
+//
+// Returns:
+//   - error: Returns an error if one occurs, otherwise, it returns nil on successful upsert.
+func (c *QueueSDKClient) Upsert(ctx context.Context, shipment *appdata.Shipment) error {
+	return c.PutImpl(ctx, shipment, true)
+}
+
 // PutImpl is a method provided by QueueSDKClient that adds or updates a Shipment object
 // in a DynamoDB table. The Shipment object is stored in the table with the specified ID,
 // creating a new entry if it doesn't exist. If the useUpsert parameter is true, it attempts
