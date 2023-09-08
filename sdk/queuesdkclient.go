@@ -11,7 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/expression"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
-	go82f46979 "github.com/vvatanabe/go82f46979"
+	"github.com/vvatanabe/go82f46979"
 	"github.com/vvatanabe/go82f46979/appdata"
 	"github.com/vvatanabe/go82f46979/model"
 )
@@ -512,5 +512,175 @@ func (c *QueueSDKClient) UpdateStatus(ctx context.Context, id string, newStatus 
 	result.LastUpdatedTimestamp = item.SystemInfo.LastUpdatedTimestamp
 
 	result.ReturnValue = model.ReturnStatusEnumSUCCESS
+	return result, nil
+}
+
+// Enqueue inserts the provided shipment ID into the queue. If the ID is not provided,
+// it returns an error indicating the ID was not provided.
+// If the shipment with the given ID cannot be found, it returns an error indicating the ID was not found.
+//
+// The function performs several checks on the status of the shipment:
+// - If the status is UNDER_CONSTRUCTION, it indicates the record is not yet constructed.
+// - If the status is not READY_TO_SHIP, it indicates an illegal state.
+//
+// If all checks pass, the function attempts to update several attributes of the shipment
+// in the DynamoDB table. If the update is successful, it retrieves the shipment from
+// DynamoDB and assigns it to the result.
+//
+// Parameters:
+//
+//	ctx: A context.Context for request. It can be used to cancel the request or to carry deadlines.
+//	id: The ID of the shipment to enqueue.
+//
+// Returns:
+//
+//	*model.EnqueueResult: A pointer to the EnqueueResult structure which contains information about the enqueued shipment.
+//	error: An error that can occur during the execution, or nil if no errors occurred.
+//
+// Example JSON DynamoDB API Request:
+//
+//	{
+//	 "TableName": "ActualTableName",
+//	 "Key": {
+//	   "id": {
+//	     "S": "YourIdValue"
+//	   }
+//	 },
+//	 "ConditionExpression": "#sys.#v = :v",
+//	 "UpdateExpression": "ADD #sys.#v :one SET queued = :one, #sys.queued = :one, #sys.queue_selected = :false, last_updated_timestamp = :lut, #sys.last_updated_timestamp = :lut, #sys.queue_added_timestamp = :lut, #sys.#st = :st",
+//	 "ExpressionAttributeNames": {
+//	   "#v": "version",
+//	   "#st": "status",
+//	   "#sys": "system_info"
+//	 },
+//	 "ExpressionAttributeValues": {
+//	   ":one": {
+//	     "N": "1"
+//	   },
+//	   ":false": {
+//	     "BOOL": false
+//	   },
+//	   ":v": {
+//	     "N": "YourVersionValue"
+//	   },
+//	   ":st": {
+//	     "S": "READY_TO_SHIP"
+//	   },
+//	   ":lut": {
+//	     "S": ""LastUpdatedTimestamp"
+//	   }
+//	 },
+//	 "ReturnValues": "ALL_NEW"
+//	}
+func (c *QueueSDKClient) Enqueue(ctx context.Context, id string) (*model.EnqueueResult, error) {
+	result := model.NewEnqueueResultWithID(id)
+
+	if id == "" {
+		fmt.Println("ID is not provided ... cannot proceed with the Enqueue() operation!")
+		result.ReturnValue = model.ReturnStatusEnumFailedIDNotProvided
+		return result, nil
+	}
+
+	retrievedShipment, err := c.Get(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	if retrievedShipment == nil {
+		fmt.Printf("Shipment with ID [%s] cannot be found!\n", id)
+		result.ReturnValue = model.ReturnStatusEnumFailedIDNotProvided
+		return result, nil
+	}
+
+	version := retrievedShipment.SystemInfo.Version
+
+	result.Status = retrievedShipment.SystemInfo.Status
+	result.Version = version
+	result.LastUpdatedTimestamp = retrievedShipment.SystemInfo.LastUpdatedTimestamp
+
+	if result.Status == model.StatusEnumUnderConstruction {
+		result.ReturnValue = model.ReturnStatusEnumFailedRecordNotConstructed
+		return result, nil
+	}
+
+	if result.Status != model.StatusEnumReadyToShip {
+		result.ReturnValue = model.ReturnStatusEnumFailedIllegalState
+		return result, nil
+	}
+
+	now := time.Now().UTC()
+
+	expr, err := expression.NewBuilder().
+		WithUpdate(expression.Add(
+			expression.Name("system_info.version"),
+			expression.Value(1),
+		).Set(
+			expression.Name("queued"),
+			expression.Value(1),
+		).Set(
+			expression.Name("system_info.queued"),
+			expression.Value(1),
+		).Set(
+			expression.Name("system_info.queue_selected"),
+			expression.Value(false),
+		).Set(
+			expression.Name("last_updated_timestamp"),
+			expression.Value(now.Format(time.RFC3339)),
+		).Set(
+			expression.Name("system_info.last_updated_timestamp"),
+			expression.Value(now.Format(time.RFC3339)),
+		).Set(
+			expression.Name("system_info.queue_added_timestamp"),
+			expression.Value(now.Format(time.RFC3339)),
+		).Set(
+			expression.Name("system_info.status"),
+			expression.Value(model.StatusEnumReadyToShip),
+		)).
+		WithCondition(expression.Name("system_info.version").Equal(expression.Value(version))).
+		Build()
+	if err != nil {
+		return nil, fmt.Errorf("failed to build expression: %v", err)
+	}
+
+	input := &dynamodb.UpdateItemInput{
+		TableName: &c.actualTableName,
+		Key: map[string]types.AttributeValue{
+			"id": &types.AttributeValueMemberS{
+				Value: id,
+			},
+		},
+		ConditionExpression:       expr.Condition(),
+		UpdateExpression:          expr.Update(),
+		ExpressionAttributeNames:  expr.Names(),
+		ExpressionAttributeValues: expr.Values(),
+		ReturnValues:              types.ReturnValueAllNew,
+	}
+
+	outcome, err := c.dynamoDB.UpdateItem(ctx, input)
+	if err != nil {
+		fmt.Printf("enqueue() - failed to update multiple attributes in %s", c.actualTableName)
+		fmt.Println(err)
+		result.ReturnValue = model.ReturnStatusEnumFailedDynamoError
+		return result, nil
+	}
+
+	item := appdata.Shipment{}
+	err = attributevalue.UnmarshalMap(outcome.Attributes, &item)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal map: %s", err)
+	}
+
+	result.Version = item.SystemInfo.Version
+	result.LastUpdatedTimestamp = item.SystemInfo.LastUpdatedTimestamp
+	result.Status = item.SystemInfo.Status
+
+	shipment, err := c.Get(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get shipment: %s", err)
+	}
+
+	result.Shipment = shipment
+	result.ReturnValue = model.ReturnStatusEnumSUCCESS
+
 	return result, nil
 }
