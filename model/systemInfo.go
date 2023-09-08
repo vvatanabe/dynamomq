@@ -16,6 +16,8 @@ type SystemInfo struct {
 	AddToDlqTimestamp        string     `json:"dlq_add_timestamp" dynamodbav:"dlq_add_timestamp"`
 	PeekFromQueueTimestamp   string     `json:"queue_peek_timestamp" dynamodbav:"queue_peek_timestamp"`
 	RemoveFromQueueTimestamp string     `json:"queue_remove_timestamp" dynamodbav:"queue_remove_timestamp"`
+
+	PeekUTCTimestamp int64 `json:"peek_utc_timestamp" dynamodbav:"peek_utc_timestamp"`
 }
 
 func NewSystemInfo() *SystemInfo {

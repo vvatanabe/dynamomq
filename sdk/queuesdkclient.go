@@ -684,3 +684,169 @@ func (c *QueueSDKClient) Enqueue(ctx context.Context, id string) (*model.Enqueue
 
 	return result, nil
 }
+
+// Peek peeks at the top of the queue to get the next item without actually removing it.
+// It ensures items in the queue that are orphaned or stuck in a processing state for more than
+// the allowed visibility timeout are considered for retrieval. It returns the peeked item's details
+// encapsulated in a PeekResult structure or an error if something goes wrong.
+//
+// Parameters:
+// - ctx: The context for managing request lifetime and cancelation.
+//
+// Returns:
+// - *model.PeekResult: The result of the peek operation, containing details like ID, Version,
+//   LastUpdatedTimestamp, Status, and TimestampMillisUTC of the peeked item.
+//   It also contains the ReturnValue which denotes the outcome of the operation.
+// - error: An error encountered during the peek operation, if any. Otherwise, nil.
+//
+// Note:
+// The function does not update the top-level attribute `last_updated_timestamp` to
+// avoid re-indexing the order.
+func (c *QueueSDKClient) Peek(ctx context.Context) (*model.PeekResult, error) {
+	var exclusiveStartKey map[string]types.AttributeValue
+	var selectedID string
+	var selectedVersion int
+	recordForPeekIsFound := false
+
+	names := expression.NamesList(
+		expression.Name("id"),
+		expression.Name("queued"),
+		expression.Name("system_info"))
+	expr, err := expression.NewBuilder().
+		WithProjection(names).
+		WithKeyCondition(expression.Key("queued").Equal(expression.Value(1))).
+		Build()
+
+	if err != nil {
+		return nil, fmt.Errorf("error building expression: %w", err)
+	}
+
+	for {
+		queryRequest := &dynamodb.QueryInput{
+			ProjectionExpression:      expr.Projection(),
+			IndexName:                 aws.String(go82f46979.QueueingIndexName),
+			TableName:                 aws.String(c.actualTableName),
+			KeyConditionExpression:    expr.KeyCondition(),
+			ExpressionAttributeNames:  expr.Names(),
+			ExpressionAttributeValues: expr.Values(),
+			Limit:                     aws.Int32(250),
+			ScanIndexForward:          aws.Bool(true),
+			ExclusiveStartKey:         exclusiveStartKey,
+		}
+
+		queryResult, err := c.dynamoDB.Query(ctx, queryRequest)
+		if err != nil {
+			return nil, fmt.Errorf("error querying dynamodb: %w", err)
+		}
+
+		exclusiveStartKey = queryResult.LastEvaluatedKey
+
+		for _, itemMap := range queryResult.Items {
+
+			item := appdata.Shipment{}
+			err = attributevalue.UnmarshalMap(itemMap, &item)
+			if err != nil {
+				return nil, fmt.Errorf("failed to unmarshal map: %s", err)
+			}
+
+			isQueueSelected := item.SystemInfo.SelectedFromQueue
+
+			// check if there are no stragglers (marked to be in processing but actually orphan)
+			if lastPeekTimeUTC := item.SystemInfo.PeekUTCTimestamp; lastPeekTimeUTC > 0 && isQueueSelected {
+				currentTS := time.Now().UnixMilli()
+
+				// if more than VISIBILITY_TIMEOUT_IN_MINUTES
+				if (currentTS - lastPeekTimeUTC) > (go82f46979.VisibilityTimeoutInMinutes * 60 * 1000) {
+					selectedID = item.ID
+					selectedVersion = item.SystemInfo.Version
+					recordForPeekIsFound = true
+
+					fmt.Printf(" >> Converted struggler, Shipment ID: [%s], age: %d\n", item.ID, currentTS-lastPeekTimeUTC)
+				}
+			} else { // otherwise, peek first record that satisfy basic condition (queued = :one)
+
+				selectedID = item.ID
+				selectedVersion = item.SystemInfo.Version
+				recordForPeekIsFound = true
+			}
+
+			// no need to go further
+			if recordForPeekIsFound {
+				break
+			}
+		}
+
+		if recordForPeekIsFound || exclusiveStartKey == nil {
+			break
+		}
+	}
+
+	result := &model.PeekResult{}
+
+	if selectedID == "" {
+		result.ReturnValue = model.ReturnStatusEnumFailedEmptyQueue
+		return result, nil
+	}
+
+	result.ID = selectedID
+
+	shipment, err := c.Get(ctx, selectedID)
+	if err != nil {
+		return nil, err
+	}
+
+	now := time.Now().UTC()
+	tsUTC := now.UnixMilli()
+
+	// IMPORTANT
+	// please note, we are not updating top-level attribute `last_updated_timestamp` in order to avoid re-indexing the order
+
+	expr, err = expression.NewBuilder().
+		WithUpdate(expression.
+			Add(expression.Name("system_info.version"), expression.Value(1)).
+			Set(expression.Name("system_info.queue_selected"), expression.Value(true)).
+			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(now.Format(time.RFC3339))).
+			Set(expression.Name("system_info.queue_peek_timestamp"), expression.Value(now.Format(time.RFC3339))).
+			Set(expression.Name("system_info.peek_utc_timestamp"), expression.Value(tsUTC)).
+			Set(expression.Name("system_info.status"), expression.Value(model.StatusEnumProcessingShipment))).
+		WithCondition(expression.Name("system_info.version").Equal(expression.Value(selectedVersion))).
+		Build()
+	if err != nil {
+		return nil, err
+	}
+
+	input := &dynamodb.UpdateItemInput{
+		TableName: aws.String(c.actualTableName),
+		Key: map[string]types.AttributeValue{
+			"id": &types.AttributeValueMemberS{
+				Value: shipment.ID,
+			},
+		},
+		UpdateExpression:          expr.Update(),
+		ExpressionAttributeNames:  expr.Names(),
+		ExpressionAttributeValues: expr.Values(),
+		ReturnValues:              types.ReturnValueAllNew,
+	}
+
+	outcome, err := c.dynamoDB.UpdateItem(ctx, input)
+	if err != nil {
+		fmt.Printf("peek() - failed to update multiple attributes in %s\n", c.actualTableName)
+		fmt.Println(err)
+		result.ReturnValue = model.ReturnStatusEnumFailedDynamoError
+		return result, nil
+	}
+
+	item := appdata.Shipment{}
+	err = attributevalue.UnmarshalMap(outcome.Attributes, &item)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal map: %s", err)
+	}
+
+	result.Version = item.SystemInfo.Version
+	result.LastUpdatedTimestamp = item.SystemInfo.LastUpdatedTimestamp
+	result.Status = item.SystemInfo.Status
+	result.TimestampMillisUTC = item.SystemInfo.PeekUTCTimestamp
+
+	result.ReturnValue = model.ReturnStatusEnumSUCCESS
+	return result, nil
+}
