@@ -694,10 +694,10 @@ func (c *QueueSDKClient) Enqueue(ctx context.Context, id string) (*model.Enqueue
 // - ctx: The context for managing request lifetime and cancelation.
 //
 // Returns:
-// - *model.PeekResult: The result of the peek operation, containing details like ID, Version,
-//   LastUpdatedTimestamp, Status, and TimestampMillisUTC of the peeked item.
-//   It also contains the ReturnValue which denotes the outcome of the operation.
-// - error: An error encountered during the peek operation, if any. Otherwise, nil.
+//   - *model.PeekResult: The result of the peek operation, containing details like ID, Version,
+//     LastUpdatedTimestamp, Status, and TimestampMillisUTC of the peeked item.
+//     It also contains the ReturnValue which denotes the outcome of the operation.
+//   - error: An error encountered during the peek operation, if any. Otherwise, nil.
 //
 // Note:
 // The function does not update the top-level attribute `last_updated_timestamp` to
@@ -846,6 +846,80 @@ func (c *QueueSDKClient) Peek(ctx context.Context) (*model.PeekResult, error) {
 	result.LastUpdatedTimestamp = item.SystemInfo.LastUpdatedTimestamp
 	result.Status = item.SystemInfo.Status
 	result.TimestampMillisUTC = item.SystemInfo.PeekUTCTimestamp
+
+	result.ReturnValue = model.ReturnStatusEnumSUCCESS
+	return result, nil
+}
+
+// Remove tries to remove an item with a specified ID from the underlying datastore.
+// The removal is done by updating attributes of the item in the datastore.
+//
+// Parameters:
+//   - ctx: context.Context is the context for method invocation which can be used for timeout and cancellation.
+//   - id: string is the unique identifier of the item to be removed.
+//
+// Returns:
+//   - *model.ReturnResult: the result of the remove operation, containing information about the removed item's status.
+//   - error: any error encountered during the operation, especially related to data marshaling and database interactions.
+//     If successful and the item is just not found, the error is nil but the ReturnResult reflects the status.
+func (c *QueueSDKClient) Remove(ctx context.Context, id string) (*model.ReturnResult, error) {
+	result := &model.ReturnResult{ID: id}
+
+	shipment, err := c.Get(ctx, id)
+	if shipment == nil {
+		result.ReturnValue = model.ReturnStatusEnumFailedIDNotFound
+		return result, nil
+	}
+
+	now := time.Now().UTC()
+
+	expr, err := expression.NewBuilder().
+		WithUpdate(expression.
+			Add(expression.Name("system_info.version"), expression.Value(1)).
+			Remove(expression.Name("system_info.peek_utc_timestamp")).
+			Remove(expression.Name("queued")).
+			Remove(expression.Name("DLQ")).
+			Set(expression.Name("system_info.queued"), expression.Value(0)).
+			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(now.Format(time.RFC3339))).
+			Set(expression.Name("last_updated_timestamp"), expression.Value(now.Format(time.RFC3339))).
+			Set(expression.Name("system_info.queue_remove_timestamp"), expression.Value(now.Format(time.RFC3339))).
+			Set(expression.Name("system_info.status"), expression.Value(model.StatusEnumProcessingShipment))).
+		WithCondition(expression.Name("system_info.version").Equal(expression.Value(shipment.SystemInfo.Version))).
+		Build()
+	if err != nil {
+		return nil, fmt.Errorf("building expression: %w", err)
+	}
+
+	input := &dynamodb.UpdateItemInput{
+		TableName: &c.actualTableName,
+		Key: map[string]types.AttributeValue{
+			"id": &types.AttributeValueMemberS{
+				Value: id,
+			},
+		},
+		UpdateExpression:          expr.Update(),
+		ExpressionAttributeNames:  expr.Names(),
+		ExpressionAttributeValues: expr.Values(),
+		ReturnValues:              types.ReturnValueAllNew,
+	}
+
+	outcome, err := c.dynamoDB.UpdateItem(ctx, input)
+	if err != nil {
+		fmt.Printf("remove() - failed to update multiple attributes in %s\n", c.actualTableName)
+		fmt.Println(err)
+		result.ReturnValue = model.ReturnStatusEnumFailedDynamoError
+		return result, nil
+	}
+
+	item := appdata.Shipment{}
+	err = attributevalue.UnmarshalMap(outcome.Attributes, &item)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal map: %s", err)
+	}
+
+	result.Version = item.SystemInfo.Version
+	result.Status = item.SystemInfo.Status
+	result.LastUpdatedTimestamp = item.SystemInfo.LastUpdatedTimestamp
 
 	result.ReturnValue = model.ReturnStatusEnumSUCCESS
 	return result, nil

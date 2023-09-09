@@ -2,6 +2,7 @@ package model
 
 import (
 	"encoding/json"
+
 	"github.com/vvatanabe/go82f46979/appdata"
 )
 
@@ -18,7 +19,7 @@ func NewDequeueResultWithID(id string) *DequeueResult {
 	return &DequeueResult{ReturnResult: &ReturnResult{ID: id}}
 }
 
-func FromReturnResult(result *ReturnResult) *DequeueResult {
+func NewDequeueResultFromReturnResult(result *ReturnResult) *DequeueResult {
 	return &DequeueResult{
 		ReturnResult: result,
 	}
