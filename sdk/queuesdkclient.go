@@ -851,6 +851,43 @@ func (c *QueueSDKClient) Peek(ctx context.Context) (*model.PeekResult, error) {
 	return result, nil
 }
 
+// Dequeue attempts to dequeue an item from the Queue. It first peeks at the queue to get an item
+// and then attempts to remove that item from the Queue if the peek was successful.
+//
+// Parameters:
+//   - ctx: context.Context is the context for method invocation which can be used for timeout and cancellation.
+//
+// Returns:
+//   - *model.DequeueResult: the result of the dequeue operation, containing information about the dequeued item.
+//   - error: any error encountered during the operation. If successful, this is nil.
+func (c *QueueSDKClient) Dequeue(ctx context.Context) (*model.DequeueResult, error) {
+	peekResult, err := c.Peek(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var dequeueResult *model.DequeueResult
+
+	if peekResult.ReturnValue == model.ReturnStatusEnumSUCCESS {
+		ID := peekResult.ID
+		removeResult, err := c.Remove(ctx, ID)
+		if err != nil {
+			return nil, err
+		}
+
+		dequeueResult = model.NewDequeueResultFromReturnResult(removeResult)
+
+		if removeResult.IsSuccessful() {
+
+			dequeueResult.DequeuedShipmentObject = peekResult.PeekedShipmentObject
+		}
+	} else {
+		dequeueResult = model.NewDequeueResultFromReturnResult(peekResult.ReturnResult)
+	}
+
+	return dequeueResult, nil
+}
+
 // Remove tries to remove an item with a specified ID from the underlying datastore.
 // The removal is done by updating attributes of the item in the datastore.
 //
