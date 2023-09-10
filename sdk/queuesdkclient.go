@@ -961,3 +961,83 @@ func (c *QueueSDKClient) Remove(ctx context.Context, id string) (*model.ReturnRe
 	result.ReturnValue = model.ReturnStatusEnumSUCCESS
 	return result, nil
 }
+
+// Restore adds back a record to the queue by its ID. The function updates the
+// record in the queue to reflect its restored status.
+//
+// Parameters:
+//   ctx: The context to be used for the operation.
+//   id: The ID of the record to restore.
+//
+// Returns:
+//   *model.ReturnResult: A pointer to a ReturnResult object that contains
+//   information about the result of the restore operation, such as the version,
+//   status, and last updated timestamp.
+//
+//   error: An error that describes any issues that occurred during the
+//   restore operation. If the operation is successful, this will be nil.
+func (c *QueueSDKClient) Restore(ctx context.Context, id string) (*model.ReturnResult, error) {
+	result := model.NewReturnResultWithID(id)
+
+	shipment, err := c.Get(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if shipment == nil || err != nil {
+		result.ReturnValue = model.ReturnStatusEnumFailedIDNotFound
+		return result, nil
+	}
+
+	now := time.Now().UTC()
+
+	expr, err := expression.NewBuilder().
+		WithUpdate(expression.
+			Add(expression.Name("system_info.version"), expression.Value(1)).
+			Remove(expression.Name("DLQ")).
+			Set(expression.Name("system_info.queued"), expression.Value(1)).
+			Set(expression.Name("queued"), expression.Value(1)).
+			Set(expression.Name("system_info.queue_selected"), expression.Value(false)).
+			Set(expression.Name("last_updated_timestamp"), expression.Value(now.Format(time.RFC3339))).
+			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(now.Format(time.RFC3339))).
+			Set(expression.Name("system_info.queue_add_timestamp"), expression.Value(now.Format(time.RFC3339))).
+			Set(expression.Name("system_info.status"), expression.Value(model.StatusEnumReadyToShip))).
+		WithCondition(expression.Name("system_info.version").Equal(expression.Value(shipment.SystemInfo.Version))).
+		Build()
+	if err != nil {
+		return nil, fmt.Errorf("building expression: %w", err)
+	}
+
+	input := &dynamodb.UpdateItemInput{
+		TableName: &c.actualTableName,
+		Key: map[string]types.AttributeValue{
+			"id": &types.AttributeValueMemberS{
+				Value: id,
+			},
+		},
+		UpdateExpression:          expr.Update(),
+		ExpressionAttributeNames:  expr.Names(),
+		ExpressionAttributeValues: expr.Values(),
+		ReturnValues:              types.ReturnValueAllNew,
+	}
+
+	outcome, err := c.dynamoDB.UpdateItem(ctx, input)
+	if err != nil {
+		fmt.Printf("restore() - failed to update multiple attributes in %s\n", c.actualTableName)
+		fmt.Println(err)
+		result.ReturnValue = model.ReturnStatusEnumFailedDynamoError
+		return result, nil
+	}
+
+	item := appdata.Shipment{}
+	err = attributevalue.UnmarshalMap(outcome.Attributes, &item)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal map: %s", err)
+	}
+
+	result.Version = item.SystemInfo.Version
+	result.Status = item.SystemInfo.Status
+	result.LastUpdatedTimestamp = item.SystemInfo.LastUpdatedTimestamp
+
+	result.ReturnValue = model.ReturnStatusEnumSUCCESS
+	return result, nil
+}
