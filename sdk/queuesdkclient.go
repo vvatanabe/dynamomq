@@ -1124,3 +1124,78 @@ func (c *QueueSDKClient) SendToDLQ(ctx context.Context, id string) (*model.Retur
 	result.ReturnValue = model.ReturnStatusEnumSUCCESS
 	return result, nil
 }
+
+// Touch updates the 'last_updated_timestamp' of a given item identified by its 'id'
+// and increments its 'version' by 1 in the DynamoDB table.
+// It uses optimistic locking based on the item's 'version' to ensure that updates
+// are not conflicting with other concurrent updates.
+//
+// Parameters:
+// ctx: The context for this operation. It can be used to time out or cancel the operation.
+// id: The identifier of the item to update.
+//
+// Returns:
+// *model.ReturnResult: A result object that contains updated values and status of the operation.
+// - If the given 'id' does not exist, the 'ReturnValue' of the result will be set to 'ReturnStatusEnumFailedIDNotFound'.
+// - If the operation succeeds in updating the item, the 'ReturnValue' will be set to 'ReturnStatusEnumSUCCESS'.
+// - If there is an error while updating in DynamoDB, the 'ReturnValue' will be set to 'ReturnStatusEnumFailedDynamoError'.
+// error: An error object indicating any error that occurred during the operation.
+// - If there's an error while building the DynamoDB expression, this error is returned.
+// - If there's an error unmarshalling the DynamoDB response, this error is returned.
+// Otherwise, if the operation succeeds, the error will be 'nil'.
+func (c *QueueSDKClient) Touch(ctx context.Context, id string) (*model.ReturnResult, error) {
+	result := model.NewReturnResultWithID(id)
+
+	shipment, err := c.Get(ctx, id)
+	if err != nil || shipment == nil {
+		result.ReturnValue = model.ReturnStatusEnumFailedIDNotFound
+		return result, nil
+	}
+
+	now := time.Now().UTC()
+
+	expr, err := expression.NewBuilder().
+		WithUpdate(expression.
+			Add(expression.Name("system_info.version"), expression.Value(1)).
+			Set(expression.Name("last_updated_timestamp"), expression.Value(now.Format(time.RFC3339))).
+			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(now.Format(time.RFC3339)))).
+		WithCondition(expression.Name("system_info.version").Equal(expression.Value(shipment.SystemInfo.Version))).
+		Build()
+	if err != nil {
+		return nil, fmt.Errorf("building expression: %w", err)
+	}
+
+	input := &dynamodb.UpdateItemInput{
+		TableName: &c.actualTableName,
+		Key: map[string]types.AttributeValue{
+			"id": &types.AttributeValueMemberS{
+				Value: id,
+			},
+		},
+		UpdateExpression:          expr.Update(),
+		ExpressionAttributeNames:  expr.Names(),
+		ExpressionAttributeValues: expr.Values(),
+		ReturnValues:              types.ReturnValueAllNew,
+	}
+
+	outcome, err := c.dynamoDB.UpdateItem(ctx, input)
+	if err != nil {
+		fmt.Printf("Touch() - failed to update multiple attributes in %s\n", c.actualTableName)
+		fmt.Println(err)
+		result.ReturnValue = model.ReturnStatusEnumFailedDynamoError
+		return result, nil
+	}
+
+	item := appdata.Shipment{}
+	err = attributevalue.UnmarshalMap(outcome.Attributes, &item)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal map: %s", err)
+	}
+
+	result.Version = item.SystemInfo.Version
+	result.Status = item.SystemInfo.Status
+	result.LastUpdatedTimestamp = item.SystemInfo.LastUpdatedTimestamp
+
+	result.ReturnValue = model.ReturnStatusEnumSUCCESS
+	return result, nil
+}
