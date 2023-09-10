@@ -10,6 +10,7 @@ type Shipment struct {
 	SystemInfo *model.SystemInfo `json:"system_info" dynamodbav:"system_info"`
 
 	LastUpdatedTimestamp string `json:"last_updated_timestamp" dynamodbav:"last_updated_timestamp"`
+	DLQ                  int    `json:"DLQ" dynamodbav:"DLQ"`
 }
 
 func NewShipment() *Shipment {

@@ -966,16 +966,18 @@ func (c *QueueSDKClient) Remove(ctx context.Context, id string) (*model.ReturnRe
 // record in the queue to reflect its restored status.
 //
 // Parameters:
-//   ctx: The context to be used for the operation.
-//   id: The ID of the record to restore.
+//
+//	ctx: The context to be used for the operation.
+//	id: The ID of the record to restore.
 //
 // Returns:
-//   *model.ReturnResult: A pointer to a ReturnResult object that contains
-//   information about the result of the restore operation, such as the version,
-//   status, and last updated timestamp.
 //
-//   error: An error that describes any issues that occurred during the
-//   restore operation. If the operation is successful, this will be nil.
+//	*model.ReturnResult: A pointer to a ReturnResult object that contains
+//	information about the result of the restore operation, such as the version,
+//	status, and last updated timestamp.
+//
+//	error: An error that describes any issues that occurred during the
+//	restore operation. If the operation is successful, this will be nil.
 func (c *QueueSDKClient) Restore(ctx context.Context, id string) (*model.ReturnResult, error) {
 	result := model.NewReturnResultWithID(id)
 
@@ -1023,6 +1025,87 @@ func (c *QueueSDKClient) Restore(ctx context.Context, id string) (*model.ReturnR
 	outcome, err := c.dynamoDB.UpdateItem(ctx, input)
 	if err != nil {
 		fmt.Printf("restore() - failed to update multiple attributes in %s\n", c.actualTableName)
+		fmt.Println(err)
+		result.ReturnValue = model.ReturnStatusEnumFailedDynamoError
+		return result, nil
+	}
+
+	item := appdata.Shipment{}
+	err = attributevalue.UnmarshalMap(outcome.Attributes, &item)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal map: %s", err)
+	}
+
+	result.Version = item.SystemInfo.Version
+	result.Status = item.SystemInfo.Status
+	result.LastUpdatedTimestamp = item.SystemInfo.LastUpdatedTimestamp
+
+	result.ReturnValue = model.ReturnStatusEnumSUCCESS
+	return result, nil
+}
+
+// SendToDLQ sends a specified record with the given ID to the Dead Letter Queue (DLQ).
+// The method performs various operations:
+// 1. Fetches the shipment details associated with the provided ID.
+// 2. Constructs a DynamoDB update expression to mark the record for DLQ and updates timestamps.
+// 3. Updates the specified record in the DynamoDB table.
+//
+// Parameters:
+//
+//	ctx: The context for the operation. It can be used to control cancelation.
+//	id: The ID of the record that needs to be sent to the DLQ.
+//
+// Returns:
+//   - *model.ReturnResult: A pointer to the result structure which contains details like Version, Status, LastUpdatedTimestamp,
+//     and ReturnValue indicating the result of the operation (e.g., success, failed due to ID not found, etc.).
+//   - error: Non-nil if there was an error during the operation.
+func (c *QueueSDKClient) SendToDLQ(ctx context.Context, id string) (*model.ReturnResult, error) {
+	result := model.NewReturnResultWithID(id)
+
+	shipment, err := c.Get(ctx, id)
+	if err != nil || shipment == nil {
+		result.ReturnValue = model.ReturnStatusEnumFailedIDNotFound
+		return result, nil
+	}
+
+	now := time.Now().UTC()
+
+	expr, err := expression.NewBuilder().
+		WithUpdate(expression.
+			Add(expression.Name("system_info.version"), expression.Value(1)).
+			Remove(expression.Name("queued")).
+			Set(expression.Name("DLQ"), expression.Value(1)).
+			Set(expression.Name("system_info.queued"), expression.Value(0)).
+			Set(expression.Name("system_info.queue_selected"), expression.Value(false)).
+			Set(expression.Name("last_updated_timestamp"), expression.Value(now.Format(time.RFC3339))).
+			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(now.Format(time.RFC3339))).
+			Set(expression.Name("system_info.dlq_add_timestamp"), expression.Value(now.Format(time.RFC3339))).
+			Set(expression.Name("system_info.status"), expression.Value(model.StatusEnumInDLQ))).
+		WithCondition(expression.And(
+			expression.Name("system_info.version").Equal(expression.Value(shipment.SystemInfo.Version)),
+			expression.Name("system_info.queued").Equal(expression.Value(1)),
+		)).
+		Build()
+	if err != nil {
+		return nil, fmt.Errorf("building expression: %w", err)
+	}
+
+	input := &dynamodb.UpdateItemInput{
+		TableName: &c.actualTableName,
+		Key: map[string]types.AttributeValue{
+			"id": &types.AttributeValueMemberS{
+				Value: id,
+			},
+		},
+		UpdateExpression:          expr.Update(),
+		ExpressionAttributeNames:  expr.Names(),
+		ExpressionAttributeValues: expr.Values(),
+		ReturnValues:              types.ReturnValueAllNew,
+	}
+
+	outcome, err := c.dynamoDB.UpdateItem(ctx, input)
+	if err != nil {
+		fmt.Printf("SendToDLQ() - failed to update multiple attributes in %s\n", c.actualTableName)
 		fmt.Println(err)
 		result.ReturnValue = model.ReturnStatusEnumFailedDynamoError
 		return result, nil
