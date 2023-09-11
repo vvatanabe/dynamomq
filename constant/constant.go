@@ -1,4 +1,4 @@
-package go82f46979
+package constant
 
 const (
 	AwsRegionDefault           = "us-east-1"
