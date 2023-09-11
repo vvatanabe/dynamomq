@@ -1290,3 +1290,40 @@ func (c *QueueSDKClient) ListExtendedIDs(ctx context.Context, size int32) ([]str
 
 	return extendedIDs, nil
 }
+
+// Delete removes the shipment record associated with the provided ID from the database.
+// It will return an error if the ID is empty or if there's any issue deleting the record.
+//
+// Parameters:
+//   - ctx: The context to be used for the deletion request. It allows for timeout and cancellation.
+//   - id: The unique identifier of the shipment record to be deleted.
+//
+// Returns:
+//   - error: Non-nil if there was an error during the delete operation.
+func (c *QueueSDKClient) Delete(ctx context.Context, id string) error {
+	if id == "" {
+		return errors.New("shipment id cannot be empty")
+	}
+
+	expr, err := expression.NewBuilder().
+		WithCondition(expression.Name("id").Equal(expression.Value(id))).
+		Build()
+	if err != nil {
+		return fmt.Errorf("building expression: %w", err)
+	}
+
+	input := &dynamodb.DeleteItemInput{
+		TableName: &c.actualTableName,
+		Key: map[string]types.AttributeValue{
+			"id": &types.AttributeValueMemberS{
+				Value: id,
+			},
+		},
+		ConditionExpression:       expr.Condition(),
+		ExpressionAttributeNames:  expr.Names(),
+		ExpressionAttributeValues: expr.Values(),
+	}
+
+	_, err = c.dynamoDB.DeleteItem(ctx, input)
+	return err
+}
