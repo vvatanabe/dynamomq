@@ -11,8 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/expression"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
-	"github.com/vvatanabe/go82f46979"
-	"github.com/vvatanabe/go82f46979/appdata"
+	"github.com/vvatanabe/go82f46979/constant"
 	"github.com/vvatanabe/go82f46979/model"
 )
 
@@ -25,8 +24,13 @@ type QueueSDKClient struct {
 	logicalTableName          string
 	awsRegion                 string
 	awsCredentialsProfileName string
+	credentials               *aws.Credentials
 
 	retryPolicyRetryCount int
+}
+
+func (c *QueueSDKClient) initialize() {
+
 }
 
 // GetQueueStats retrieves statistics about the current state of the queue.
@@ -83,7 +87,7 @@ func (c *QueueSDKClient) GetQueueStats(ctx context.Context) (*model.QueueStats, 
 	for {
 		queryInput := &dynamodb.QueryInput{
 			ProjectionExpression:      expr.Projection(),
-			IndexName:                 aws.String(go82f46979.QueueingIndexName),
+			IndexName:                 aws.String(constant.QueueingIndexName),
 			TableName:                 aws.String(c.actualTableName),
 			ExpressionAttributeNames:  expr.Names(),
 			KeyConditionExpression:    expr.KeyCondition(),
@@ -103,7 +107,7 @@ func (c *QueueSDKClient) GetQueueStats(ctx context.Context) (*model.QueueStats, 
 		for _, itemMap := range queryOutput.Items {
 			totalQueueSize++
 
-			item := appdata.Shipment{}
+			item := model.Shipment{}
 			err := attributevalue.UnmarshalMap(itemMap, &item)
 			if err != nil {
 				return nil, fmt.Errorf("failed to unmarshal map: %s", err)
@@ -183,7 +187,7 @@ func (c *QueueSDKClient) GetDLQStats(ctx context.Context) (*model.DLQResult, err
 	for {
 		input := &dynamodb.QueryInput{
 			ProjectionExpression:      expr.Projection(),
-			IndexName:                 aws.String(go82f46979.DlqQueueingIndexName),
+			IndexName:                 aws.String(constant.DlqQueueingIndexName),
 			TableName:                 aws.String(c.actualTableName),
 			ExpressionAttributeNames:  expr.Names(),
 			ExpressionAttributeValues: expr.Values(),
@@ -203,7 +207,7 @@ func (c *QueueSDKClient) GetDLQStats(ctx context.Context) (*model.DLQResult, err
 			totalDLQSize++
 
 			if len(listBANs) < 100 {
-				item := appdata.Shipment{}
+				item := model.Shipment{}
 				err := attributevalue.UnmarshalMap(itemMap, &item)
 				if err != nil {
 					return nil, fmt.Errorf("failed to unmarshal map: %s", err)
@@ -233,7 +237,7 @@ func (c *QueueSDKClient) GetDLQStats(ctx context.Context) (*model.DLQResult, err
 //   - id (string): The unique identifier of the shipment record to retrieve.
 //
 // Returns:
-//   - (*appdata.Shipment): A pointer to the retrieved shipment record.
+//   - (*model.Shipment): A pointer to the retrieved shipment record.
 //   - (error): An error if any occurred during the retrieval process, including
 //     if the 'id' is empty, the database query fails, or unmarshaling the response
 //     fails.
@@ -248,7 +252,7 @@ func (c *QueueSDKClient) GetDLQStats(ctx context.Context) (*model.DLQResult, err
 //	    }
 //	  }
 //	}
-func (c *QueueSDKClient) Get(ctx context.Context, id string) (*appdata.Shipment, error) {
+func (c *QueueSDKClient) Get(ctx context.Context, id string) (*model.Shipment, error) {
 	if id == "" {
 		return nil, errors.New("id is not provided ... cannot retrieve the shipment record")
 	}
@@ -266,7 +270,7 @@ func (c *QueueSDKClient) Get(ctx context.Context, id string) (*appdata.Shipment,
 		return nil, fmt.Errorf("failed to dynamodb get item: %s", err)
 	}
 
-	item := appdata.Shipment{}
+	item := model.Shipment{}
 	err = attributevalue.UnmarshalMap(resp.Item, &item)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal map: %s", err)
@@ -285,7 +289,7 @@ func (c *QueueSDKClient) Get(ctx context.Context, id string) (*appdata.Shipment,
 //
 // Returns:
 //   - error: Returns an error if one occurs, otherwise, it returns nil on successful storage.
-func (c *QueueSDKClient) Put(ctx context.Context, shipment *appdata.Shipment) error {
+func (c *QueueSDKClient) Put(ctx context.Context, shipment *model.Shipment) error {
 	return c.PutImpl(ctx, shipment, false)
 }
 
@@ -299,7 +303,7 @@ func (c *QueueSDKClient) Put(ctx context.Context, shipment *appdata.Shipment) er
 //
 // Returns:
 //   - error: Returns an error if one occurs, otherwise, it returns nil on successful upsert.
-func (c *QueueSDKClient) Upsert(ctx context.Context, shipment *appdata.Shipment) error {
+func (c *QueueSDKClient) Upsert(ctx context.Context, shipment *model.Shipment) error {
 	return c.PutImpl(ctx, shipment, true)
 }
 
@@ -316,7 +320,7 @@ func (c *QueueSDKClient) Upsert(ctx context.Context, shipment *appdata.Shipment)
 //
 // Returns:
 //   - (error): An error if one occurs, otherwise, it returns nil on success.
-func (c *QueueSDKClient) PutImpl(ctx context.Context, shipment *appdata.Shipment, useUpsert bool) error {
+func (c *QueueSDKClient) PutImpl(ctx context.Context, shipment *model.Shipment, useUpsert bool) error {
 	if shipment == nil {
 		return errors.New("shipment object cannot be nil")
 	}
@@ -501,7 +505,7 @@ func (c *QueueSDKClient) UpdateStatus(ctx context.Context, id string, newStatus 
 		return result, nil
 	}
 
-	item := appdata.Shipment{}
+	item := model.Shipment{}
 	err = attributevalue.UnmarshalMap(outcome.Attributes, &item)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal map: %s", err)
@@ -664,7 +668,7 @@ func (c *QueueSDKClient) Enqueue(ctx context.Context, id string) (*model.Enqueue
 		return result, nil
 	}
 
-	item := appdata.Shipment{}
+	item := model.Shipment{}
 	err = attributevalue.UnmarshalMap(outcome.Attributes, &item)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal map: %s", err)
@@ -724,7 +728,7 @@ func (c *QueueSDKClient) Peek(ctx context.Context) (*model.PeekResult, error) {
 	for {
 		queryRequest := &dynamodb.QueryInput{
 			ProjectionExpression:      expr.Projection(),
-			IndexName:                 aws.String(go82f46979.QueueingIndexName),
+			IndexName:                 aws.String(constant.QueueingIndexName),
 			TableName:                 aws.String(c.actualTableName),
 			KeyConditionExpression:    expr.KeyCondition(),
 			ExpressionAttributeNames:  expr.Names(),
@@ -743,7 +747,7 @@ func (c *QueueSDKClient) Peek(ctx context.Context) (*model.PeekResult, error) {
 
 		for _, itemMap := range queryResult.Items {
 
-			item := appdata.Shipment{}
+			item := model.Shipment{}
 			err = attributevalue.UnmarshalMap(itemMap, &item)
 			if err != nil {
 				return nil, fmt.Errorf("failed to unmarshal map: %s", err)
@@ -756,7 +760,7 @@ func (c *QueueSDKClient) Peek(ctx context.Context) (*model.PeekResult, error) {
 				currentTS := time.Now().UnixMilli()
 
 				// if more than VISIBILITY_TIMEOUT_IN_MINUTES
-				if (currentTS - lastPeekTimeUTC) > (go82f46979.VisibilityTimeoutInMinutes * 60 * 1000) {
+				if (currentTS - lastPeekTimeUTC) > (constant.VisibilityTimeoutInMinutes * 60 * 1000) {
 					selectedID = item.ID
 					selectedVersion = item.SystemInfo.Version
 					recordForPeekIsFound = true
@@ -836,7 +840,7 @@ func (c *QueueSDKClient) Peek(ctx context.Context) (*model.PeekResult, error) {
 		return result, nil
 	}
 
-	item := appdata.Shipment{}
+	item := model.Shipment{}
 	err = attributevalue.UnmarshalMap(outcome.Attributes, &item)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal map: %s", err)
@@ -948,7 +952,7 @@ func (c *QueueSDKClient) Remove(ctx context.Context, id string) (*model.ReturnRe
 		return result, nil
 	}
 
-	item := appdata.Shipment{}
+	item := model.Shipment{}
 	err = attributevalue.UnmarshalMap(outcome.Attributes, &item)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal map: %s", err)
@@ -1030,7 +1034,7 @@ func (c *QueueSDKClient) Restore(ctx context.Context, id string) (*model.ReturnR
 		return result, nil
 	}
 
-	item := appdata.Shipment{}
+	item := model.Shipment{}
 	err = attributevalue.UnmarshalMap(outcome.Attributes, &item)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal map: %s", err)
@@ -1111,7 +1115,7 @@ func (c *QueueSDKClient) SendToDLQ(ctx context.Context, id string) (*model.Retur
 		return result, nil
 	}
 
-	item := appdata.Shipment{}
+	item := model.Shipment{}
 	err = attributevalue.UnmarshalMap(outcome.Attributes, &item)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal map: %s", err)
@@ -1186,7 +1190,7 @@ func (c *QueueSDKClient) Touch(ctx context.Context, id string) (*model.ReturnRes
 		return result, nil
 	}
 
-	item := appdata.Shipment{}
+	item := model.Shipment{}
 	err = attributevalue.UnmarshalMap(outcome.Attributes, &item)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal map: %s", err)
@@ -1209,9 +1213,9 @@ func (c *QueueSDKClient) Touch(ctx context.Context, id string) (*model.ReturnRes
 //   - size: The maximum number of items to retrieve.
 //
 // Returns:
-//   - A slice of pointers to appdata.Shipment if found.
+//   - A slice of pointers to model.Shipment if found.
 //   - error if there's any issue in the operation.
-func (c *QueueSDKClient) List(ctx context.Context, size int32) ([]*appdata.Shipment, error) {
+func (c *QueueSDKClient) List(ctx context.Context, size int32) ([]*model.Shipment, error) {
 	expr, err := expression.NewBuilder().
 		WithProjection(expression.NamesList(expression.Name("id"), expression.Name("system_info"))).
 		Build()
@@ -1231,7 +1235,7 @@ func (c *QueueSDKClient) List(ctx context.Context, size int32) ([]*appdata.Shipm
 		return nil, fmt.Errorf("scan dynamodb: %w", err)
 	}
 
-	var shipments []*appdata.Shipment
+	var shipments []*model.Shipment
 	err = attributevalue.UnmarshalListOfMaps(output.Items, &shipments)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal list of map: %s", err)
@@ -1338,9 +1342,9 @@ func (c *QueueSDKClient) Delete(ctx context.Context, id string) error {
 //   - id: The unique identifier for the shipment record to be created.
 //
 // Returns:
-//   - *appdata.Shipment: The created shipment record.
+//   - *model.Shipment: The created shipment record.
 //   - error: Non-nil if there was an error during the creation process.
-func (c *QueueSDKClient) CreateTestData(ctx context.Context, id string) (*appdata.Shipment, error) {
+func (c *QueueSDKClient) CreateTestData(ctx context.Context, id string) (*model.Shipment, error) {
 	if id == "" {
 		return nil, errors.New("shipment id cannot be empty")
 	}
@@ -1350,19 +1354,19 @@ func (c *QueueSDKClient) CreateTestData(ctx context.Context, id string) (*appdat
 		return nil, err
 	}
 
-	data := &appdata.ShipmentData{
+	data := &model.ShipmentData{
 		ID:    id,
 		Data1: "Data 1",
 		Data2: "Data 2",
 		Data3: "Data 3",
-		Items: []appdata.ShipmentItem{
+		Items: []model.ShipmentItem{
 			{SKU: "Item-1", Packed: true},
 			{SKU: "Item-2", Packed: true},
 			{SKU: "Item-3", Packed: true},
 		},
 	}
 
-	shipment := &appdata.Shipment{
+	shipment := &model.Shipment{
 		ID:   id,
 		Data: data,
 	}
@@ -1373,4 +1377,70 @@ func (c *QueueSDKClient) CreateTestData(ctx context.Context, id string) (*appdat
 	}
 
 	return shipment, nil
+}
+
+type Builder struct {
+	configFileName            string
+	configContent             string
+	credentials               *aws.Credentials
+	logicalTableName          string
+	awsRegion                 string
+	awsCredentialsProfileName string
+	client                    *QueueSDKClient
+}
+
+func NewBuilder() *Builder {
+	return &Builder{}
+}
+
+func (b *Builder) Build() *QueueSDKClient {
+	if b.logicalTableName == "" {
+		b.logicalTableName = constant.DefaultShipmentTableName
+	}
+
+	if b.client == nil {
+		b.client = &QueueSDKClient{
+			logicalTableName:          b.logicalTableName,
+			awsRegion:                 b.awsRegion,
+			credentials:               b.credentials,
+			awsCredentialsProfileName: b.awsCredentialsProfileName,
+		}
+		b.client.initialize()
+	}
+
+	return b.client
+}
+
+func (b *Builder) WithConfigurationFileName(fileName string) *Builder {
+	b.configFileName = fileName
+	return b
+}
+
+func (b *Builder) WithRegion(region string) *Builder {
+	b.awsRegion = region
+	return b
+}
+
+func (b *Builder) WithCredentialsProfileName(profile string) *Builder {
+	b.awsCredentialsProfileName = profile
+	return b
+}
+
+func (b *Builder) WithProfile(profile string) *Builder {
+	return b.WithCredentialsProfileName(profile) // alias method
+}
+
+func (b *Builder) WithLogicalTableName(logicalTableName string) *Builder {
+	b.logicalTableName = logicalTableName
+	return b
+}
+
+func (b *Builder) WithCredentials(creds *aws.Credentials) *Builder {
+	b.credentials = creds
+	return b
+}
+
+func (b *Builder) WithConfigurationContent(configurationJsonContent string) *Builder {
+	b.configContent = configurationJsonContent
+	return b
 }
