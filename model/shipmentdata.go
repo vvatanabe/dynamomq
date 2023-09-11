@@ -1,4 +1,4 @@
-package appdata
+package model
 
 type ShipmentData struct {
 	ID    string         `json:"id" dynamodbav:"id"`

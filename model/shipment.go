@@ -1,13 +1,9 @@
-package appdata
-
-import (
-	"github.com/vvatanabe/go82f46979/model"
-)
+package model
 
 type Shipment struct {
-	ID         string            `json:"id" dynamodbav:"id"`
-	Data       *ShipmentData     `json:"data" dynamodbav:"data"`
-	SystemInfo *model.SystemInfo `json:"system_info" dynamodbav:"system_info"`
+	ID         string        `json:"id" dynamodbav:"id"`
+	Data       *ShipmentData `json:"data" dynamodbav:"data"`
+	SystemInfo *SystemInfo   `json:"system_info" dynamodbav:"system_info"`
 
 	LastUpdatedTimestamp string `json:"last_updated_timestamp" dynamodbav:"last_updated_timestamp"`
 	DLQ                  int    `json:"DLQ" dynamodbav:"DLQ"`
@@ -15,7 +11,7 @@ type Shipment struct {
 
 func NewShipment() *Shipment {
 	return &Shipment{
-		SystemInfo: model.NewSystemInfo(),
+		SystemInfo: NewSystemInfo(),
 		Data:       NewShipmentData(),
 	}
 }
@@ -27,7 +23,7 @@ func NewShipmentWithID(id string) *Shipment {
 
 	return &Shipment{
 		ID:         id,
-		SystemInfo: model.NewSystemInfoWithID(id),
+		SystemInfo: NewSystemInfoWithID(id),
 		Data:       NewShipmentDataWithID(id),
 	}
 }
@@ -43,11 +39,11 @@ func (s *Shipment) SetID(id string) {
 }
 
 func (s *Shipment) MarkAsPartiallyConstructed() {
-	s.SystemInfo.Status = model.StatusEnumUnderConstruction
+	s.SystemInfo.Status = StatusEnumUnderConstruction
 }
 
 func (s *Shipment) MarkAsReadyForShipment() {
-	s.SystemInfo.Status = model.StatusEnumReadyToShip
+	s.SystemInfo.Status = StatusEnumReadyToShip
 }
 
 func (s *Shipment) IsQueued() bool {
@@ -63,5 +59,5 @@ func (s *Shipment) SetLastUpdatedTimestamp(timestamp string) {
 }
 
 func (s *Shipment) ResetSystemInfo() {
-	s.SystemInfo = model.NewSystemInfoWithID(s.ID)
+	s.SystemInfo = NewSystemInfoWithID(s.ID)
 }
