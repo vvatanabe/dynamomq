@@ -1327,3 +1327,50 @@ func (c *QueueSDKClient) Delete(ctx context.Context, id string) error {
 	_, err = c.dynamoDB.DeleteItem(ctx, input)
 	return err
 }
+
+// CreateTestData creates a test data shipment record associated with the provided ID.
+// It first ensures that no existing data with the given ID exists by deleting it,
+// then creates a shipment record with test data.
+// If the ID is empty or there's an issue creating the test data, it will return an error.
+//
+// Parameters:
+//   - ctx: The context to be used for the operation. It allows for timeout and cancellation.
+//   - id: The unique identifier for the shipment record to be created.
+//
+// Returns:
+//   - *appdata.Shipment: The created shipment record.
+//   - error: Non-nil if there was an error during the creation process.
+func (c *QueueSDKClient) CreateTestData(ctx context.Context, id string) (*appdata.Shipment, error) {
+	if id == "" {
+		return nil, errors.New("shipment id cannot be empty")
+	}
+
+	err := c.Delete(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	data := &appdata.ShipmentData{
+		ID:    id,
+		Data1: "Data 1",
+		Data2: "Data 2",
+		Data3: "Data 3",
+		Items: []appdata.ShipmentItem{
+			{SKU: "Item-1", Packed: true},
+			{SKU: "Item-2", Packed: true},
+			{SKU: "Item-3", Packed: true},
+		},
+	}
+
+	shipment := &appdata.Shipment{
+		ID:   id,
+		Data: data,
+	}
+
+	err = c.Put(ctx, shipment)
+	if err != nil {
+		return nil, err
+	}
+
+	return shipment, nil
+}
