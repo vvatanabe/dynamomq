@@ -1,7 +1,5 @@
 package model
 
-import "github.com/vvatanabe/go82f46979/appdata"
-
 // Utils function for null check (assuming it checks if the object is not null)
 func checkIfNotNullObject(obj interface{}) bool {
 	return obj != nil
@@ -9,9 +7,9 @@ func checkIfNotNullObject(obj interface{}) bool {
 
 // PeekResult represents the result for the peek() API call.
 type PeekResult struct {
-	*ReturnResult                          // Embedded type for inheritance-like behavior in Go
-	TimestampMillisUTC   int64             `json:"timestamp_milliseconds_utc"`
-	PeekedShipmentObject *appdata.Shipment `json:"-"`
+	*ReturnResult                  // Embedded type for inheritance-like behavior in Go
+	TimestampMillisUTC   int64     `json:"timestamp_milliseconds_utc"`
+	PeekedShipmentObject *Shipment `json:"-"`
 }
 
 // NewPeekResult constructs a new PeekResult with the default values.

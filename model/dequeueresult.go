@@ -2,13 +2,11 @@ package model
 
 import (
 	"encoding/json"
-
-	"github.com/vvatanabe/go82f46979/appdata"
 )
 
 type DequeueResult struct {
 	*ReturnResult
-	DequeuedShipmentObject *appdata.Shipment `json:"-"`
+	DequeuedShipmentObject *Shipment `json:"-"`
 }
 
 func NewDequeueResult() *DequeueResult {
@@ -25,11 +23,11 @@ func NewDequeueResultFromReturnResult(result *ReturnResult) *DequeueResult {
 	}
 }
 
-func (dr *DequeueResult) GetDequeuedShipmentObject() *appdata.Shipment {
+func (dr *DequeueResult) GetDequeuedShipmentObject() *Shipment {
 	return dr.DequeuedShipmentObject
 }
 
-func (dr *DequeueResult) SetDequeuedShipmentObject(shipment *appdata.Shipment) {
+func (dr *DequeueResult) SetDequeuedShipmentObject(shipment *Shipment) {
 	dr.DequeuedShipmentObject = shipment
 }
 

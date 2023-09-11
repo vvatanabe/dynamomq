@@ -1,11 +1,9 @@
 package model
 
-import "github.com/vvatanabe/go82f46979/appdata"
-
 // EnqueueResult represents the result for the enqueue() API call.
 type EnqueueResult struct {
-	*ReturnResult                   // Embedded type for inheritance-like behavior in Go
-	Shipment      *appdata.Shipment `json:"-"`
+	*ReturnResult           // Embedded type for inheritance-like behavior in Go
+	Shipment      *Shipment `json:"-"`
 }
 
 // NewEnqueueResult constructs a new EnqueueResult with the default values.
