@@ -1199,3 +1199,43 @@ func (c *QueueSDKClient) Touch(ctx context.Context, id string) (*model.ReturnRes
 	result.ReturnValue = model.ReturnStatusEnumSUCCESS
 	return result, nil
 }
+
+// List retrieves a list of Shipments from the DynamoDB table up to the given size.
+// The function constructs a DynamoDB scan with specific projection expressions and
+// returns the list of found shipments.
+//
+// Parameters:
+//   - ctx: The context to use for the request.
+//   - size: The maximum number of items to retrieve.
+//
+// Returns:
+//   - A slice of pointers to appdata.Shipment if found.
+//   - error if there's any issue in the operation.
+func (c *QueueSDKClient) List(ctx context.Context, size int32) ([]*appdata.Shipment, error) {
+	expr, err := expression.NewBuilder().
+		WithProjection(expression.NamesList(expression.Name("id"), expression.Name("system_info"))).
+		Build()
+	if err != nil {
+		return nil, fmt.Errorf("building expression: %w", err)
+	}
+
+	input := &dynamodb.ScanInput{
+		TableName:                &c.actualTableName,
+		ProjectionExpression:     expr.Projection(),
+		ExpressionAttributeNames: expr.Names(),
+		Limit:                    aws.Int32(size),
+	}
+
+	output, err := c.dynamoDB.Scan(ctx, input)
+	if err != nil {
+		return nil, fmt.Errorf("scan dynamodb: %w", err)
+	}
+
+	var shipments []*appdata.Shipment
+	err = attributevalue.UnmarshalListOfMaps(output.Items, &shipments)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal list of map: %s", err)
+	}
+
+	return shipments, nil
+}
