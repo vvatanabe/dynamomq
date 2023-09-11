@@ -1264,3 +1264,29 @@ func (c *QueueSDKClient) ListIDs(ctx context.Context, size int32) ([]string, err
 
 	return ids, nil
 }
+
+// ListExtendedIDs retrieves a list of extended IDs (formatted as "ID - status: STATUS")
+// from the Shipment items in the DynamoDB table up to the given size.
+// It uses the List function to retrieve the shipments and then constructs
+// the extended ID strings from them.
+//
+// Parameters:
+//   - ctx: The context to use for the request.
+//   - size: The maximum number of extended IDs to retrieve.
+//
+// Returns:
+//   - A slice of extended ID strings if found.
+//   - error if there's any issue in the operation.
+func (c *QueueSDKClient) ListExtendedIDs(ctx context.Context, size int32) ([]string, error) {
+	shipments, err := c.List(ctx, size)
+	if err != nil {
+		return nil, err
+	}
+
+	extendedIDs := make([]string, len(shipments))
+	for i, s := range shipments {
+		extendedIDs[i] = fmt.Sprintf("%s - status: %s", s.ID, s.SystemInfo.Status)
+	}
+
+	return extendedIDs, nil
+}
