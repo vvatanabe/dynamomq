@@ -229,6 +229,22 @@ func Run() {
 				continue
 			}
 			fmt.Printf("     Queue status:\n%s\n", dump)
+		case "dlq":
+			if client == nil {
+				fmt.Println(needAWSMessage)
+				continue
+			}
+			stats, err := client.GetDLQStats(context.Background())
+			if err != nil {
+				fmt.Println(err)
+				continue
+			}
+			dump, err := json.Marshal(stats)
+			if err != nil {
+				fmt.Println(err)
+				continue
+			}
+			fmt.Printf("     DLQ status:\n%s\n", dump)
 		}
 
 	}
