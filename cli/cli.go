@@ -245,6 +245,27 @@ func Run() {
 				continue
 			}
 			fmt.Printf("     DLQ status:\n%s\n", dump)
+		case "reset":
+			if client == nil {
+				fmt.Println(needAWSMessage)
+				continue
+			}
+			if shipment == nil {
+				fmt.Println("     ERROR: 'reset' command can be only used in the CLI's App mode. Call first `id <record-id>`")
+				continue
+			}
+			shipment.ResetSystemInfo()
+			err := client.Put(context.Background(), shipment)
+			if err != nil {
+				fmt.Println(err)
+				continue
+			}
+			dump, err := json.Marshal(shipment.SystemInfo)
+			if err != nil {
+				fmt.Println(err)
+				continue
+			}
+			fmt.Printf("     Reseted system info:\n%s\n`", dump)
 		}
 
 	}
