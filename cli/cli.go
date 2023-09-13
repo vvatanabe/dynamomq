@@ -151,6 +151,25 @@ func Run() {
 				continue
 			}
 			fmt.Printf("     ID's system info:\n%s\n", dump)
+		case "ls":
+			if client == nil {
+				fmt.Println(needAWSMessage)
+				continue
+			}
+
+			ids, err := client.ListExtendedIDs(context.Background(), 10)
+			if err != nil {
+				fmt.Println(err)
+				continue
+			}
+			if len(ids) == 0 {
+				fmt.Println("     Shipment table is empty!")
+				continue
+			}
+			fmt.Println("     List of first 10 IDs:")
+			for _, id := range ids {
+				fmt.Printf("      >> ID : %s\n", id)
+			}
 		}
 
 	}
