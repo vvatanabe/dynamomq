@@ -266,6 +266,28 @@ func Run() {
 				continue
 			}
 			fmt.Printf("     Reseted system info:\n%s\n`", dump)
+		case "ready":
+			if client == nil {
+				fmt.Println(needAWSMessage)
+				continue
+			}
+			if shipment == nil {
+				fmt.Println("     ERROR: 'ready' command can be only used in the CLI's App mode. Call first `id <record-id>`")
+				continue
+			}
+			shipment.ResetSystemInfo()
+			shipment.SystemInfo.Status = model.StatusEnumReadyToShip
+			err := client.Put(context.Background(), shipment)
+			if err != nil {
+				fmt.Println(err)
+				continue
+			}
+			dump, err := json.Marshal(shipment.SystemInfo)
+			if err != nil {
+				fmt.Println(err)
+				continue
+			}
+			fmt.Printf("     Reseted system info:\n%s\n`", dump)
 		}
 
 	}
