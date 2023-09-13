@@ -288,6 +288,45 @@ func Run() {
 				continue
 			}
 			fmt.Printf("     Reseted system info:\n%s\n`", dump)
+		case "done":
+			if client == nil {
+				fmt.Println(needAWSMessage)
+				continue
+			}
+			if shipment == nil {
+				fmt.Println("     ERROR: 'done' command can be only used in the CLI's App mode. Call first `id <record-id>`")
+				continue
+			}
+			ctx := context.Background()
+			_, err := client.UpdateStatus(ctx, shipment.ID, model.StatusEnumCompleted)
+			if err != nil {
+				fmt.Println(err)
+				continue
+			}
+			_, err = client.Remove(ctx, shipment.ID)
+			if err != nil {
+				fmt.Println(err)
+				continue
+			}
+			shipment, err := client.Get(ctx, shipment.ID)
+			if err != nil {
+				fmt.Println(err)
+				continue
+			}
+
+			fmt.Printf("     Processing for ID [%s] is completed successfully! Remove from the queue!\n", shipment.ID)
+
+			stats, err := client.GetQueueStats(ctx)
+			if err != nil {
+				fmt.Println(err)
+				continue
+			}
+			dump, err := json.Marshal(stats)
+			if err != nil {
+				fmt.Println(err)
+				continue
+			}
+			fmt.Printf("     Queue status\n%s\n", dump)
 		}
 
 	}
