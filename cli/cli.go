@@ -2,6 +2,8 @@ package cli
 
 import (
 	"bufio"
+	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -14,7 +16,9 @@ import (
 	"github.com/vvatanabe/go82f46979/sdk"
 )
 
-const needAWSMessage = "     Need first to run 'aws' command"
+const (
+	needAWSMessage = "     Need first to run 'aws' command"
+)
 
 func Run() {
 
@@ -84,7 +88,7 @@ func Run() {
 
 		switch command {
 		case "quit", "q":
-			return
+			goto EndLoop
 		case "h", "?", "help":
 			fmt.Println("  ... this is CLI HELP!")
 			fmt.Println("    > aws <profile> [<region>]                      [Establish connection with AWS; Default profile name: `default` and region: `us-east-1`]")
@@ -107,6 +111,7 @@ func Run() {
 			fmt.Println("      > invalid                                     [Remove record from the regular queue to dead letter queue (DLQ) for manual fix]")
 			fmt.Println("    > id")
 		case "aws":
+			// TODO
 		case "id":
 			if params == nil || len(params) == 0 {
 				shipment = nil
@@ -117,20 +122,24 @@ func Run() {
 			if client == nil {
 				fmt.Println(needAWSMessage)
 			} else {
-				//id := params[0]
-				//shipment, err := client.Get(context.Background(), id)
-				//if err != nil {
-				//	fmt.Println(err)
-				//	os.Exit(1)
-				//}
-				//
-				//dump, err := json.Marshal(shipment)
-				//if err != nil {
-				//	fmt.Println(err)
-				//	os.Exit(1)
-				//}
-				//fmt.Printf("     Shipment's [%s] record dump\n%s", id, dump) // Replace "Utils.toJSON(shipment)" with actual JSON conversion function.
+				id := params[0]
+				shipment, err := client.Get(context.Background(), id)
+				if err != nil {
+					fmt.Println(err)
+					continue
+				}
+
+				dump, err := json.Marshal(shipment)
+				if err != nil {
+					fmt.Println(err)
+					continue
+				}
+				fmt.Printf("     Shipment's [%s] record dump\n%s", id, dump) // Replace "Utils.toJSON(shipment)" with actual JSON conversion function.
 			}
 		}
+
 	}
+EndLoop:
+
+	fmt.Printf(" ... CLI is ending\n\n\n")
 }
