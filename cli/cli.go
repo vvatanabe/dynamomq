@@ -362,6 +362,9 @@ func Run() {
 				continue
 			}
 			fmt.Printf("     Queue status\n%s\n", dump)
+
+		default:
+			fmt.Println(" ... unrecognized command!")
 		}
 
 	}
