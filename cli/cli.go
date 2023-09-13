@@ -194,6 +194,21 @@ func Run() {
 				}
 				fmt.Printf("      >> Removed ID : %s\n", id)
 			}
+		case "create-test", "ct":
+			if client == nil {
+				fmt.Println(needAWSMessage)
+				continue
+			}
+			ctx := context.Background()
+			ids := []string{"A-101", "A-202", "A-303", "A-404"}
+			for _, id := range ids {
+				_, err := client.CreateTestData(ctx, id)
+				if err != nil {
+					fmt.Println(err)
+					continue
+				}
+				fmt.Printf("      >> Creating shipment with ID : %s\n", id)
+			}
 		}
 
 	}
