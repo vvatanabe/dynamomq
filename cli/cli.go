@@ -136,6 +136,21 @@ func Run() {
 				}
 				fmt.Printf("     Shipment's [%s] record dump\n%s", id, dump) // Replace "Utils.toJSON(shipment)" with actual JSON conversion function.
 			}
+		case "sys", "system":
+			if client == nil {
+				fmt.Println(needAWSMessage)
+				continue
+			}
+			if shipment == nil {
+				fmt.Println("     ERROR: `system` or `sys` command can be only used in the CLI's App mode. Call first `id <record-id>`")
+				continue
+			}
+			dump, err := json.Marshal(shipment.SystemInfo)
+			if err != nil {
+				fmt.Println(err)
+				continue
+			}
+			fmt.Printf("     ID's system info:\n%s\n", dump)
 		}
 
 	}
