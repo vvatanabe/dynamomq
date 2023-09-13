@@ -170,6 +170,30 @@ func Run() {
 			for _, id := range ids {
 				fmt.Printf("      >> ID : %s\n", id)
 			}
+		case "purge":
+			if client == nil {
+				fmt.Println(needAWSMessage)
+				continue
+			}
+			ids, err := client.ListIDs(context.Background(), 10)
+			if err != nil {
+				fmt.Println(err)
+				continue
+			}
+			if len(ids) == 0 {
+				fmt.Println("     Shipment table is empty ... nothing to remove!")
+				continue
+			}
+			fmt.Println("     List of removed IDs:")
+			for _, id := range ids {
+
+				err := client.Delete(context.Background(), id)
+				if err != nil {
+					fmt.Println(err)
+					continue
+				}
+				fmt.Printf("      >> Removed ID : %s\n", id)
+			}
 		}
 
 	}
