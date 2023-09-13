@@ -209,6 +209,26 @@ func Run() {
 				}
 				fmt.Printf("      >> Creating shipment with ID : %s\n", id)
 			}
+		case "qstat", "stat":
+			if client == nil {
+				fmt.Println(needAWSMessage)
+				continue
+			}
+			if command == "stat" && shipment == nil {
+				fmt.Println("     ERROR: 'stat' command can be only used in the ID mode. Use 'qstat' instead!")
+				continue
+			}
+			stats, err := client.GetQueueStats(context.Background())
+			if err != nil {
+				fmt.Println(err)
+				continue
+			}
+			dump, err := json.Marshal(stats)
+			if err != nil {
+				fmt.Println(err)
+				continue
+			}
+			fmt.Printf("     Queue status:\n%s\n", dump)
 		}
 
 	}
