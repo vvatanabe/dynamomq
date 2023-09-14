@@ -111,7 +111,38 @@ func Run() {
 			fmt.Println("      > invalid                                     [Remove record from the regular queue to dead letter queue (DLQ) for manual fix]")
 			fmt.Println("    > id")
 		case "aws":
-			// TODO
+			if params == nil {
+				fmt.Println("     ERROR: 'aws <profile> [<region>]' command requires parameter(s) to be specified!")
+				continue
+			}
+
+			awsCredentialsProfile := strings.TrimSpace(params[0])
+
+			// specify AWS Region
+			if len(params) > 1 {
+				temp := strings.TrimSpace(params[1])
+				region = &temp
+			}
+
+			if awsCredentialsProfile == "" && (credentialsProfile != nil || *credentialsProfile != "") {
+				awsCredentialsProfile = *credentialsProfile
+			} else {
+				awsCredentialsProfile = "default"
+
+			}
+
+			client = sdk.NewBuilder().
+				WithRegion(*region).
+				WithCredentialsProfileName(*credentialsProfile).
+				Build()
+
+			if client == nil {
+				fmt.Println("QueueSdkClient is NULL!")
+				continue
+			}
+
+			fmt.Println(" ... AWS session is properly established!")
+
 		case "id":
 			if params == nil || len(params) == 0 {
 				shipment = nil
@@ -362,7 +393,6 @@ func Run() {
 				continue
 			}
 			fmt.Printf("     Queue status\n%s\n", dump)
-
 		default:
 			fmt.Println(" ... unrecognized command!")
 		}
