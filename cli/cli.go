@@ -438,6 +438,21 @@ func Run() {
 				continue
 			}
 			fmt.Printf("     Data info:\n%s\n", dump)
+		case "info":
+			if client == nil {
+				fmt.Println(needAWSMessage)
+				continue
+			}
+			if shipment == nil {
+				fmt.Println("     ERROR: 'info' command can be only used in the CLI's App mode. Call first `id <record-id>`")
+				continue
+			}
+			dump, err := json.Marshal(shipment)
+			if err != nil {
+				fmt.Println(err)
+				continue
+			}
+			fmt.Printf("     Record's dump:\n%s\n", dump)
 		default:
 			fmt.Println(" ... unrecognized command!")
 		}
