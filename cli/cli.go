@@ -516,6 +516,37 @@ func Run() {
 				}
 				fmt.Printf("     Enqueue has failed!\n Error message:\n%s\n", resultDump)
 			}
+		case "update":
+			if client == nil {
+				fmt.Println(needAWSMessage)
+				continue
+			}
+			if shipment == nil {
+				fmt.Println("     ERROR: 'update <status>' command can be only used in the CLI's App mode. Call first `id <record-id>`")
+				continue
+			}
+			if params == nil {
+				fmt.Println("     ERROR: 'update <status>' command requires a new Status parameter to be specified!%n")
+				continue
+			}
+			statusStr := strings.TrimSpace(strings.ToUpper(params[0]))
+			if statusStr == string(model.StatusEnumReadyToShip) {
+
+				shipment.MarkAsReadyForShipment()
+				rr, err := client.UpdateStatus(context.Background(), shipment.ID, model.StatusEnumReadyToShip)
+				if err != nil {
+					fmt.Println(err)
+					continue
+				}
+				dump, err := json.Marshal(rr)
+				if err != nil {
+					fmt.Println(err)
+					continue
+				}
+				fmt.Printf("     Status changed result:\n%s\n", dump)
+			} else {
+				fmt.Printf("     Status change [%s] is not applied!\n", strings.TrimSpace(params[0]))
+			}
 		default:
 			fmt.Println(" ... unrecognized command!")
 		}
