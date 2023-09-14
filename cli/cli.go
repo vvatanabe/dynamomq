@@ -453,6 +453,69 @@ func Run() {
 				continue
 			}
 			fmt.Printf("     Record's dump:\n%s\n", dump)
+		case "enqueue", "en":
+			if client == nil {
+				fmt.Println(needAWSMessage)
+				continue
+			}
+			if shipment == nil {
+				fmt.Println("     ERROR: 'enqueue' command can be only used in the CLI's App mode. Call first `id <record-id>`")
+				continue
+			}
+			ctx := context.Background()
+			shipment, err := client.Get(ctx, shipment.ID)
+			if err != nil {
+				fmt.Println(err)
+				continue
+			}
+			// convert under_construction to ready to ship
+			if shipment.SystemInfo.Status == model.StatusEnumUnderConstruction {
+				shipment.ResetSystemInfo()
+				shipment.SystemInfo.Status = model.StatusEnumReadyToShip
+
+				err = client.Put(ctx, shipment)
+				if err != nil {
+					fmt.Println(err)
+					continue
+				}
+			}
+			result, err := client.Enqueue(ctx, shipment.ID)
+			if err != nil {
+				fmt.Println(err)
+				continue
+			}
+			shipment = result.Shipment
+			if result.IsSuccessful() {
+
+				systemDump, err := json.Marshal(shipment.SystemInfo)
+				if err != nil {
+					fmt.Println(err)
+					continue
+				}
+
+				fmt.Printf("     Record's system info:s\n%s\n", systemDump)
+
+				queueStatsResult, err := client.GetQueueStats(ctx)
+				if err != nil {
+					fmt.Println(err)
+					continue
+				}
+
+				statsDump, err := json.Marshal(queueStatsResult)
+				if err != nil {
+					fmt.Println(err)
+					continue
+				}
+
+				fmt.Printf("     Queue stats\n%s\n", statsDump)
+			} else {
+				resultDump, err := json.Marshal(result)
+				if err != nil {
+					fmt.Println(err)
+					continue
+				}
+				fmt.Printf("     Enqueue has failed!\n Error message:\n%s\n", resultDump)
+			}
 		default:
 			fmt.Println(" ... unrecognized command!")
 		}
