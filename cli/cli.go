@@ -9,10 +9,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/vvatanabe/go82f46979/model"
-
 	"github.com/vvatanabe/go82f46979/constant"
-
+	"github.com/vvatanabe/go82f46979/model"
 	"github.com/vvatanabe/go82f46979/sdk"
 )
 
@@ -33,16 +31,24 @@ func Run() {
 
 	region := flag.String("region", constant.AwsRegionDefault, "AWS region")
 	credentialsProfile := flag.String("profile", constant.AwsProfileDefault, "AWS credentials profile")
+	tableName := flag.String("table", constant.DefaultShipmentTableName, "DynamoDB logical table name")
 
 	flag.Parse()
 
 	fmt.Printf(" profile is: [%s]\n", *credentialsProfile)
 	fmt.Printf(" region is: [%s]\n", *region)
+	fmt.Printf(" table is: [%s]\n", *tableName)
 
-	client := sdk.NewBuilder().
+	client, err := sdk.NewBuilder().
 		WithRegion(*region).
 		WithCredentialsProfileName(*credentialsProfile).
-		Build()
+		WithLogicalTableName(*tableName).
+		Build(context.Background())
+	if err != nil {
+		fmt.Printf(" ... AWS session could not be established!: %v\n", err)
+	} else {
+		fmt.Println(" ... AWS session is properly established!")
+	}
 
 	// 1. Create a Scanner using the InputStream available.
 	scanner := bufio.NewScanner(os.Stdin)
@@ -112,7 +118,7 @@ func Run() {
 			fmt.Println("    > id")
 		case "aws":
 			if params == nil {
-				fmt.Println("     ERROR: 'aws <profile> [<region>]' command requires parameter(s) to be specified!")
+				fmt.Println("     ERROR: 'aws <profile> [<region>] [<table>]' command requires parameter(s) to be specified!")
 				continue
 			}
 
@@ -124,6 +130,12 @@ func Run() {
 				region = &temp
 			}
 
+			// specify DynamoDB table name
+			if len(params) > 2 {
+				temp := strings.TrimSpace(params[2])
+				tableName = &temp
+			}
+
 			if awsCredentialsProfile == "" && (credentialsProfile != nil || *credentialsProfile != "") {
 				awsCredentialsProfile = *credentialsProfile
 			} else {
@@ -131,17 +143,16 @@ func Run() {
 
 			}
 
-			client = sdk.NewBuilder().
+			client, err = sdk.NewBuilder().
 				WithRegion(*region).
 				WithCredentialsProfileName(*credentialsProfile).
-				Build()
-
-			if client == nil {
-				fmt.Println("QueueSdkClient is NULL!")
-				continue
+				WithLogicalTableName(*tableName).
+				Build(context.Background())
+			if err != nil {
+				fmt.Printf(" ... AWS session could not be established!: %v\n", err)
+			} else {
+				fmt.Println(" ... AWS session is properly established!")
 			}
-
-			fmt.Println(" ... AWS session is properly established!")
 
 		case "id":
 			if params == nil || len(params) == 0 {

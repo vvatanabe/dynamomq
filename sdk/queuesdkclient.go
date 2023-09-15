@@ -4,9 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/credentials"
+
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/expression"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
@@ -17,20 +21,47 @@ import (
 
 type QueueSDKClient struct {
 	dynamoDB *dynamodb.Client
-	key      interface{} // Placeholder for ConfigField type
-	config   interface{} // Placeholder for Configuration type
 
 	actualTableName           string
 	logicalTableName          string
 	awsRegion                 string
 	awsCredentialsProfileName string
-	credentials               *aws.Credentials
-
-	retryPolicyRetryCount int
+	credentialsProvider       aws.CredentialsProvider
 }
 
-func (c *QueueSDKClient) initialize() {
+func initialize(ctx context.Context, builder *Builder) (*QueueSDKClient, error) {
 
+	c := &QueueSDKClient{
+		logicalTableName:          builder.logicalTableName,
+		awsRegion:                 builder.awsRegion,
+		credentialsProvider:       builder.credentialsProvider,
+		awsCredentialsProfileName: builder.awsCredentialsProfileName,
+	}
+
+	if c.credentialsProvider == nil {
+		accessKey := os.Getenv("AWS_ACCESS_KEY_ID")
+		secretKey := os.Getenv("AWS_SECRET_ACCESS_KEY")
+		sessionToken := os.Getenv("AWS_SESSION_TOKEN")
+
+		creds := credentials.NewStaticCredentialsProvider(accessKey, secretKey, sessionToken)
+		c.credentialsProvider = &creds
+	}
+
+	cfg, err := config.LoadDefaultConfig(
+		ctx,
+		config.WithRegion(c.awsRegion),
+		config.WithCredentialsProvider(c.credentialsProvider),
+		config.WithSharedConfigProfile(c.awsCredentialsProfileName),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load aws config: %w", err)
+	}
+
+	c.dynamoDB = dynamodb.NewFromConfig(cfg, func(options *dynamodb.Options) {
+		options.RetryMaxAttempts = 10
+	})
+
+	return c, nil
 }
 
 // GetQueueStats retrieves statistics about the current state of the queue.
@@ -1380,40 +1411,27 @@ func (c *QueueSDKClient) CreateTestData(ctx context.Context, id string) (*model.
 }
 
 type Builder struct {
-	configFileName            string
-	configContent             string
-	credentials               *aws.Credentials
-	logicalTableName          string
 	awsRegion                 string
 	awsCredentialsProfileName string
-	client                    *QueueSDKClient
+	logicalTableName          string
+	credentialsProvider       aws.CredentialsProvider
 }
 
 func NewBuilder() *Builder {
 	return &Builder{}
 }
 
-func (b *Builder) Build() *QueueSDKClient {
+func (b *Builder) Build(ctx context.Context) (*QueueSDKClient, error) {
+	if b.awsRegion == "" {
+		b.awsRegion = constant.AwsRegionDefault
+	}
+	if b.awsCredentialsProfileName == "" {
+		b.awsCredentialsProfileName = constant.AwsProfileDefault
+	}
 	if b.logicalTableName == "" {
 		b.logicalTableName = constant.DefaultShipmentTableName
 	}
-
-	if b.client == nil {
-		b.client = &QueueSDKClient{
-			logicalTableName:          b.logicalTableName,
-			awsRegion:                 b.awsRegion,
-			credentials:               b.credentials,
-			awsCredentialsProfileName: b.awsCredentialsProfileName,
-		}
-		b.client.initialize()
-	}
-
-	return b.client
-}
-
-func (b *Builder) WithConfigurationFileName(fileName string) *Builder {
-	b.configFileName = fileName
-	return b
+	return initialize(ctx, b)
 }
 
 func (b *Builder) WithRegion(region string) *Builder {
@@ -1426,21 +1444,12 @@ func (b *Builder) WithCredentialsProfileName(profile string) *Builder {
 	return b
 }
 
-func (b *Builder) WithProfile(profile string) *Builder {
-	return b.WithCredentialsProfileName(profile) // alias method
-}
-
 func (b *Builder) WithLogicalTableName(logicalTableName string) *Builder {
 	b.logicalTableName = logicalTableName
 	return b
 }
 
-func (b *Builder) WithCredentials(creds *aws.Credentials) *Builder {
-	b.credentials = creds
-	return b
-}
-
-func (b *Builder) WithConfigurationContent(configurationJsonContent string) *Builder {
-	b.configContent = configurationJsonContent
+func (b *Builder) WithCredentialsProvider(creds aws.CredentialsProvider) *Builder {
+	b.credentialsProvider = creds
 	return b
 }
