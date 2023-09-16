@@ -7,10 +7,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/aws/aws-sdk-go-v2/credentials"
-
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/expression"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
@@ -257,6 +256,8 @@ func (c *QueueSDKClient) GetDLQStats(ctx context.Context) (*model.DLQResult, err
 	}, nil
 }
 
+var ErrItemNotFound = errors.New("item not found")
+
 // Get retrieves a shipment record from the database by its ID.
 //
 // If the provided 'id' is empty, it returns nil and an error indicating that
@@ -298,6 +299,10 @@ func (c *QueueSDKClient) Get(ctx context.Context, id string) (*model.Shipment, e
 	resp, err := c.dynamoDB.GetItem(ctx, input)
 	if err != nil {
 		return nil, fmt.Errorf("failed to dynamodb get item: %s", err)
+	}
+
+	if resp.Item == nil {
+		return nil, ErrItemNotFound
 	}
 
 	item := model.Shipment{}
@@ -1329,7 +1334,7 @@ func (c *QueueSDKClient) ListExtendedIDs(ctx context.Context, size int32) ([]str
 
 	extendedIDs := make([]string, len(shipments))
 	for i, s := range shipments {
-		extendedIDs[i] = fmt.Sprintf("%s - status: %s", s.ID, s.SystemInfo.Status)
+		extendedIDs[i] = fmt.Sprintf("id: %s, status: %s", s.ID, s.SystemInfo.Status)
 	}
 
 	return extendedIDs, nil
