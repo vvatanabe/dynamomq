@@ -1140,6 +1140,7 @@ func (c *QueueSDKClient) SendToDLQ(ctx context.Context, id string) (*model.Retur
 				Value: id,
 			},
 		},
+		ConditionExpression:       expr.Condition(),
 		UpdateExpression:          expr.Update(),
 		ExpressionAttributeNames:  expr.Names(),
 		ExpressionAttributeValues: expr.Values(),
