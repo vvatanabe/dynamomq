@@ -14,7 +14,9 @@ type PeekResult struct {
 
 // NewPeekResult constructs a new PeekResult with the default values.
 func NewPeekResult() *PeekResult {
-	return &PeekResult{}
+	return &PeekResult{
+		ReturnResult: &ReturnResult{},
+	}
 }
 
 // NewPeekResultWithID constructs a new PeekResult with the provided ID.

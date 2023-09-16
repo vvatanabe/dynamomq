@@ -813,7 +813,7 @@ func (c *QueueSDKClient) Peek(ctx context.Context) (*model.PeekResult, error) {
 		}
 	}
 
-	result := &model.PeekResult{}
+	result := model.NewPeekResult()
 
 	if selectedID == "" {
 		result.ReturnValue = model.ReturnStatusEnumFailedEmptyQueue
@@ -854,6 +854,7 @@ func (c *QueueSDKClient) Peek(ctx context.Context) (*model.PeekResult, error) {
 				Value: shipment.ID,
 			},
 		},
+		ConditionExpression:       expr.Condition(),
 		UpdateExpression:          expr.Update(),
 		ExpressionAttributeNames:  expr.Names(),
 		ExpressionAttributeValues: expr.Values(),
@@ -873,6 +874,15 @@ func (c *QueueSDKClient) Peek(ctx context.Context) (*model.PeekResult, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmarshal map: %s", err)
 	}
+
+	result.ID = item.ID
+
+	peekedShipment, err := c.Get(ctx, selectedID)
+	if err != nil {
+		return nil, err
+	}
+
+	result.PeekedShipmentObject = peekedShipment
 
 	result.Version = item.SystemInfo.Version
 	result.LastUpdatedTimestamp = item.SystemInfo.LastUpdatedTimestamp
