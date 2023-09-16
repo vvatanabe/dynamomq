@@ -20,19 +20,12 @@ type SystemInfo struct {
 	PeekUTCTimestamp int64 `json:"peek_utc_timestamp" dynamodbav:"peek_utc_timestamp"`
 }
 
-func NewSystemInfo() *SystemInfo {
-	odt := time.Now().UTC().Format(time.RFC3339)
-	return &SystemInfo{
-		CreationTimestamp:    odt,
-		LastUpdatedTimestamp: odt,
-	}
-}
-
 func NewSystemInfoWithID(id string) *SystemInfo {
 	odt := time.Now().UTC().Format(time.RFC3339)
 	return &SystemInfo{
 		ID:                   id,
 		CreationTimestamp:    odt,
 		LastUpdatedTimestamp: odt,
+		Status:               StatusEnumUnderConstruction,
 	}
 }
