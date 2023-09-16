@@ -529,6 +529,49 @@ func Run() {
 				}
 				fmt.Printf("     Enqueue has failed!\n Error message:\n%s\n", resultDump)
 			}
+		case "peek":
+			if client == nil {
+				fmt.Println(needAWSMessage)
+				continue
+			}
+			if shipment == nil {
+				fmt.Println("     ERROR: 'peek' command can be only used in the CLI's App mode. Call first `id <record-id>`")
+				continue
+			}
+
+			ctx := context.Background()
+			result, err := client.Peek(ctx)
+			if err != nil {
+				fmt.Println(err)
+				continue
+			}
+
+			if result.IsSuccessful() {
+				shipment = result.PeekedShipmentObject
+
+				sysDump, err := json.MarshalIndent(shipment.SystemInfo, "", " ")
+				if err != nil {
+					fmt.Println(err)
+					continue
+				}
+				fmt.Printf("     Peek was successful ... record peeked is: [%s]\n%s\n", shipment.ID, sysDump)
+
+				stats, err := client.GetQueueStats(ctx)
+				if err != nil {
+					fmt.Println(err)
+					continue
+				}
+				statsDump, err := json.MarshalIndent(stats, "", "  ")
+				if err != nil {
+					fmt.Println(err)
+					continue
+				}
+				fmt.Printf("     Queue stats\n%s", statsDump)
+
+			} else {
+				fmt.Printf("     peek() has failed!\n Error message:\n%s", result.ReturnValue.GetErrorMessage())
+			}
+
 		case "update":
 			if client == nil {
 				fmt.Println(needAWSMessage)
