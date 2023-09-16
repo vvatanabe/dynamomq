@@ -5,15 +5,8 @@ type Shipment struct {
 	Data       *ShipmentData `json:"data" dynamodbav:"data"`
 	SystemInfo *SystemInfo   `json:"system_info" dynamodbav:"system_info"`
 
-	LastUpdatedTimestamp string `json:"last_updated_timestamp" dynamodbav:"last_updated_timestamp"`
-	DLQ                  int    `json:"DLQ" dynamodbav:"DLQ"`
-}
-
-func NewShipment() *Shipment {
-	return &Shipment{
-		SystemInfo: NewSystemInfo(),
-		Data:       NewShipmentData(),
-	}
+	LastUpdatedTimestamp string `json:"last_updated_timestamp" dynamodbav:"last_updated_timestamp,omitempty"`
+	DLQ                  int    `json:"DLQ" dynamodbav:"DLQ,omitempty"`
 }
 
 func NewShipmentWithID(id string) *Shipment {
