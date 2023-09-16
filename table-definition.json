@@ -1,0 +1,63 @@
+{
+  "AttributeDefinitions": [
+    {
+      "AttributeName": "DLQ",
+      "AttributeType": "N"
+    },
+    {
+      "AttributeName": "id",
+      "AttributeType": "S"
+    },
+    {
+      "AttributeName": "last_updated_timestamp",
+      "AttributeType": "S"
+    },
+    {
+      "AttributeName": "queued",
+      "AttributeType": "N"
+    }
+  ],
+  "BillingMode": "PAY_PER_REQUEST",
+  "DeletionProtectionEnabled": true,
+  "GlobalSecondaryIndexes": [
+    {
+      "IndexName": "dlq-last_updated_timestamp-index",
+      "KeySchema": [
+        {
+          "AttributeName": "DLQ",
+          "KeyType": "HASH"
+        },
+        {
+          "AttributeName": "last_updated_timestamp",
+          "KeyType": "RANGE"
+        }
+      ],
+      "Projection": {
+        "ProjectionType": "ALL"
+      }
+    },
+    {
+      "IndexName": "queueud-last_updated_timestamp-index",
+      "KeySchema": [
+        {
+          "AttributeName": "queued",
+          "KeyType": "HASH"
+        },
+        {
+          "AttributeName": "last_updated_timestamp",
+          "KeyType": "RANGE"
+        }
+      ],
+      "Projection": {
+        "ProjectionType": "ALL"
+      }
+    }
+  ],
+  "KeySchema": [
+    {
+      "AttributeName": "id",
+      "KeyType": "HASH"
+    }
+  ],
+  "TableName": "Shipment"
+}
