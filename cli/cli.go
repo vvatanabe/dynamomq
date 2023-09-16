@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	needAWSMessage = "     Need first to run 'aws' command"
+	needAWSMessage = "Need first to run 'aws' command"
 )
 
 func Run() {
@@ -23,11 +23,12 @@ func Run() {
 	fmt.Println("===========================================================")
 	fmt.Println(">> Welcome to Priority Queueing CLI Tool!")
 	fmt.Println("===========================================================")
-	fmt.Println(" for help, enter one of the following: ? or h or help")
-	fmt.Println(" all commands in CLIs need to be typed in lowercase")
+	fmt.Println("for help, enter one of the following: ? or h or help")
+	fmt.Println("all commands in CLIs need to be typed in lowercase")
+	fmt.Println("")
 
 	executionPath, _ := os.Getwd()
-	fmt.Printf(" current directory is: [%s]\n", executionPath)
+	fmt.Printf("current directory is: [%s]\n", executionPath)
 
 	region := flag.String("region", constant.AwsRegionDefault, "AWS region")
 	credentialsProfile := flag.String("profile", constant.AwsProfileDefault, "AWS credentials profile")
@@ -35,9 +36,10 @@ func Run() {
 
 	flag.Parse()
 
-	fmt.Printf(" profile is: [%s]\n", *credentialsProfile)
-	fmt.Printf(" region is: [%s]\n", *region)
-	fmt.Printf(" table is: [%s]\n", *tableName)
+	fmt.Printf("profile is: [%s]\n", *credentialsProfile)
+	fmt.Printf("region is: [%s]\n", *region)
+	fmt.Printf("table is: [%s]\n", *tableName)
+	fmt.Println("")
 
 	client, err := sdk.NewBuilder().
 		WithRegion(*region).
@@ -45,9 +47,9 @@ func Run() {
 		WithTableName(*tableName).
 		Build(context.Background())
 	if err != nil {
-		fmt.Printf(" ... AWS session could not be established!: %v\n", err)
+		fmt.Printf("... AWS session could not be established!: %v\n", err)
 	} else {
-		fmt.Println(" ... AWS session is properly established!")
+		fmt.Println("... AWS session is properly established!")
 	}
 
 	// 1. Create a Scanner using the InputStream available.
@@ -61,7 +63,7 @@ func Run() {
 		if shipment != nil {
 			fmt.Printf("\nID <%s> >> Enter command: ", shipment.ID)
 		} else {
-			fmt.Print("\n >> Enter command: ")
+			fmt.Print("\n>> Enter command: ")
 		}
 
 		// 3. Use the Scanner to read a line of text from the user.
@@ -119,7 +121,7 @@ func Run() {
 			fmt.Println("    > id")
 		case "aws":
 			if params == nil {
-				fmt.Println("     ERROR: 'aws <profile> [<region>] [<table>]' command requires parameter(s) to be specified!")
+				fmt.Println("ERROR: 'aws <profile> [<region>] [<table>]' command requires parameter(s) to be specified!")
 				continue
 			}
 
@@ -158,7 +160,7 @@ func Run() {
 		case "id":
 			if params == nil || len(params) == 0 {
 				shipment = nil
-				fmt.Println("     Going back to standard CLI mode!")
+				fmt.Println("Going back to standard CLI mode!")
 				continue
 			}
 
@@ -168,16 +170,16 @@ func Run() {
 				id := params[0]
 				shipment, err = client.Get(context.Background(), id)
 				if err != nil {
-					fmt.Println(err)
+					fmt.Printf("ERROR: %s\n", err)
 					continue
 				}
 
 				dump, err := json.MarshalIndent(shipment, "", "  ")
 				if err != nil {
-					fmt.Println(err)
+					fmt.Printf("ERROR: %s\n", err)
 					continue
 				}
-				fmt.Printf("     Shipment's [%s] record dump\n%s", id, dump)
+				fmt.Printf("Shipment's [%s] record dump:\n%s\n", id, dump)
 			}
 		case "sys", "system":
 			if client == nil {
@@ -185,7 +187,7 @@ func Run() {
 				continue
 			}
 			if shipment == nil {
-				fmt.Println("     ERROR: `system` or `sys` command can be only used in the CLI's App mode. Call first `id <record-id>`")
+				fmt.Println("ERROR: `system` or `sys` command can be only used in the CLI's App mode. Call first `id <record-id>`")
 				continue
 			}
 
@@ -207,12 +209,12 @@ func Run() {
 				continue
 			}
 			if len(ids) == 0 {
-				fmt.Println("     Shipment table is empty!")
+				fmt.Println("Shipment table is empty!")
 				continue
 			}
-			fmt.Println("     List of first 10 IDs:")
+			fmt.Println("List of first 10 IDs:")
 			for _, id := range ids {
-				fmt.Printf("      >> ID : %s\n", id)
+				fmt.Printf("* %s\n", id)
 			}
 		case "purge":
 			if client == nil {
@@ -225,10 +227,10 @@ func Run() {
 				continue
 			}
 			if len(ids) == 0 {
-				fmt.Println("     Shipment table is empty ... nothing to remove!")
+				fmt.Println("Shipment table is empty ... nothing to remove!")
 				continue
 			}
-			fmt.Println("     List of removed IDs:")
+			fmt.Println("List of removed IDs:")
 			for _, id := range ids {
 
 				err := client.Delete(context.Background(), id)
@@ -236,7 +238,7 @@ func Run() {
 					fmt.Println(err)
 					continue
 				}
-				fmt.Printf("      >> Removed ID : %s\n", id)
+				fmt.Printf(" >> Removed ID : %s\n", id)
 			}
 		case "create-test", "ct":
 			if client == nil {
@@ -251,7 +253,7 @@ func Run() {
 					fmt.Println(err)
 					continue
 				}
-				fmt.Printf("      >> Creating shipment with ID : %s\n", id)
+				fmt.Printf(" >> Creating shipment with ID : %s\n", id)
 			}
 		case "qstat", "stat":
 			if client == nil {
@@ -259,7 +261,7 @@ func Run() {
 				continue
 			}
 			if command == "stat" && shipment == nil {
-				fmt.Println("     ERROR: 'stat' command can be only used in the ID mode. Use 'qstat' instead!")
+				fmt.Println("ERROR: 'stat' command can be only used in the ID mode. Use 'qstat' instead!")
 				continue
 			}
 			stats, err := client.GetQueueStats(context.Background())
@@ -295,7 +297,7 @@ func Run() {
 				continue
 			}
 			if shipment == nil {
-				fmt.Println("     ERROR: 'reset' command can be only used in the CLI's App mode. Call first `id <record-id>`")
+				fmt.Println("ERROR: 'reset' command can be only used in the CLI's App mode. Call first `id <record-id>`")
 				continue
 			}
 			shipment.ResetSystemInfo()
@@ -316,7 +318,7 @@ func Run() {
 				continue
 			}
 			if shipment == nil {
-				fmt.Println("     ERROR: 'ready' command can be only used in the CLI's App mode. Call first `id <record-id>`")
+				fmt.Println("ERROR: 'ready' command can be only used in the CLI's App mode. Call first `id <record-id>`")
 				continue
 			}
 			shipment.ResetSystemInfo()
@@ -338,7 +340,7 @@ func Run() {
 				continue
 			}
 			if shipment == nil {
-				fmt.Println("     ERROR: 'done' command can be only used in the CLI's App mode. Call first `id <record-id>`")
+				fmt.Println("ERROR: 'done' command can be only used in the CLI's App mode. Call first `id <record-id>`")
 				continue
 			}
 			ctx := context.Background()
@@ -358,7 +360,7 @@ func Run() {
 				continue
 			}
 
-			fmt.Printf("     Processing for ID [%s] is completed successfully! Remove from the queue!\n", shipment.ID)
+			fmt.Printf("Processing for ID [%s] is completed successfully! Remove from the queue!\n", shipment.ID)
 
 			stats, err := client.GetQueueStats(ctx)
 			if err != nil {
@@ -370,14 +372,14 @@ func Run() {
 				fmt.Println(err)
 				continue
 			}
-			fmt.Printf("     Queue status\n%s\n", dump)
+			fmt.Printf("Queue status\n%s\n", dump)
 		case "fail":
 			if client == nil {
 				fmt.Println(needAWSMessage)
 				continue
 			}
 			if shipment == nil {
-				fmt.Println("     ERROR: 'fail' command can be only used in the CLI's App mode. Call first `id <record-id>`")
+				fmt.Println("ERROR: 'fail' command can be only used in the CLI's App mode. Call first `id <record-id>`")
 				continue
 			}
 
@@ -393,7 +395,7 @@ func Run() {
 				continue
 			}
 
-			fmt.Printf("     Processing for ID [%s] has failed! Put the record back to the queue!\n", shipment.ID)
+			fmt.Printf("Processing for ID [%s] has failed! Put the record back to the queue!\n", shipment.ID)
 
 			stats, err := client.GetQueueStats(ctx)
 			if err != nil {
@@ -405,14 +407,14 @@ func Run() {
 				fmt.Println(err)
 				continue
 			}
-			fmt.Printf("     Queue status\n%s\n", dump)
+			fmt.Printf("Queue status\n%s\n", dump)
 		case "invalid":
 			if client == nil {
 				fmt.Println(needAWSMessage)
 				continue
 			}
 			if shipment == nil {
-				fmt.Println("     ERROR: 'invalid' command can be only used in the CLI's App mode. Call first `id <record-id>`")
+				fmt.Println("ERROR: 'invalid' command can be only used in the CLI's App mode. Call first `id <record-id>`")
 				continue
 			}
 
@@ -423,7 +425,7 @@ func Run() {
 				continue
 			}
 
-			fmt.Printf("     Processing for ID [%s] has failed .. invalid data! Send record to DLQ!\n", shipment.ID)
+			fmt.Printf("Processing for ID [%s] has failed .. invalid data! Send record to DLQ!\n", shipment.ID)
 
 			stats, err := client.GetQueueStats(ctx)
 			if err != nil {
@@ -435,14 +437,14 @@ func Run() {
 				fmt.Println(err)
 				continue
 			}
-			fmt.Printf("     Queue status\n%s\n", dump)
+			fmt.Printf("Queue status\n%s\n", dump)
 		case "data":
 			if client == nil {
 				fmt.Println(needAWSMessage)
 				continue
 			}
 			if shipment == nil {
-				fmt.Println("     ERROR: 'data' command can be only used in the CLI's App mode. Call first `id <record-id>`")
+				fmt.Println("ERROR: 'data' command can be only used in the CLI's App mode. Call first `id <record-id>`")
 				continue
 			}
 			dump, err := json.MarshalIndent(shipment.Data, "", "  ")
@@ -450,14 +452,14 @@ func Run() {
 				fmt.Println(err)
 				continue
 			}
-			fmt.Printf("     Data info:\n%s\n", dump)
+			fmt.Printf("Data info:\n%s\n", dump)
 		case "info":
 			if client == nil {
 				fmt.Println(needAWSMessage)
 				continue
 			}
 			if shipment == nil {
-				fmt.Println("     ERROR: 'info' command can be only used in the CLI's App mode. Call first `id <record-id>`")
+				fmt.Println("ERROR: 'info' command can be only used in the CLI's App mode. Call first `id <record-id>`")
 				continue
 			}
 			dump, err := json.MarshalIndent(shipment, "", "  ")
@@ -465,14 +467,14 @@ func Run() {
 				fmt.Println(err)
 				continue
 			}
-			fmt.Printf("     Record's dump:\n%s\n", dump)
+			fmt.Printf("Record's dump:\n%s\n", dump)
 		case "enqueue", "en":
 			if client == nil {
 				fmt.Println(needAWSMessage)
 				continue
 			}
 			if shipment == nil {
-				fmt.Println("     ERROR: 'enqueue' command can be only used in the CLI's App mode. Call first `id <record-id>`")
+				fmt.Println("ERROR: 'enqueue' command can be only used in the CLI's App mode. Call first `id <record-id>`")
 				continue
 			}
 			ctx := context.Background()
@@ -506,7 +508,7 @@ func Run() {
 					continue
 				}
 
-				fmt.Printf("     Record's system info:\n%s\n", systemDump)
+				fmt.Printf("Record's system info:\n%s\n", systemDump)
 
 				queueStatsResult, err := client.GetQueueStats(ctx)
 				if err != nil {
@@ -520,14 +522,14 @@ func Run() {
 					continue
 				}
 
-				fmt.Printf("     Queue stats:\n%s\n", statsDump)
+				fmt.Printf("Queue stats:\n%s\n", statsDump)
 			} else {
 				resultDump, err := json.Marshal(result)
 				if err != nil {
 					fmt.Println(err)
 					continue
 				}
-				fmt.Printf("     Enqueue has failed!\n Error message:\n%s\n", resultDump)
+				fmt.Printf("Enqueue has failed!\n Error message:\n%s\n", resultDump)
 			}
 		case "peek":
 			if client == nil {
@@ -535,7 +537,7 @@ func Run() {
 				continue
 			}
 			if shipment == nil {
-				fmt.Println("     ERROR: 'peek' command can be only used in the CLI's App mode. Call first `id <record-id>`")
+				fmt.Println("ERROR: 'peek' command can be only used in the CLI's App mode. Call first `id <record-id>`")
 				continue
 			}
 
@@ -554,7 +556,7 @@ func Run() {
 					fmt.Println(err)
 					continue
 				}
-				fmt.Printf("     Peek was successful ... record peeked is: [%s]\n%s\n", shipment.ID, sysDump)
+				fmt.Printf("Peek was successful ... record peeked is: [%s]\n%s\n", shipment.ID, sysDump)
 
 				stats, err := client.GetQueueStats(ctx)
 				if err != nil {
@@ -566,10 +568,10 @@ func Run() {
 					fmt.Println(err)
 					continue
 				}
-				fmt.Printf("     Queue stats\n%s", statsDump)
+				fmt.Printf("Queue stats\n%s", statsDump)
 
 			} else {
-				fmt.Printf("     peek() has failed!\n Error message:\n%s", result.ReturnValue.GetErrorMessage())
+				fmt.Printf("peek() has failed!\n Error message:\n%s", result.ReturnValue.GetErrorMessage())
 			}
 
 		case "update":
@@ -578,11 +580,11 @@ func Run() {
 				continue
 			}
 			if shipment == nil {
-				fmt.Println("     ERROR: 'update <status>' command can be only used in the CLI's App mode. Call first `id <record-id>`")
+				fmt.Println("ERROR: 'update <status>' command can be only used in the CLI's App mode. Call first `id <record-id>`")
 				continue
 			}
 			if params == nil {
-				fmt.Println("     ERROR: 'update <status>' command requires a new Status parameter to be specified!%n")
+				fmt.Println("ERROR: 'update <status>' command requires a new Status parameter to be specified!%n")
 				continue
 			}
 			statusStr := strings.TrimSpace(strings.ToUpper(params[0]))
@@ -599,9 +601,9 @@ func Run() {
 					fmt.Println(err)
 					continue
 				}
-				fmt.Printf("     Status changed result:\n%s\n", dump)
+				fmt.Printf("Status changed result:\n%s\n", dump)
 			} else {
-				fmt.Printf("     Status change [%s] is not applied!\n", strings.TrimSpace(params[0]))
+				fmt.Printf("Status change [%s] is not applied!\n", strings.TrimSpace(params[0]))
 			}
 		default:
 			fmt.Println(" ... unrecognized command!")
