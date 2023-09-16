@@ -41,7 +41,7 @@ func (s *Shipment) MarkAsReadyForShipment() {
 }
 
 func (s *Shipment) IsQueued() bool {
-	return s.SystemInfo.InQueue
+	return s.SystemInfo.InQueue == 1
 }
 
 func (s *Shipment) GetLastUpdatedTimestamp() string {

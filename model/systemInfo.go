@@ -10,7 +10,7 @@ type SystemInfo struct {
 	LastUpdatedTimestamp     string     `json:"last_updated_timestamp" dynamodbav:"last_updated_timestamp"`
 	Status                   StatusEnum `json:"status" dynamodbav:"status"`
 	Version                  int        `json:"version" dynamodbav:"version"`
-	InQueue                  bool       `json:"queued" dynamodbav:"queued"`
+	InQueue                  int        `json:"queued" dynamodbav:"queued"`
 	SelectedFromQueue        bool       `json:"queue_selected" dynamodbav:"queue_selected"`
 	AddToQueueTimestamp      string     `json:"queue_add_timestamp" dynamodbav:"queue_add_timestamp"`
 	AddToDlqTimestamp        string     `json:"dlq_add_timestamp" dynamodbav:"dlq_add_timestamp"`

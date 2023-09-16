@@ -382,7 +382,7 @@ func (c *QueueSDKClient) PutImpl(ctx context.Context, shipment *model.Shipment, 
 
 	nowStr := time.Now().UTC().Format(time.RFC3339)
 	system := model.NewSystemInfoWithID(shipment.ID)
-	system.InQueue = false
+	system.InQueue = 0
 	system.SelectedFromQueue = false
 	system.Status = shipment.SystemInfo.Status
 	system.CreationTimestamp = nowStr
@@ -651,7 +651,7 @@ func (c *QueueSDKClient) Enqueue(ctx context.Context, id string) (*model.Enqueue
 			expression.Value(1),
 		).Set(
 			expression.Name("system_info.queued"),
-			expression.Value(true),
+			expression.Value(1),
 		).Set(
 			expression.Name("system_info.queue_selected"),
 			expression.Value(false),
@@ -1058,6 +1058,7 @@ func (c *QueueSDKClient) Restore(ctx context.Context, id string) (*model.ReturnR
 				Value: id,
 			},
 		},
+		ConditionExpression:       expr.Condition(),
 		UpdateExpression:          expr.Update(),
 		ExpressionAttributeNames:  expr.Names(),
 		ExpressionAttributeValues: expr.Values(),
