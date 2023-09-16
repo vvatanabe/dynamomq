@@ -651,7 +651,7 @@ func (c *QueueSDKClient) Enqueue(ctx context.Context, id string) (*model.Enqueue
 			expression.Value(1),
 		).Set(
 			expression.Name("system_info.queued"),
-			expression.Value(1),
+			expression.Value(true),
 		).Set(
 			expression.Name("system_info.queue_selected"),
 			expression.Value(false),
