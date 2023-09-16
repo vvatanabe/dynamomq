@@ -53,8 +53,9 @@ func Run() {
 	// 1. Create a Scanner using the InputStream available.
 	scanner := bufio.NewScanner(os.Stdin)
 
+	var shipment *model.Shipment
+
 	for {
-		var shipment *model.Shipment
 
 		// 2. Don't forget to prompt the user
 		if shipment != nil {
@@ -165,18 +166,18 @@ func Run() {
 				fmt.Println(needAWSMessage)
 			} else {
 				id := params[0]
-				shipment, err := client.Get(context.Background(), id)
+				shipment, err = client.Get(context.Background(), id)
 				if err != nil {
 					fmt.Println(err)
 					continue
 				}
 
-				dump, err := json.Marshal(shipment)
+				dump, err := json.MarshalIndent(shipment, "", "  ")
 				if err != nil {
 					fmt.Println(err)
 					continue
 				}
-				fmt.Printf("     Shipment's [%s] record dump\n%s", id, dump) // Replace "Utils.toJSON(shipment)" with actual JSON conversion function.
+				fmt.Printf("     Shipment's [%s] record dump\n%s", id, dump)
 			}
 		case "sys", "system":
 			if client == nil {
@@ -187,12 +188,13 @@ func Run() {
 				fmt.Println("     ERROR: `system` or `sys` command can be only used in the CLI's App mode. Call first `id <record-id>`")
 				continue
 			}
-			dump, err := json.Marshal(shipment.SystemInfo)
+
+			dump, err := json.MarshalIndent(shipment.SystemInfo, "", "  ")
 			if err != nil {
 				fmt.Println(err)
 				continue
 			}
-			fmt.Printf("     ID's system info:\n%s\n", dump)
+			fmt.Print(string(dump))
 		case "ls":
 			if client == nil {
 				fmt.Println(needAWSMessage)
@@ -302,12 +304,12 @@ func Run() {
 				fmt.Println(err)
 				continue
 			}
-			dump, err := json.Marshal(shipment.SystemInfo)
+			dump, err := json.MarshalIndent(shipment.SystemInfo, "", "  ")
 			if err != nil {
 				fmt.Println(err)
 				continue
 			}
-			fmt.Printf("     Reseted system info:\n%s\n`", dump)
+			fmt.Print(string(dump))
 		case "ready":
 			if client == nil {
 				fmt.Println(needAWSMessage)
@@ -324,12 +326,12 @@ func Run() {
 				fmt.Println(err)
 				continue
 			}
-			dump, err := json.Marshal(shipment.SystemInfo)
+			dump, err := json.MarshalIndent(shipment.SystemInfo, "", "  ")
 			if err != nil {
 				fmt.Println(err)
 				continue
 			}
-			fmt.Printf("     Reseted system info:\n%s\n`", dump)
+			fmt.Print(string(dump))
 		case "done":
 			if client == nil {
 				fmt.Println(needAWSMessage)
@@ -443,7 +445,7 @@ func Run() {
 				fmt.Println("     ERROR: 'data' command can be only used in the CLI's App mode. Call first `id <record-id>`")
 				continue
 			}
-			dump, err := json.Marshal(shipment.Data)
+			dump, err := json.MarshalIndent(shipment.Data, "", "  ")
 			if err != nil {
 				fmt.Println(err)
 				continue
@@ -458,7 +460,7 @@ func Run() {
 				fmt.Println("     ERROR: 'info' command can be only used in the CLI's App mode. Call first `id <record-id>`")
 				continue
 			}
-			dump, err := json.Marshal(shipment)
+			dump, err := json.MarshalIndent(shipment, "", "  ")
 			if err != nil {
 				fmt.Println(err)
 				continue
@@ -498,13 +500,13 @@ func Run() {
 			shipment = result.Shipment
 			if result.IsSuccessful() {
 
-				systemDump, err := json.Marshal(shipment.SystemInfo)
+				systemDump, err := json.MarshalIndent(shipment.SystemInfo, "", "  ")
 				if err != nil {
 					fmt.Println(err)
 					continue
 				}
 
-				fmt.Printf("     Record's system info:s\n%s\n", systemDump)
+				fmt.Printf("     Record's system info:\n%s\n", systemDump)
 
 				queueStatsResult, err := client.GetQueueStats(ctx)
 				if err != nil {
@@ -512,13 +514,13 @@ func Run() {
 					continue
 				}
 
-				statsDump, err := json.Marshal(queueStatsResult)
+				statsDump, err := json.MarshalIndent(queueStatsResult, "", "  ")
 				if err != nil {
 					fmt.Println(err)
 					continue
 				}
 
-				fmt.Printf("     Queue stats\n%s\n", statsDump)
+				fmt.Printf("     Queue stats:\n%s\n", statsDump)
 			} else {
 				resultDump, err := json.Marshal(result)
 				if err != nil {
