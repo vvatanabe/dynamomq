@@ -31,7 +31,7 @@ func Run() {
 
 	region := flag.String("region", constant.AwsRegionDefault, "AWS region")
 	credentialsProfile := flag.String("profile", constant.AwsProfileDefault, "AWS credentials profile")
-	tableName := flag.String("table", constant.DefaultShipmentTableName, "DynamoDB logical table name")
+	tableName := flag.String("table", constant.DefaultTableName, "AWS DynamoDB table name")
 
 	flag.Parse()
 
@@ -42,7 +42,7 @@ func Run() {
 	client, err := sdk.NewBuilder().
 		WithRegion(*region).
 		WithCredentialsProfileName(*credentialsProfile).
-		WithLogicalTableName(*tableName).
+		WithTableName(*tableName).
 		Build(context.Background())
 	if err != nil {
 		fmt.Printf(" ... AWS session could not be established!: %v\n", err)
@@ -146,7 +146,7 @@ func Run() {
 			client, err = sdk.NewBuilder().
 				WithRegion(*region).
 				WithCredentialsProfileName(*credentialsProfile).
-				WithLogicalTableName(*tableName).
+				WithTableName(*tableName).
 				Build(context.Background())
 			if err != nil {
 				fmt.Printf(" ... AWS session could not be established!: %v\n", err)
@@ -265,12 +265,12 @@ func Run() {
 				fmt.Println(err)
 				continue
 			}
-			dump, err := json.Marshal(stats)
+			dump, err := json.MarshalIndent(stats, "", "  ")
 			if err != nil {
 				fmt.Println(err)
 				continue
 			}
-			fmt.Printf("     Queue status:\n%s\n", dump)
+			fmt.Print(string(dump))
 		case "dlq":
 			if client == nil {
 				fmt.Println(needAWSMessage)
@@ -281,12 +281,12 @@ func Run() {
 				fmt.Println(err)
 				continue
 			}
-			dump, err := json.Marshal(stats)
+			dump, err := json.MarshalIndent(stats, "", "  ")
 			if err != nil {
 				fmt.Println(err)
 				continue
 			}
-			fmt.Printf("     DLQ status:\n%s\n", dump)
+			fmt.Print(string(dump))
 		case "reset":
 			if client == nil {
 				fmt.Println(needAWSMessage)

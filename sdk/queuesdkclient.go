@@ -22,8 +22,7 @@ import (
 type QueueSDKClient struct {
 	dynamoDB *dynamodb.Client
 
-	actualTableName           string
-	logicalTableName          string
+	tableName                 string
 	awsRegion                 string
 	awsCredentialsProfileName string
 	credentialsProvider       aws.CredentialsProvider
@@ -32,7 +31,7 @@ type QueueSDKClient struct {
 func initialize(ctx context.Context, builder *Builder) (*QueueSDKClient, error) {
 
 	c := &QueueSDKClient{
-		logicalTableName:          builder.logicalTableName,
+		tableName:                 builder.tableName,
 		awsRegion:                 builder.awsRegion,
 		credentialsProvider:       builder.credentialsProvider,
 		awsCredentialsProfileName: builder.awsCredentialsProfileName,
@@ -103,7 +102,7 @@ func (c *QueueSDKClient) GetQueueStats(ctx context.Context) (*model.QueueStats, 
 	var totalQueueSize int
 	var exclusiveStartKey map[string]types.AttributeValue
 
-	keyCond := expression.KeyEqual(expression.Key("queued"), expression.Value("1"))
+	keyCond := expression.KeyEqual(expression.Key("queued"), expression.Value(1))
 	proj := expression.NamesList(expression.Name("id"), expression.Name("system_info"))
 
 	expr, err := expression.NewBuilder().WithKeyCondition(keyCond).WithProjection(proj).Build()
@@ -112,14 +111,14 @@ func (c *QueueSDKClient) GetQueueStats(ctx context.Context) (*model.QueueStats, 
 	}
 
 	var peekedRecords int
-	var allQueueIDs []string
-	var processingIDs []string
+	allQueueIDs := make([]string, 0)
+	processingIDs := make([]string, 0)
 
 	for {
 		queryInput := &dynamodb.QueryInput{
 			ProjectionExpression:      expr.Projection(),
 			IndexName:                 aws.String(constant.QueueingIndexName),
-			TableName:                 aws.String(c.actualTableName),
+			TableName:                 aws.String(c.tableName),
 			ExpressionAttributeNames:  expr.Names(),
 			KeyConditionExpression:    expr.KeyCondition(),
 			ScanIndexForward:          aws.Bool(true),
@@ -205,9 +204,9 @@ func (c *QueueSDKClient) GetDLQStats(ctx context.Context) (*model.DLQResult, err
 	var totalDLQSize int
 	var lastEvaluatedKey map[string]types.AttributeValue
 
-	var listBANs []string
+	listBANs := make([]string, 0)
 
-	keyCondition := expression.KeyEqual(expression.Key("DLQ"), expression.Value("1"))
+	keyCondition := expression.KeyEqual(expression.Key("DLQ"), expression.Value(1))
 	proj := expression.NamesList(expression.Name("id"), expression.Name("DLQ"), expression.Name("system_info"))
 
 	expr, err := expression.NewBuilder().WithKeyCondition(keyCondition).WithProjection(proj).Build()
@@ -219,7 +218,7 @@ func (c *QueueSDKClient) GetDLQStats(ctx context.Context) (*model.DLQResult, err
 		input := &dynamodb.QueryInput{
 			ProjectionExpression:      expr.Projection(),
 			IndexName:                 aws.String(constant.DlqQueueingIndexName),
-			TableName:                 aws.String(c.actualTableName),
+			TableName:                 aws.String(c.tableName),
 			ExpressionAttributeNames:  expr.Names(),
 			ExpressionAttributeValues: expr.Values(),
 			KeyConditionExpression:    expr.KeyCondition(),
@@ -278,7 +277,7 @@ func (c *QueueSDKClient) GetDLQStats(ctx context.Context) (*model.DLQResult, err
 //	{
 //	  "TableName": "ActualTableName",
 //	  "Key": {
-//	    "ID": {
+//	    "id": {
 //	      "S": "your-id-value"
 //	    }
 //	  }
@@ -290,9 +289,9 @@ func (c *QueueSDKClient) Get(ctx context.Context, id string) (*model.Shipment, e
 
 	input := &dynamodb.GetItemInput{
 		Key: map[string]types.AttributeValue{
-			"ID": &types.AttributeValueMemberS{Value: id},
+			"id": &types.AttributeValueMemberS{Value: id},
 		},
-		TableName:      aws.String(c.actualTableName),
+		TableName:      aws.String(c.tableName),
 		ConsistentRead: aws.Bool(true),
 	}
 
@@ -370,9 +369,9 @@ func (c *QueueSDKClient) PutImpl(ctx context.Context, shipment *model.Shipment, 
 			version = retrievedShipment.SystemInfo.Version
 		} else {
 			_, err := c.dynamoDB.DeleteItem(ctx, &dynamodb.DeleteItemInput{
-				TableName: aws.String(c.actualTableName),
+				TableName: aws.String(c.tableName),
 				Key: map[string]types.AttributeValue{
-					"ID": &types.AttributeValueMemberS{Value: shipment.ID},
+					"id": &types.AttributeValueMemberS{Value: shipment.ID},
 				},
 			})
 			if err != nil {
@@ -381,16 +380,14 @@ func (c *QueueSDKClient) PutImpl(ctx context.Context, shipment *model.Shipment, 
 		}
 	}
 
-	now := time.Now().UTC()
-
-	system := &model.SystemInfo{
-		Version:              version + 1,
-		InQueue:              false,
-		SelectedFromQueue:    false,
-		Status:               shipment.SystemInfo.Status,
-		CreationTimestamp:    now.Format(time.RFC3339),
-		LastUpdatedTimestamp: now.Format(time.RFC3339),
-	}
+	nowStr := time.Now().UTC().Format(time.RFC3339)
+	system := model.NewSystemInfoWithID(shipment.ID)
+	system.InQueue = false
+	system.SelectedFromQueue = false
+	system.Status = shipment.SystemInfo.Status
+	system.CreationTimestamp = nowStr
+	system.LastUpdatedTimestamp = nowStr
+	system.Version = version + 1
 
 	shipment.SystemInfo = system
 
@@ -399,7 +396,7 @@ func (c *QueueSDKClient) PutImpl(ctx context.Context, shipment *model.Shipment, 
 		return fmt.Errorf("failed to marshal map: %w", err)
 	}
 	_, err = c.dynamoDB.PutItem(ctx, &dynamodb.PutItemInput{
-		TableName: aws.String(c.actualTableName),
+		TableName: aws.String(c.tableName),
 		Item:      item,
 	})
 	if err != nil {
@@ -519,7 +516,7 @@ func (c *QueueSDKClient) UpdateStatus(ctx context.Context, id string, newStatus 
 				Value: id,
 			},
 		},
-		TableName:                 aws.String(c.actualTableName),
+		TableName:                 aws.String(c.tableName),
 		ExpressionAttributeNames:  expr.Names(),
 		ExpressionAttributeValues: expr.Values(),
 		UpdateExpression:          expr.Update(),
@@ -529,7 +526,7 @@ func (c *QueueSDKClient) UpdateStatus(ctx context.Context, id string, newStatus 
 
 	outcome, err := c.dynamoDB.UpdateItem(ctx, input)
 	if err != nil {
-		fmt.Printf("updateFullyConstructedFlag() - failed to update multiple attributes in %s\n", c.actualTableName)
+		fmt.Printf("updateFullyConstructedFlag() - failed to update multiple attributes in %s\n", c.tableName)
 		fmt.Println(err)
 
 		result.ReturnValue = model.ReturnStatusEnumFailedDynamoError
@@ -678,7 +675,7 @@ func (c *QueueSDKClient) Enqueue(ctx context.Context, id string) (*model.Enqueue
 	}
 
 	input := &dynamodb.UpdateItemInput{
-		TableName: &c.actualTableName,
+		TableName: &c.tableName,
 		Key: map[string]types.AttributeValue{
 			"id": &types.AttributeValueMemberS{
 				Value: id,
@@ -693,7 +690,7 @@ func (c *QueueSDKClient) Enqueue(ctx context.Context, id string) (*model.Enqueue
 
 	outcome, err := c.dynamoDB.UpdateItem(ctx, input)
 	if err != nil {
-		fmt.Printf("enqueue() - failed to update multiple attributes in %s", c.actualTableName)
+		fmt.Printf("enqueue() - failed to update multiple attributes in %s", c.tableName)
 		fmt.Println(err)
 		result.ReturnValue = model.ReturnStatusEnumFailedDynamoError
 		return result, nil
@@ -760,7 +757,7 @@ func (c *QueueSDKClient) Peek(ctx context.Context) (*model.PeekResult, error) {
 		queryRequest := &dynamodb.QueryInput{
 			ProjectionExpression:      expr.Projection(),
 			IndexName:                 aws.String(constant.QueueingIndexName),
-			TableName:                 aws.String(c.actualTableName),
+			TableName:                 aws.String(c.tableName),
 			KeyConditionExpression:    expr.KeyCondition(),
 			ExpressionAttributeNames:  expr.Names(),
 			ExpressionAttributeValues: expr.Values(),
@@ -851,7 +848,7 @@ func (c *QueueSDKClient) Peek(ctx context.Context) (*model.PeekResult, error) {
 	}
 
 	input := &dynamodb.UpdateItemInput{
-		TableName: aws.String(c.actualTableName),
+		TableName: aws.String(c.tableName),
 		Key: map[string]types.AttributeValue{
 			"id": &types.AttributeValueMemberS{
 				Value: shipment.ID,
@@ -865,7 +862,7 @@ func (c *QueueSDKClient) Peek(ctx context.Context) (*model.PeekResult, error) {
 
 	outcome, err := c.dynamoDB.UpdateItem(ctx, input)
 	if err != nil {
-		fmt.Printf("peek() - failed to update multiple attributes in %s\n", c.actualTableName)
+		fmt.Printf("peek() - failed to update multiple attributes in %s\n", c.tableName)
 		fmt.Println(err)
 		result.ReturnValue = model.ReturnStatusEnumFailedDynamoError
 		return result, nil
@@ -963,7 +960,7 @@ func (c *QueueSDKClient) Remove(ctx context.Context, id string) (*model.ReturnRe
 	}
 
 	input := &dynamodb.UpdateItemInput{
-		TableName: &c.actualTableName,
+		TableName: &c.tableName,
 		Key: map[string]types.AttributeValue{
 			"id": &types.AttributeValueMemberS{
 				Value: id,
@@ -977,7 +974,7 @@ func (c *QueueSDKClient) Remove(ctx context.Context, id string) (*model.ReturnRe
 
 	outcome, err := c.dynamoDB.UpdateItem(ctx, input)
 	if err != nil {
-		fmt.Printf("remove() - failed to update multiple attributes in %s\n", c.actualTableName)
+		fmt.Printf("remove() - failed to update multiple attributes in %s\n", c.tableName)
 		fmt.Println(err)
 		result.ReturnValue = model.ReturnStatusEnumFailedDynamoError
 		return result, nil
@@ -1045,7 +1042,7 @@ func (c *QueueSDKClient) Restore(ctx context.Context, id string) (*model.ReturnR
 	}
 
 	input := &dynamodb.UpdateItemInput{
-		TableName: &c.actualTableName,
+		TableName: &c.tableName,
 		Key: map[string]types.AttributeValue{
 			"id": &types.AttributeValueMemberS{
 				Value: id,
@@ -1059,7 +1056,7 @@ func (c *QueueSDKClient) Restore(ctx context.Context, id string) (*model.ReturnR
 
 	outcome, err := c.dynamoDB.UpdateItem(ctx, input)
 	if err != nil {
-		fmt.Printf("restore() - failed to update multiple attributes in %s\n", c.actualTableName)
+		fmt.Printf("restore() - failed to update multiple attributes in %s\n", c.tableName)
 		fmt.Println(err)
 		result.ReturnValue = model.ReturnStatusEnumFailedDynamoError
 		return result, nil
@@ -1126,7 +1123,7 @@ func (c *QueueSDKClient) SendToDLQ(ctx context.Context, id string) (*model.Retur
 	}
 
 	input := &dynamodb.UpdateItemInput{
-		TableName: &c.actualTableName,
+		TableName: &c.tableName,
 		Key: map[string]types.AttributeValue{
 			"id": &types.AttributeValueMemberS{
 				Value: id,
@@ -1140,7 +1137,7 @@ func (c *QueueSDKClient) SendToDLQ(ctx context.Context, id string) (*model.Retur
 
 	outcome, err := c.dynamoDB.UpdateItem(ctx, input)
 	if err != nil {
-		fmt.Printf("SendToDLQ() - failed to update multiple attributes in %s\n", c.actualTableName)
+		fmt.Printf("SendToDLQ() - failed to update multiple attributes in %s\n", c.tableName)
 		fmt.Println(err)
 		result.ReturnValue = model.ReturnStatusEnumFailedDynamoError
 		return result, nil
@@ -1201,7 +1198,7 @@ func (c *QueueSDKClient) Touch(ctx context.Context, id string) (*model.ReturnRes
 	}
 
 	input := &dynamodb.UpdateItemInput{
-		TableName: &c.actualTableName,
+		TableName: &c.tableName,
 		Key: map[string]types.AttributeValue{
 			"id": &types.AttributeValueMemberS{
 				Value: id,
@@ -1215,7 +1212,7 @@ func (c *QueueSDKClient) Touch(ctx context.Context, id string) (*model.ReturnRes
 
 	outcome, err := c.dynamoDB.UpdateItem(ctx, input)
 	if err != nil {
-		fmt.Printf("Touch() - failed to update multiple attributes in %s\n", c.actualTableName)
+		fmt.Printf("Touch() - failed to update multiple attributes in %s\n", c.tableName)
 		fmt.Println(err)
 		result.ReturnValue = model.ReturnStatusEnumFailedDynamoError
 		return result, nil
@@ -1255,7 +1252,7 @@ func (c *QueueSDKClient) List(ctx context.Context, size int32) ([]*model.Shipmen
 	}
 
 	input := &dynamodb.ScanInput{
-		TableName:                &c.actualTableName,
+		TableName:                &c.tableName,
 		ProjectionExpression:     expr.Projection(),
 		ExpressionAttributeNames: expr.Names(),
 		Limit:                    aws.Int32(size),
@@ -1340,26 +1337,16 @@ func (c *QueueSDKClient) Delete(ctx context.Context, id string) error {
 		return errors.New("shipment id cannot be empty")
 	}
 
-	expr, err := expression.NewBuilder().
-		WithCondition(expression.Name("id").Equal(expression.Value(id))).
-		Build()
-	if err != nil {
-		return fmt.Errorf("building expression: %w", err)
-	}
-
 	input := &dynamodb.DeleteItemInput{
-		TableName: &c.actualTableName,
+		TableName: &c.tableName,
 		Key: map[string]types.AttributeValue{
 			"id": &types.AttributeValueMemberS{
 				Value: id,
 			},
 		},
-		ConditionExpression:       expr.Condition(),
-		ExpressionAttributeNames:  expr.Names(),
-		ExpressionAttributeValues: expr.Values(),
 	}
 
-	_, err = c.dynamoDB.DeleteItem(ctx, input)
+	_, err := c.dynamoDB.DeleteItem(ctx, input)
 	return err
 }
 
@@ -1397,10 +1384,8 @@ func (c *QueueSDKClient) CreateTestData(ctx context.Context, id string) (*model.
 		},
 	}
 
-	shipment := &model.Shipment{
-		ID:   id,
-		Data: data,
-	}
+	shipment := model.NewShipmentWithID(id)
+	shipment.Data = data
 
 	err = c.Put(ctx, shipment)
 	if err != nil {
@@ -1413,7 +1398,7 @@ func (c *QueueSDKClient) CreateTestData(ctx context.Context, id string) (*model.
 type Builder struct {
 	awsRegion                 string
 	awsCredentialsProfileName string
-	logicalTableName          string
+	tableName                 string
 	credentialsProvider       aws.CredentialsProvider
 }
 
@@ -1428,8 +1413,8 @@ func (b *Builder) Build(ctx context.Context) (*QueueSDKClient, error) {
 	if b.awsCredentialsProfileName == "" {
 		b.awsCredentialsProfileName = constant.AwsProfileDefault
 	}
-	if b.logicalTableName == "" {
-		b.logicalTableName = constant.DefaultShipmentTableName
+	if b.tableName == "" {
+		b.tableName = constant.DefaultTableName
 	}
 	return initialize(ctx, b)
 }
@@ -1444,8 +1429,8 @@ func (b *Builder) WithCredentialsProfileName(profile string) *Builder {
 	return b
 }
 
-func (b *Builder) WithLogicalTableName(logicalTableName string) *Builder {
-	b.logicalTableName = logicalTableName
+func (b *Builder) WithTableName(tableName string) *Builder {
+	b.tableName = tableName
 	return b
 }
 
