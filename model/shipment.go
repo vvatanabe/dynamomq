@@ -5,6 +5,7 @@ type Shipment struct {
 	Data       *ShipmentData `json:"data" dynamodbav:"data"`
 	SystemInfo *SystemInfo   `json:"system_info" dynamodbav:"system_info"`
 
+	Queued               int    `json:"queued" dynamodbav:"queued,omitempty"`
 	LastUpdatedTimestamp string `json:"last_updated_timestamp" dynamodbav:"last_updated_timestamp,omitempty"`
 	DLQ                  int    `json:"DLQ" dynamodbav:"DLQ,omitempty"`
 }
