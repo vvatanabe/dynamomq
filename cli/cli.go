@@ -103,26 +103,26 @@ func Run() {
 		case "quit", "q":
 			return
 		case "h", "?", "help":
-			fmt.Println("  ... this is CLI HELP!")
-			fmt.Println("    > aws <profile> [<region>]                      [Establish connection with AWS; Default profile name: `default` and region: `us-east-1`]")
-			fmt.Println("    > qstat | qstats                                [Retrieves the Queue statistics (no need to be in App mode)]")
-			fmt.Println("    > dlq                                           [Retrieves the Dead Letter Queue (DLQ) statistics]")
-			fmt.Println("    > create-test | ct                              [Create test Shipment records in DynamoDB: A-101, A-202, A-303 and A-404; if already exists, it will overwrite it]")
-			fmt.Println("    > purge                                         [It will remove all test data from DynamoDB]")
-			fmt.Println("    > ls                                            [List all shipment IDs ... max 10 elements]")
-			fmt.Println("    > id <id>                                       [Get the application object from DynamoDB by app domain ID; CLI is in the app mode, from that point on]")
-			fmt.Println("      > sys                                         [Show system info data in a JSON format]")
-			fmt.Println("      > data                                        [Print the data as JSON for the current shipment record]")
-			fmt.Println("      > info                                        [Print all info regarding Shipment record: system_info and data as JSON]")
-			fmt.Println("      > update <new Shipment status>                [Update Shipment status .. e.g.: from UNDER_CONSTRUCTION to READY_TO_SHIP]")
-			fmt.Println("      > reset                                       [Reset the system info of the current shipment record]")
-			fmt.Println("      > ready                                       [Make the record ready for the shipment]")
-			fmt.Println("      > enqueue | en                                [Enqueue current ID]")
-			fmt.Println("      > peek                                        [Peek the Shipment from the Queue .. it will replace the current ID with the peeked one]")
-			fmt.Println("      > done                                        [Simulate successful record processing completion ... remove from the queue]")
-			fmt.Println("      > fail                                        [Simulate failed record's processing ... put back to the queue; needs to be peeked again]")
-			fmt.Println("      > invalid                                     [Remove record from the regular queue to dead letter queue (DLQ) for manual fix]")
-			fmt.Println("    > id")
+			fmt.Println(`... this is CLI HELP!
+  > aws <profile> [<region>]                      [Establish connection with AWS; Default profile name: 'default' and region: 'us-east-1']
+  > qstat | qstats                                [Retrieves the Queue statistics (no need to be in App mode)]
+  > dlq                                           [Retrieves the Dead Letter Queue (DLQ) statistics]
+  > create-test | ct                              [Create test Shipment records in DynamoDB: A-101, A-202, A-303 and A-404; if already exists, it will overwrite it]
+  > purge                                         [It will remove all test data from DynamoDB]
+  > ls                                            [List all shipment IDs ... max 10 elements]
+  > id <id>                                       [Get the application object from DynamoDB by app domain ID; CLI is in the app mode, from that point on]
+    > sys                                         [Show system info data in a JSON format]
+    > data                                        [Print the data as JSON for the current shipment record]
+    > info                                        [Print all info regarding Shipment record: system_info and data as JSON]
+    > update <new Shipment status>                [Update Shipment status .. e.g.: from UNDER_CONSTRUCTION to READY_TO_SHIP]
+    > reset                                       [Reset the system info of the current shipment record]
+    > ready                                       [Make the record ready for the shipment]
+    > enqueue | en                                [Enqueue current ID]
+    > peek                                        [Peek the Shipment from the Queue .. it will replace the current ID with the peeked one]
+    > done                                        [Simulate successful record processing completion ... remove from the queue]
+    > fail                                        [Simulate failed record's processing ... put back to the queue; needs to be peeked again]
+    > invalid                                     [Remove record from the regular queue to dead letter queue (DLQ) for manual fix]
+  > id`)
 		case "aws":
 			if params == nil {
 				fmt.Println("ERROR: 'aws <profile> [<region>] [<table>]' command requires parameter(s) to be specified!")
