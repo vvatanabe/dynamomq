@@ -289,21 +289,21 @@ func Run() {
 				continue
 			}
 			if shipment == nil {
-				fmt.Println("ERROR: 'reset' command can be only used in the CLI's App mode. Call first `id <record-id>`")
+				printError("'reset' command can be only used in the CLI's App mode. Call first `id <record-id>`")
 				continue
 			}
 			shipment.ResetSystemInfo()
 			err := client.Put(ctx, shipment)
 			if err != nil {
-				fmt.Println(err)
+				printError(err)
 				continue
 			}
-			dump, err := json.MarshalIndent(shipment.SystemInfo, "", "  ")
+			dump, err := marshalIndent(shipment.SystemInfo)
 			if err != nil {
-				fmt.Println(err)
+				printError(err)
 				continue
 			}
-			fmt.Print(string(dump))
+			fmt.Printf("Reseted system info:\n%s\n", dump)
 		case "ready":
 			if client == nil {
 				fmt.Println(needAWSMessage)
