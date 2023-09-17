@@ -362,9 +362,7 @@ func Run() {
 				printError(err)
 				continue
 			}
-
 			fmt.Printf("Processing for ID [%s] is completed successfully! Remove from the queue!\n", shipment.ID)
-
 			stats, err := client.GetQueueStats(ctx)
 			if err != nil {
 				printError(err)
@@ -382,63 +380,69 @@ func Run() {
 				continue
 			}
 			if shipment == nil {
-				fmt.Println("ERROR: 'fail' command can be only used in the CLI's App mode. Call first `id <record-id>`")
+				printError("'fail' command can be only used in the CLI's App mode. Call first `id <record-id>`")
 				continue
 			}
-
-			_, err := client.Restore(ctx, shipment.ID)
+			rr, err := client.Restore(ctx, shipment.ID)
 			if err != nil {
-				fmt.Println(err)
+				printError(err)
+				continue
+			}
+			if !rr.IsSuccessful() {
+				printError(rr.GetErrorMessage())
 				continue
 			}
 			shipment, err := client.Get(ctx, shipment.ID)
 			if err != nil {
-				fmt.Println(err)
+				printError(err)
 				continue
 			}
-
+			if shipment == nil {
+				printError(fmt.Sprintf("Shipment's [%s] not found!", shipment.ID))
+				continue
+			}
 			fmt.Printf("Processing for ID [%s] has failed! Put the record back to the queue!\n", shipment.ID)
-
 			stats, err := client.GetQueueStats(ctx)
 			if err != nil {
-				fmt.Println(err)
+				printError(err)
 				continue
 			}
-			dump, err := json.Marshal(stats)
+			dump, err := marshalIndent(stats)
 			if err != nil {
-				fmt.Println(err)
+				printError(err)
 				continue
 			}
-			fmt.Printf("Queue status\n%s\n", dump)
+			fmt.Printf("Queue status:\n%s\n", dump)
 		case "invalid":
 			if client == nil {
 				fmt.Println(needAWSMessage)
 				continue
 			}
 			if shipment == nil {
-				fmt.Println("ERROR: 'invalid' command can be only used in the CLI's App mode. Call first `id <record-id>`")
+				printError("'invalid' command can be only used in the CLI's App mode. Call first `id <record-id>`")
 				continue
 			}
-
-			_, err := client.SendToDLQ(ctx, shipment.ID)
+			rr, err := client.SendToDLQ(ctx, shipment.ID)
 			if err != nil {
-				fmt.Println(err)
+				printError(err)
 				continue
 			}
-
+			if !rr.IsSuccessful() {
+				printError(rr.GetErrorMessage())
+				continue
+			}
 			fmt.Printf("Processing for ID [%s] has failed .. invalid data! Send record to DLQ!\n", shipment.ID)
-
 			stats, err := client.GetQueueStats(ctx)
 			if err != nil {
-				fmt.Println(err)
+				printError(err)
 				continue
 			}
-			dump, err := json.Marshal(stats)
+			dump, err := marshalIndent(stats)
 			if err != nil {
-				fmt.Println(err)
+				printError(err)
 				continue
 			}
-			fmt.Printf("Queue status\n%s\n", dump)
+			fmt.Printf("Queue status:\n%s\n", dump)
 		case "data":
 			if client == nil {
 				fmt.Println(needAWSMessage)
