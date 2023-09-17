@@ -336,22 +336,30 @@ func Run() {
 				continue
 			}
 			if shipment == nil {
-				fmt.Println("ERROR: 'done' command can be only used in the CLI's App mode. Call first `id <record-id>`")
+				printError("'done' command can be only used in the CLI's App mode. Call first `id <record-id>`")
 				continue
 			}
-			_, err := client.UpdateStatus(ctx, shipment.ID, model.StatusEnumCompleted)
+			rr, err := client.UpdateStatus(ctx, shipment.ID, model.StatusEnumCompleted)
 			if err != nil {
-				fmt.Println(err)
+				printError(err)
 				continue
 			}
-			_, err = client.Remove(ctx, shipment.ID)
+			if !rr.IsSuccessful() {
+				printError(rr.GetErrorMessage())
+				continue
+			}
+			rr, err = client.Remove(ctx, shipment.ID)
 			if err != nil {
-				fmt.Println(err)
+				printError(err)
+				continue
+			}
+			if !rr.IsSuccessful() {
+				printError(rr.GetErrorMessage())
 				continue
 			}
 			shipment, err := client.Get(ctx, shipment.ID)
 			if err != nil {
-				fmt.Println(err)
+				printError(err)
 				continue
 			}
 
@@ -359,15 +367,15 @@ func Run() {
 
 			stats, err := client.GetQueueStats(ctx)
 			if err != nil {
-				fmt.Println(err)
+				printError(err)
 				continue
 			}
-			dump, err := json.Marshal(stats)
+			dump, err := marshalIndent(stats)
 			if err != nil {
-				fmt.Println(err)
+				printError(err)
 				continue
 			}
-			fmt.Printf("Queue status\n%s\n", dump)
+			fmt.Printf("Queue status:\n%s\n", dump)
 		case "fail":
 			if client == nil {
 				fmt.Println(needAWSMessage)
