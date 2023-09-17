@@ -310,22 +310,22 @@ func Run() {
 				continue
 			}
 			if shipment == nil {
-				fmt.Println("ERROR: 'ready' command can be only used in the CLI's App mode. Call first `id <record-id>`")
+				printError("'ready' command can be only used in the CLI's App mode. Call first `id <record-id>`")
 				continue
 			}
 			shipment.ResetSystemInfo()
 			shipment.SystemInfo.Status = model.StatusEnumReadyToShip
 			err := client.Put(ctx, shipment)
 			if err != nil {
-				fmt.Println(err)
+				printError(err)
 				continue
 			}
-			dump, err := json.MarshalIndent(shipment.SystemInfo, "", "  ")
+			dump, err := marshalIndent(shipment.SystemInfo)
 			if err != nil {
-				fmt.Println(err)
+				printError(err)
 				continue
 			}
-			fmt.Print(string(dump))
+			fmt.Printf("Ready system info:\n%s\n", dump)
 		case "done":
 			if client == nil {
 				fmt.Println(needAWSMessage)
