@@ -962,10 +962,10 @@ func (c *QueueSDKClient) Remove(ctx context.Context, id string) (*model.ReturnRe
 			Remove(expression.Name("queued")).
 			Remove(expression.Name("DLQ")).
 			Set(expression.Name("system_info.queued"), expression.Value(0)).
+			Set(expression.Name("system_info.queue_selected"), expression.Value(false)).
 			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(now.Format(time.RFC3339))).
 			Set(expression.Name("last_updated_timestamp"), expression.Value(now.Format(time.RFC3339))).
-			Set(expression.Name("system_info.queue_remove_timestamp"), expression.Value(now.Format(time.RFC3339))).
-			Set(expression.Name("system_info.status"), expression.Value(model.StatusEnumProcessingShipment))).
+			Set(expression.Name("system_info.queue_remove_timestamp"), expression.Value(now.Format(time.RFC3339)))).
 		WithCondition(expression.Name("system_info.version").Equal(expression.Value(shipment.SystemInfo.Version))).
 		Build()
 	if err != nil {
@@ -979,6 +979,7 @@ func (c *QueueSDKClient) Remove(ctx context.Context, id string) (*model.ReturnRe
 				Value: id,
 			},
 		},
+		ConditionExpression:       expr.Condition(),
 		UpdateExpression:          expr.Update(),
 		ExpressionAttributeNames:  expr.Names(),
 		ExpressionAttributeValues: expr.Values(),
