@@ -449,12 +449,12 @@ func Run() {
 				continue
 			}
 			if shipment == nil {
-				fmt.Println("ERROR: 'data' command can be only used in the CLI's App mode. Call first `id <record-id>`")
+				printError("'data' command can be only used in the CLI's App mode. Call first `id <record-id>`")
 				continue
 			}
-			dump, err := json.MarshalIndent(shipment.Data, "", "  ")
+			dump, err := marshalIndent(shipment.Data)
 			if err != nil {
-				fmt.Println(err)
+				printError(err)
 				continue
 			}
 			fmt.Printf("Data info:\n%s\n", dump)
@@ -464,12 +464,12 @@ func Run() {
 				continue
 			}
 			if shipment == nil {
-				fmt.Println("ERROR: 'info' command can be only used in the CLI's App mode. Call first `id <record-id>`")
+				printError("'info' command can be only used in the CLI's App mode. Call first `id <record-id>`")
 				continue
 			}
-			dump, err := json.MarshalIndent(shipment, "", "  ")
+			dump, err := marshalIndent(shipment)
 			if err != nil {
-				fmt.Println(err)
+				printError(err)
 				continue
 			}
 			fmt.Printf("Record's dump:\n%s\n", dump)
@@ -479,61 +479,54 @@ func Run() {
 				continue
 			}
 			if shipment == nil {
-				fmt.Println("ERROR: 'enqueue' command can be only used in the CLI's App mode. Call first `id <record-id>`")
+				printError("'enqueue' command can be only used in the CLI's App mode. Call first `id <record-id>`")
 				continue
 			}
 			shipment, err := client.Get(ctx, shipment.ID)
 			if err != nil {
-				fmt.Println(err)
+				printError(err)
+				continue
+			}
+			if shipment == nil {
+				printError(fmt.Sprintf("Shipment's [%s] not found!", shipment.ID))
 				continue
 			}
 			// convert under_construction to ready to ship
 			if shipment.SystemInfo.Status == model.StatusEnumUnderConstruction {
 				shipment.ResetSystemInfo()
 				shipment.SystemInfo.Status = model.StatusEnumReadyToShip
-
 				err = client.Put(ctx, shipment)
 				if err != nil {
-					fmt.Println(err)
+					printError(err)
 					continue
 				}
 			}
-			result, err := client.Enqueue(ctx, shipment.ID)
+			rr, err := client.Enqueue(ctx, shipment.ID)
 			if err != nil {
-				fmt.Println(err)
+				printError(err)
 				continue
 			}
-			shipment = result.Shipment
-			if result.IsSuccessful() {
-
-				systemDump, err := json.MarshalIndent(shipment.SystemInfo, "", "  ")
+			shipment = rr.Shipment
+			if rr.IsSuccessful() {
+				sysDump, err := marshalIndent(shipment.SystemInfo)
 				if err != nil {
-					fmt.Println(err)
+					printError(err)
 					continue
 				}
-
-				fmt.Printf("Record's system info:\n%s\n", systemDump)
-
-				queueStatsResult, err := client.GetQueueStats(ctx)
+				fmt.Printf("Record's system info:\n%s\n", sysDump)
+				stats, err := client.GetQueueStats(ctx)
 				if err != nil {
-					fmt.Println(err)
+					printError(err)
 					continue
 				}
-
-				statsDump, err := json.MarshalIndent(queueStatsResult, "", "  ")
+				statsDump, err := marshalIndent(stats)
 				if err != nil {
-					fmt.Println(err)
+					printError(err)
 					continue
 				}
-
 				fmt.Printf("Queue stats:\n%s\n", statsDump)
 			} else {
-				resultDump, err := json.Marshal(result)
-				if err != nil {
-					fmt.Println(err)
-					continue
-				}
-				fmt.Printf("Enqueue has failed!\n Error message:\n%s\n", resultDump)
+				fmt.Printf("Enqueue has failed! Error message: %s\n", rr.GetErrorMessage())
 			}
 		case "peek":
 			if client == nil {
@@ -541,67 +534,61 @@ func Run() {
 				continue
 			}
 			if shipment == nil {
-				fmt.Println("ERROR: 'peek' command can be only used in the CLI's App mode. Call first `id <record-id>`")
+				printError("'peek' command can be only used in the CLI's App mode. Call first `id <record-id>`")
 				continue
 			}
-
 			result, err := client.Peek(ctx)
 			if err != nil {
-				fmt.Println(err)
+				printError(err)
 				continue
 			}
-
 			if result.IsSuccessful() {
 				shipment = result.PeekedShipmentObject
-
-				sysDump, err := json.MarshalIndent(shipment.SystemInfo, "", " ")
+				sysDump, err := marshalIndent(shipment.SystemInfo)
 				if err != nil {
-					fmt.Println(err)
+					printError(err)
 					continue
 				}
 				fmt.Printf("Peek was successful ... record peeked is: [%s]\n%s\n", shipment.ID, sysDump)
 
 				stats, err := client.GetQueueStats(ctx)
 				if err != nil {
-					fmt.Println(err)
+					printError(err)
 					continue
 				}
-				statsDump, err := json.MarshalIndent(stats, "", "  ")
+				statsDump, err := marshalIndent(stats)
 				if err != nil {
-					fmt.Println(err)
+					printError(err)
 					continue
 				}
 				fmt.Printf("Queue stats\n%s", statsDump)
-
 			} else {
-				fmt.Printf("peek() has failed!\n Error message:\n%s", result.ReturnValue.GetErrorMessage())
+				fmt.Printf("Peek has failed! Error message: %s\n", result.ReturnValue.GetErrorMessage())
 			}
-
 		case "update":
 			if client == nil {
 				fmt.Println(needAWSMessage)
 				continue
 			}
 			if shipment == nil {
-				fmt.Println("ERROR: 'update <status>' command can be only used in the CLI's App mode. Call first `id <record-id>`")
+				printError("'update <status>' command can be only used in the CLI's App mode. Call first `id <record-id>`")
 				continue
 			}
 			if params == nil {
-				fmt.Println("ERROR: 'update <status>' command requires a new Status parameter to be specified!%n")
+				printError("'update <status>' command requires a new Status parameter to be specified!")
 				continue
 			}
 			statusStr := strings.TrimSpace(strings.ToUpper(params[0]))
 			if statusStr == string(model.StatusEnumReadyToShip) {
-
 				shipment.MarkAsReadyForShipment()
 				rr, err := client.UpdateStatus(ctx, shipment.ID, model.StatusEnumReadyToShip)
 				if err != nil {
-					fmt.Println(err)
+					printError(err)
 					continue
 				}
-				dump, err := json.Marshal(rr)
+				dump, err := marshalIndent(rr)
 				if err != nil {
-					fmt.Println(err)
+					printError(err)
 					continue
 				}
 				fmt.Printf("Status changed result:\n%s\n", dump)
