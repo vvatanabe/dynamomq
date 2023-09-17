@@ -1333,7 +1333,7 @@ func (c *QueueSDKClient) ListExtendedIDs(ctx context.Context, size int32) ([]str
 
 	extendedIDs := make([]string, len(shipments))
 	for i, s := range shipments {
-		extendedIDs[i] = fmt.Sprintf("id: %s, status: %s", s.ID, s.SystemInfo.Status)
+		extendedIDs[i] = fmt.Sprintf("ID: %s, status: %s", s.ID, s.SystemInfo.Status)
 	}
 
 	return extendedIDs, nil
