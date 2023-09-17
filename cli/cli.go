@@ -241,14 +241,15 @@ func Run() {
 				fmt.Println(needAWSMessage)
 				continue
 			}
+			fmt.Println("Creating shipment with IDs:")
 			ids := []string{"A-101", "A-202", "A-303", "A-404"}
 			for _, id := range ids {
 				_, err := client.CreateTestData(ctx, id)
 				if err != nil {
-					fmt.Println(err)
-					continue
+					fmt.Printf("* ID: %s, error: %s\n", id, err)
+				} else {
+					fmt.Printf("* ID: %s\n", id)
 				}
-				fmt.Printf(" >> Creating shipment with ID : %s\n", id)
 			}
 		case "qstat", "stat":
 			if client == nil {
