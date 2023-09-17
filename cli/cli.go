@@ -198,10 +198,9 @@ func Run() {
 				fmt.Println(needAWSMessage)
 				continue
 			}
-
 			ids, err := client.ListExtendedIDs(context.Background(), 10)
 			if err != nil {
-				fmt.Println(err)
+				printError(err)
 				continue
 			}
 			if len(ids) == 0 {
