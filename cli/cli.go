@@ -162,42 +162,37 @@ func Run() {
 				fmt.Println("Going back to standard CLI mode!")
 				continue
 			}
-
 			if client == nil {
 				fmt.Println(needAWSMessage)
 				continue
 			}
-
 			id := params[0]
 			shipment, err = client.Get(context.Background(), id)
 			if err != nil {
 				printError(err)
 				continue
 			}
-
 			dump, err := marshalIndent(shipment)
 			if err != nil {
 				printError(err)
 				continue
 			}
 			fmt.Printf("Shipment's [%s] record dump:\n%s\n", id, dump)
-
 		case "sys", "system":
 			if client == nil {
 				fmt.Println(needAWSMessage)
 				continue
 			}
 			if shipment == nil {
-				fmt.Println("ERROR: `system` or `sys` command can be only used in the CLI's App mode. Call first `id <record-id>`")
+				printError("`system` or `sys` command can be only used in the CLI's App mode. Call first `id <record-id>`")
 				continue
 			}
-
-			dump, err := json.MarshalIndent(shipment.SystemInfo, "", "  ")
+			dump, err := marshalIndent(shipment.SystemInfo)
 			if err != nil {
-				fmt.Println(err)
+				printError(err)
 				continue
 			}
-			fmt.Print(string(dump))
+			fmt.Printf("ID's system info:\n%s\n", dump)
 		case "ls":
 			if client == nil {
 				fmt.Println(needAWSMessage)
@@ -624,6 +619,6 @@ func marshalIndent(v any) ([]byte, error) {
 	return dump, nil
 }
 
-func printError(err error) {
-	fmt.Printf("ERROR: %s\n", err)
+func printError(err any) {
+	fmt.Printf("ERROR: %v\n", err)
 }
