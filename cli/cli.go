@@ -1,15 +1,11 @@
 package cli
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
-	"flag"
 	"fmt"
-	"os"
 	"strings"
 
-	"github.com/vvatanabe/go82f46979/constant"
 	"github.com/vvatanabe/go82f46979/model"
 	"github.com/vvatanabe/go82f46979/sdk"
 )
@@ -17,118 +13,6 @@ import (
 const (
 	needAWSMessage = "Need first to run 'aws' command"
 )
-
-func Run() {
-
-	defer fmt.Printf("... CLI is ending\n\n\n")
-
-	fmt.Println("===========================================================")
-	fmt.Println(">> Welcome to Priority Queueing CLI Tool!")
-	fmt.Println("===========================================================")
-	fmt.Println("for help, enter one of the following: ? or h or help")
-	fmt.Println("all commands in CLIs need to be typed in lowercase")
-	fmt.Println("")
-
-	executionPath, _ := os.Getwd()
-	fmt.Printf("current directory is: [%s]\n", executionPath)
-
-	region := flag.String("region", constant.AwsRegionDefault, "AWS region")
-	credentialsProfile := flag.String("profile", constant.AwsProfileDefault, "AWS credentials profile")
-	tableName := flag.String("table", constant.DefaultTableName, "AWS DynamoDB table name")
-
-	flag.Parse()
-
-	fmt.Printf("profile is: [%s]\n", *credentialsProfile)
-	fmt.Printf("region is: [%s]\n", *region)
-	fmt.Printf("table is: [%s]\n", *tableName)
-	fmt.Println("")
-
-	client, err := sdk.NewBuilder().
-		WithRegion(*region).
-		WithCredentialsProfileName(*credentialsProfile).
-		WithTableName(*tableName).
-		Build(context.Background())
-	if err != nil {
-		fmt.Printf("... AWS session could not be established!: %v\n", err)
-	} else {
-		fmt.Println("... AWS session is properly established!")
-	}
-
-	c := CLI{
-		Region:             region,
-		CredentialsProfile: credentialsProfile,
-		TableName:          tableName,
-		Client:             client,
-		Shipment:           nil,
-	}
-
-	// 1. Create a Scanner using the InputStream available.
-	scanner := bufio.NewScanner(os.Stdin)
-
-	for {
-		// 2. Don't forget to prompt the user
-		if c.Shipment != nil {
-			fmt.Printf("\nID <%s> >> Enter command: ", c.Shipment.ID)
-		} else {
-			fmt.Print("\n>> Enter command: ")
-		}
-
-		// 3. Use the Scanner to read a line of text from the user.
-		scanned := scanner.Scan()
-		if !scanned {
-			break
-		}
-
-		input := scanner.Text()
-		if input == "" {
-			continue
-		}
-
-		input = strings.TrimSpace(input)
-		arr := strings.Split(input, " ")
-		if len(arr) == 0 {
-			continue
-		}
-
-		command := strings.ToLower(arr[0])
-		var params []string = nil
-		if len(arr) > 1 {
-			params = make([]string, len(arr)-1)
-			for i := 1; i < len(arr); i++ {
-				params[i-1] = strings.TrimSpace(arr[i])
-			}
-		}
-
-		if command == "quit" || command == "q" {
-			break
-		}
-
-		// 4. Now, you can do anything with the input string that you need to.
-		// Like, output it to the user.
-		c.Run(context.Background(), command, params)
-	}
-}
-
-func printMessageWithData(message string, data any) {
-	dump, err := marshalIndent(data)
-	if err != nil {
-		printError(err)
-		return
-	}
-	fmt.Printf("%s%s\n", message, dump)
-}
-
-func marshalIndent(v any) ([]byte, error) {
-	dump, err := json.MarshalIndent(v, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-	return dump, nil
-}
-
-func printError(err any) {
-	fmt.Printf("ERROR: %v\n", err)
-}
 
 type CLI struct {
 	Region             *string
@@ -163,59 +47,9 @@ func (c *CLI) Run(ctx context.Context, command string, params []string) {
     > invalid                                     [Remove record from the regular queue to dead letter queue (DLQ) for manual fix]
   > id`)
 	case "aws":
-		if params == nil {
-			fmt.Println("ERROR: 'aws <profile> [<region>] [<table>]' command requires parameter(s) to be specified!")
-			return
-		}
-		awsCredentialsProfile := strings.TrimSpace(params[0])
-		// specify AWS Region
-		if len(params) > 1 {
-			temp := strings.TrimSpace(params[1])
-			c.Region = &temp
-		}
-		// specify DynamoDB table name
-		if len(params) > 2 {
-			temp := strings.TrimSpace(params[2])
-			c.TableName = &temp
-		}
-		if awsCredentialsProfile == "" && (c.CredentialsProfile != nil || *c.CredentialsProfile != "") {
-			awsCredentialsProfile = *c.CredentialsProfile
-		} else {
-			awsCredentialsProfile = "default"
-		}
-		client, err := sdk.NewBuilder().
-			WithRegion(*c.Region).
-			WithCredentialsProfileName(awsCredentialsProfile).
-			WithTableName(*c.TableName).
-			Build(ctx)
-		if err != nil {
-			fmt.Printf(" ... AWS session could not be established!: %v\n", err)
-		} else {
-			c.Client = client
-			fmt.Println(" ... AWS session is properly established!")
-		}
+		c.aws(ctx, params)
 	case "id":
-		if params == nil || len(params) == 0 {
-			c.Shipment = nil
-			fmt.Println("Going back to standard CLI mode!")
-			return
-		}
-		if c.Client == nil {
-			fmt.Println(needAWSMessage)
-			return
-		}
-		id := params[0]
-		var err error
-		c.Shipment, err = c.Client.Get(ctx, id)
-		if err != nil {
-			printError(err)
-			return
-		}
-		if c.Shipment == nil {
-			printError(fmt.Sprintf("Shipment's [%s] not found!", id))
-			return
-		}
-		printMessageWithData(fmt.Sprintf("Shipment's [%s] record dump:\n", id), c.Shipment)
+		c.id(ctx, params)
 	case "sys", "system":
 		if c.Client == nil {
 			fmt.Println(needAWSMessage)
@@ -564,4 +398,83 @@ func (c *CLI) Run(ctx context.Context, command string, params []string) {
 	default:
 		fmt.Println(" ... unrecognized command!")
 	}
+}
+
+func (c *CLI) aws(ctx context.Context, params []string) {
+	if params == nil {
+		fmt.Println("ERROR: 'aws <profile> [<region>] [<table>]' command requires parameter(s) to be specified!")
+		return
+	}
+	awsCredentialsProfile := strings.TrimSpace(params[0])
+	// specify AWS Region
+	if len(params) > 1 {
+		temp := strings.TrimSpace(params[1])
+		c.Region = &temp
+	}
+	// specify DynamoDB table name
+	if len(params) > 2 {
+		temp := strings.TrimSpace(params[2])
+		c.TableName = &temp
+	}
+	if awsCredentialsProfile == "" && (c.CredentialsProfile != nil || *c.CredentialsProfile != "") {
+		awsCredentialsProfile = *c.CredentialsProfile
+	} else {
+		awsCredentialsProfile = "default"
+	}
+	client, err := sdk.NewBuilder().
+		WithRegion(*c.Region).
+		WithCredentialsProfileName(awsCredentialsProfile).
+		WithTableName(*c.TableName).
+		Build(ctx)
+	if err != nil {
+		fmt.Printf(" ... AWS session could not be established!: %v\n", err)
+	} else {
+		c.Client = client
+		fmt.Println(" ... AWS session is properly established!")
+	}
+}
+
+func (c *CLI) id(ctx context.Context, params []string) {
+	if params == nil || len(params) == 0 {
+		c.Shipment = nil
+		fmt.Println("Going back to standard CLI mode!")
+		return
+	}
+	if c.Client == nil {
+		fmt.Println(needAWSMessage)
+		return
+	}
+	id := params[0]
+	var err error
+	c.Shipment, err = c.Client.Get(ctx, id)
+	if err != nil {
+		printError(err)
+		return
+	}
+	if c.Shipment == nil {
+		printError(fmt.Sprintf("Shipment's [%s] not found!", id))
+		return
+	}
+	printMessageWithData(fmt.Sprintf("Shipment's [%s] record dump:\n", id), c.Shipment)
+}
+
+func printMessageWithData(message string, data any) {
+	dump, err := marshalIndent(data)
+	if err != nil {
+		printError(err)
+		return
+	}
+	fmt.Printf("%s%s\n", message, dump)
+}
+
+func marshalIndent(v any) ([]byte, error) {
+	dump, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	return dump, nil
+}
+
+func printError(err any) {
+	fmt.Printf("ERROR: %v\n", err)
 }
