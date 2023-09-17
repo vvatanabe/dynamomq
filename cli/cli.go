@@ -251,26 +251,22 @@ func Run() {
 					fmt.Printf("* ID: %s\n", id)
 				}
 			}
-		case "qstat", "stat":
+		case "qstat", "qstats":
 			if client == nil {
 				fmt.Println(needAWSMessage)
 				continue
 			}
-			if command == "stat" && shipment == nil {
-				fmt.Println("ERROR: 'stat' command can be only used in the ID mode. Use 'qstat' instead!")
-				continue
-			}
 			stats, err := client.GetQueueStats(ctx)
 			if err != nil {
-				fmt.Println(err)
+				printError(err)
 				continue
 			}
-			dump, err := json.MarshalIndent(stats, "", "  ")
+			dump, err := marshalIndent(stats)
 			if err != nil {
-				fmt.Println(err)
+				printError(err)
 				continue
 			}
-			fmt.Print(string(dump))
+			fmt.Printf("Queue status:\n%s\n", dump)
 		case "dlq":
 			if client == nil {
 				fmt.Println(needAWSMessage)
@@ -278,15 +274,15 @@ func Run() {
 			}
 			stats, err := client.GetDLQStats(ctx)
 			if err != nil {
-				fmt.Println(err)
+				printError(err)
 				continue
 			}
-			dump, err := json.MarshalIndent(stats, "", "  ")
+			dump, err := marshalIndent(stats)
 			if err != nil {
-				fmt.Println(err)
+				printError(err)
 				continue
 			}
-			fmt.Print(string(dump))
+			fmt.Printf("DLQ status:\n%s\n", dump)
 		case "reset":
 			if client == nil {
 				fmt.Println(needAWSMessage)
