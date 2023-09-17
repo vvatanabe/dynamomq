@@ -256,8 +256,6 @@ func (c *QueueSDKClient) GetDLQStats(ctx context.Context) (*model.DLQResult, err
 	}, nil
 }
 
-var ErrItemNotFound = errors.New("item not found")
-
 // Get retrieves a shipment record from the database by its ID.
 //
 // If the provided 'id' is empty, it returns nil and an error indicating that
@@ -302,7 +300,7 @@ func (c *QueueSDKClient) Get(ctx context.Context, id string) (*model.Shipment, e
 	}
 
 	if resp.Item == nil {
-		return nil, ErrItemNotFound
+		return nil, nil
 	}
 
 	item := model.Shipment{}
