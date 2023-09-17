@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/vvatanabe/go82f46979/cli"
-	"github.com/vvatanabe/go82f46979/constant"
 	"github.com/vvatanabe/go82f46979/sdk"
 )
 
@@ -26,9 +25,9 @@ func main() {
 	executionPath, _ := os.Getwd()
 	fmt.Printf("current directory is: [%s]\n", executionPath)
 
-	region := flag.String("region", constant.AwsRegionDefault, "AWS region")
-	credentialsProfile := flag.String("profile", constant.AwsProfileDefault, "AWS credentials profile")
-	tableName := flag.String("table", constant.DefaultTableName, "AWS DynamoDB table name")
+	region := flag.String("region", sdk.AwsRegionDefault, "AWS region")
+	credentialsProfile := flag.String("profile", sdk.AwsProfileDefault, "AWS credentials profile")
+	tableName := flag.String("table", sdk.DefaultTableName, "AWS DynamoDB table name")
 
 	flag.Parse()
 

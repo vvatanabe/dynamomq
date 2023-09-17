@@ -14,8 +14,17 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/expression"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
-	"github.com/vvatanabe/go82f46979/constant"
 	"github.com/vvatanabe/go82f46979/model"
+)
+
+const (
+	AwsRegionDefault     = "us-east-1"
+	AwsProfileDefault    = "default"
+	DefaultTableName     = "Shipment"
+	QueueingIndexName    = "queueud-last_updated_timestamp-index"
+	DlqQueueingIndexName = "dlq-last_updated_timestamp-index"
+
+	visibilityTimeoutInMinutes = 1
 )
 
 type QueueSDKClient struct {
@@ -116,7 +125,7 @@ func (c *QueueSDKClient) GetQueueStats(ctx context.Context) (*model.QueueStats, 
 	for {
 		queryInput := &dynamodb.QueryInput{
 			ProjectionExpression:      expr.Projection(),
-			IndexName:                 aws.String(constant.QueueingIndexName),
+			IndexName:                 aws.String(QueueingIndexName),
 			TableName:                 aws.String(c.tableName),
 			ExpressionAttributeNames:  expr.Names(),
 			KeyConditionExpression:    expr.KeyCondition(),
@@ -216,7 +225,7 @@ func (c *QueueSDKClient) GetDLQStats(ctx context.Context) (*model.DLQResult, err
 	for {
 		input := &dynamodb.QueryInput{
 			ProjectionExpression:      expr.Projection(),
-			IndexName:                 aws.String(constant.DlqQueueingIndexName),
+			IndexName:                 aws.String(DlqQueueingIndexName),
 			TableName:                 aws.String(c.tableName),
 			ExpressionAttributeNames:  expr.Names(),
 			ExpressionAttributeValues: expr.Values(),
@@ -759,7 +768,7 @@ func (c *QueueSDKClient) Peek(ctx context.Context) (*model.PeekResult, error) {
 	for {
 		queryRequest := &dynamodb.QueryInput{
 			ProjectionExpression:      expr.Projection(),
-			IndexName:                 aws.String(constant.QueueingIndexName),
+			IndexName:                 aws.String(QueueingIndexName),
 			TableName:                 aws.String(c.tableName),
 			KeyConditionExpression:    expr.KeyCondition(),
 			ExpressionAttributeNames:  expr.Names(),
@@ -791,7 +800,7 @@ func (c *QueueSDKClient) Peek(ctx context.Context) (*model.PeekResult, error) {
 				currentTS := time.Now().UnixMilli()
 
 				// if more than VISIBILITY_TIMEOUT_IN_MINUTES
-				if (currentTS - lastPeekTimeUTC) > (constant.VisibilityTimeoutInMinutes * 60 * 1000) {
+				if (currentTS - lastPeekTimeUTC) > (visibilityTimeoutInMinutes * 60 * 1000) {
 					selectedID = item.ID
 					selectedVersion = item.SystemInfo.Version
 					recordForPeekIsFound = true
@@ -1424,13 +1433,13 @@ func NewBuilder() *Builder {
 
 func (b *Builder) Build(ctx context.Context) (*QueueSDKClient, error) {
 	if b.awsRegion == "" {
-		b.awsRegion = constant.AwsRegionDefault
+		b.awsRegion = AwsRegionDefault
 	}
 	if b.awsCredentialsProfileName == "" {
-		b.awsCredentialsProfileName = constant.AwsProfileDefault
+		b.awsCredentialsProfileName = AwsProfileDefault
 	}
 	if b.tableName == "" {
-		b.tableName = constant.DefaultTableName
+		b.tableName = DefaultTableName
 	}
 	return initialize(ctx, b)
 }
