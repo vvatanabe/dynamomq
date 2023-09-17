@@ -174,6 +174,10 @@ func Run() {
 				printError(err)
 				continue
 			}
+			if shipment == nil {
+				printError(fmt.Sprintf("Shipment's [%s] not found!", id))
+				continue
+			}
 			dump, err := marshalIndent(shipment)
 			if err != nil {
 				printError(err)
