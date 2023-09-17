@@ -216,9 +216,10 @@ func Run() {
 				fmt.Println(needAWSMessage)
 				continue
 			}
-			ids, err := client.ListIDs(context.Background(), 10)
+			ctx := context.Background()
+			ids, err := client.ListIDs(ctx, 10)
 			if err != nil {
-				fmt.Println(err)
+				printError(err)
 				continue
 			}
 			if len(ids) == 0 {
@@ -227,13 +228,12 @@ func Run() {
 			}
 			fmt.Println("List of removed IDs:")
 			for _, id := range ids {
-
-				err := client.Delete(context.Background(), id)
+				err := client.Delete(ctx, id)
 				if err != nil {
-					fmt.Println(err)
+					printError(err)
 					continue
 				}
-				fmt.Printf(" >> Removed ID : %s\n", id)
+				fmt.Printf("* ID: %s\n", id)
 			}
 		case "create-test", "ct":
 			if client == nil {
