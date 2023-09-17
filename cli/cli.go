@@ -20,6 +20,8 @@ const (
 
 func Run() {
 
+	defer fmt.Printf("... CLI is ending\n\n\n")
+
 	fmt.Println("===========================================================")
 	fmt.Println(">> Welcome to Priority Queueing CLI Tool!")
 	fmt.Println("===========================================================")
@@ -99,7 +101,7 @@ func Run() {
 
 		switch command {
 		case "quit", "q":
-			goto EndLoop
+			return
 		case "h", "?", "help":
 			fmt.Println("  ... this is CLI HELP!")
 			fmt.Println("    > aws <profile> [<region>]                      [Establish connection with AWS; Default profile name: `default` and region: `us-east-1`]")
@@ -178,12 +180,7 @@ func Run() {
 				printError(fmt.Sprintf("Shipment's [%s] not found!", id))
 				continue
 			}
-			dump, err := marshalIndent(shipment)
-			if err != nil {
-				printError(err)
-				continue
-			}
-			fmt.Printf("Shipment's [%s] record dump:\n%s\n", id, dump)
+			printMessageWithData(fmt.Sprintf("Shipment's [%s] record dump:\n", id), shipment)
 		case "sys", "system":
 			if client == nil {
 				fmt.Println(needAWSMessage)
@@ -193,12 +190,7 @@ func Run() {
 				printError("`system` or `sys` command can be only used in the CLI's App mode. Call first `id <record-id>`")
 				continue
 			}
-			dump, err := marshalIndent(shipment.SystemInfo)
-			if err != nil {
-				printError(err)
-				continue
-			}
-			fmt.Printf("ID's system info:\n%s\n", dump)
+			printMessageWithData("ID's system info:\n", shipment.SystemInfo)
 		case "ls":
 			if client == nil {
 				fmt.Println(needAWSMessage)
@@ -265,12 +257,7 @@ func Run() {
 				printError(err)
 				continue
 			}
-			dump, err := marshalIndent(stats)
-			if err != nil {
-				printError(err)
-				continue
-			}
-			fmt.Printf("Queue status:\n%s\n", dump)
+			printMessageWithData("Queue status:\n", stats)
 		case "dlq":
 			if client == nil {
 				fmt.Println(needAWSMessage)
@@ -281,12 +268,7 @@ func Run() {
 				printError(err)
 				continue
 			}
-			dump, err := marshalIndent(stats)
-			if err != nil {
-				printError(err)
-				continue
-			}
-			fmt.Printf("DLQ status:\n%s\n", dump)
+			printMessageWithData("DLQ status:\n", stats)
 		case "reset":
 			if client == nil {
 				fmt.Println(needAWSMessage)
@@ -302,12 +284,7 @@ func Run() {
 				printError(err)
 				continue
 			}
-			dump, err := marshalIndent(shipment.SystemInfo)
-			if err != nil {
-				printError(err)
-				continue
-			}
-			fmt.Printf("Reseted system info:\n%s\n", dump)
+			printMessageWithData("Reset system info:\n", shipment.SystemInfo)
 		case "ready":
 			if client == nil {
 				fmt.Println(needAWSMessage)
@@ -324,12 +301,7 @@ func Run() {
 				printError(err)
 				continue
 			}
-			dump, err := marshalIndent(shipment.SystemInfo)
-			if err != nil {
-				printError(err)
-				continue
-			}
-			fmt.Printf("Ready system info:\n%s\n", dump)
+			printMessageWithData("Ready system info:\n", shipment.SystemInfo)
 		case "done":
 			if client == nil {
 				fmt.Println(needAWSMessage)
@@ -362,18 +334,17 @@ func Run() {
 				printError(err)
 				continue
 			}
+			if shipment == nil {
+				printError(fmt.Sprintf("Shipment's [%s] not found!", shipment.ID))
+				continue
+			}
 			fmt.Printf("Processing for ID [%s] is completed successfully! Remove from the queue!\n", shipment.ID)
 			stats, err := client.GetQueueStats(ctx)
 			if err != nil {
 				printError(err)
 				continue
 			}
-			dump, err := marshalIndent(stats)
-			if err != nil {
-				printError(err)
-				continue
-			}
-			fmt.Printf("Queue status:\n%s\n", dump)
+			printMessageWithData("Queue status:\n", stats)
 		case "fail":
 			if client == nil {
 				fmt.Println(needAWSMessage)
@@ -407,12 +378,7 @@ func Run() {
 				printError(err)
 				continue
 			}
-			dump, err := marshalIndent(stats)
-			if err != nil {
-				printError(err)
-				continue
-			}
-			fmt.Printf("Queue status:\n%s\n", dump)
+			printMessageWithData("Queue status:\n", stats)
 		case "invalid":
 			if client == nil {
 				fmt.Println(needAWSMessage)
@@ -437,12 +403,7 @@ func Run() {
 				printError(err)
 				continue
 			}
-			dump, err := marshalIndent(stats)
-			if err != nil {
-				printError(err)
-				continue
-			}
-			fmt.Printf("Queue status:\n%s\n", dump)
+			printMessageWithData("Queue status:\n", stats)
 		case "data":
 			if client == nil {
 				fmt.Println(needAWSMessage)
@@ -452,12 +413,7 @@ func Run() {
 				printError("'data' command can be only used in the CLI's App mode. Call first `id <record-id>`")
 				continue
 			}
-			dump, err := marshalIndent(shipment.Data)
-			if err != nil {
-				printError(err)
-				continue
-			}
-			fmt.Printf("Data info:\n%s\n", dump)
+			printMessageWithData("Data info:\n", shipment.Data)
 		case "info":
 			if client == nil {
 				fmt.Println(needAWSMessage)
@@ -467,12 +423,7 @@ func Run() {
 				printError("'info' command can be only used in the CLI's App mode. Call first `id <record-id>`")
 				continue
 			}
-			dump, err := marshalIndent(shipment)
-			if err != nil {
-				printError(err)
-				continue
-			}
-			fmt.Printf("Record's dump:\n%s\n", dump)
+			printMessageWithData("Record's dump:\n", shipment)
 		case "enqueue", "en":
 			if client == nil {
 				fmt.Println(needAWSMessage)
@@ -508,25 +459,15 @@ func Run() {
 			}
 			shipment = rr.Shipment
 			if rr.IsSuccessful() {
-				sysDump, err := marshalIndent(shipment.SystemInfo)
-				if err != nil {
-					printError(err)
-					continue
-				}
-				fmt.Printf("Record's system info:\n%s\n", sysDump)
+				printMessageWithData("Record's system info:\n", shipment.SystemInfo)
 				stats, err := client.GetQueueStats(ctx)
 				if err != nil {
 					printError(err)
 					continue
 				}
-				statsDump, err := marshalIndent(stats)
-				if err != nil {
-					printError(err)
-					continue
-				}
-				fmt.Printf("Queue stats:\n%s\n", statsDump)
+				printMessageWithData("Queue stats:\n", stats)
 			} else {
-				fmt.Printf("Enqueue has failed! Error message: %s\n", rr.GetErrorMessage())
+				printError(fmt.Sprintf("Enqueue has failed! message: %s", rr.GetErrorMessage()))
 			}
 		case "peek":
 			if client == nil {
@@ -537,33 +478,24 @@ func Run() {
 				printError("'peek' command can be only used in the CLI's App mode. Call first `id <record-id>`")
 				continue
 			}
-			result, err := client.Peek(ctx)
+			rr, err := client.Peek(ctx)
 			if err != nil {
 				printError(err)
 				continue
 			}
-			if result.IsSuccessful() {
-				shipment = result.PeekedShipmentObject
-				sysDump, err := marshalIndent(shipment.SystemInfo)
-				if err != nil {
-					printError(err)
-					continue
-				}
-				fmt.Printf("Peek was successful ... record peeked is: [%s]\n%s\n", shipment.ID, sysDump)
-
+			if rr.IsSuccessful() {
+				shipment = rr.PeekedShipmentObject
+				printMessageWithData(
+					fmt.Sprintf("Peek was successful ... record peeked is: [%s]\n", shipment.ID),
+					shipment.SystemInfo)
 				stats, err := client.GetQueueStats(ctx)
 				if err != nil {
 					printError(err)
 					continue
 				}
-				statsDump, err := marshalIndent(stats)
-				if err != nil {
-					printError(err)
-					continue
-				}
-				fmt.Printf("Queue stats\n%s", statsDump)
+				printMessageWithData("Queue stats:\n", stats)
 			} else {
-				fmt.Printf("Peek has failed! Error message: %s\n", result.ReturnValue.GetErrorMessage())
+				printError(fmt.Sprintf("Peek has failed! message: %s", rr.GetErrorMessage()))
 			}
 		case "update":
 			if client == nil {
@@ -586,12 +518,11 @@ func Run() {
 					printError(err)
 					continue
 				}
-				dump, err := marshalIndent(rr)
-				if err != nil {
-					printError(err)
+				if !rr.IsSuccessful() {
+					printError(rr.GetErrorMessage())
 					continue
 				}
-				fmt.Printf("Status changed result:\n%s\n", dump)
+				printMessageWithData("Status changed result:\n", rr)
 			} else {
 				fmt.Printf("Status change [%s] is not applied!\n", strings.TrimSpace(params[0]))
 			}
@@ -600,9 +531,15 @@ func Run() {
 		}
 
 	}
-EndLoop:
+}
 
-	fmt.Printf(" ... CLI is ending\n\n\n")
+func printMessageWithData(message string, data any) {
+	dump, err := marshalIndent(data)
+	if err != nil {
+		printError(err)
+		return
+	}
+	fmt.Printf("%s%s\n", message, dump)
 }
 
 func marshalIndent(v any) ([]byte, error) {
