@@ -164,7 +164,7 @@ func (c *CLI) Run(ctx context.Context, command string, params []string) {
 			return
 		}
 		c.Shipment.ResetSystemInfo()
-		c.Shipment.SystemInfo.Status = model.StatusEnumReadyToShip
+		c.Shipment.SystemInfo.Status = model.StatusReadyToShip
 		err := c.Client.Put(ctx, c.Shipment)
 		if err != nil {
 			printError(err)
@@ -180,7 +180,7 @@ func (c *CLI) Run(ctx context.Context, command string, params []string) {
 			printError("'done' command can be only used in the CLI's App mode. Call first `id <record-id>`")
 			return
 		}
-		rr, err := c.Client.UpdateStatus(ctx, c.Shipment.ID, model.StatusEnumCompleted)
+		rr, err := c.Client.UpdateStatus(ctx, c.Shipment.ID, model.StatusCompleted)
 		if err != nil {
 			printError(err)
 			return
@@ -312,9 +312,9 @@ func (c *CLI) Run(ctx context.Context, command string, params []string) {
 			return
 		}
 		// convert under_construction to ready to ship
-		if shipment.SystemInfo.Status == model.StatusEnumUnderConstruction {
+		if shipment.SystemInfo.Status == model.StatusUnderConstruction {
 			shipment.ResetSystemInfo()
-			shipment.SystemInfo.Status = model.StatusEnumReadyToShip
+			shipment.SystemInfo.Status = model.StatusReadyToShip
 			err = c.Client.Put(ctx, shipment)
 			if err != nil {
 				printError(err)
@@ -380,9 +380,9 @@ func (c *CLI) Run(ctx context.Context, command string, params []string) {
 			return
 		}
 		statusStr := strings.TrimSpace(strings.ToUpper(params[0]))
-		if statusStr == string(model.StatusEnumReadyToShip) {
+		if statusStr == string(model.StatusReadyToShip) {
 			c.Shipment.MarkAsReadyForShipment()
-			rr, err := c.Client.UpdateStatus(ctx, c.Shipment.ID, model.StatusEnumReadyToShip)
+			rr, err := c.Client.UpdateStatus(ctx, c.Shipment.ID, model.StatusReadyToShip)
 			if err != nil {
 				printError(err)
 				return

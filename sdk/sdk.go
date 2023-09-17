@@ -187,7 +187,7 @@ func (c *QueueSDKClient) GetQueueStats(ctx context.Context) (*model.QueueStats, 
 //	ctx: The context for the request, used for timeout and cancellation.
 //
 // Returns:
-//   - A pointer to a DLQResult object containing the calculated statistics.
+//   - A pointer to a DLQStats object containing the calculated statistics.
 //   - An error if there's any issue querying the database or processing the results.
 //
 // Note: The function uses pagination to query the DynamoDB table and will continue querying
@@ -208,7 +208,7 @@ func (c *QueueSDKClient) GetQueueStats(ctx context.Context) (*model.QueueStats, 
 //	    ":value": {"S": "1"}
 //	  }
 //	}
-func (c *QueueSDKClient) GetDLQStats(ctx context.Context) (*model.DLQResult, error) {
+func (c *QueueSDKClient) GetDLQStats(ctx context.Context) (*model.DLQStats, error) {
 	var totalDLQSize int
 	var lastEvaluatedKey map[string]types.AttributeValue
 
@@ -259,7 +259,7 @@ func (c *QueueSDKClient) GetDLQStats(ctx context.Context) (*model.DLQResult, err
 		}
 	}
 
-	return &model.DLQResult{
+	return &model.DLQStats{
 		First100IDsInQueue: listBANs,
 		TotalRecordsInDLQ:  totalDLQSize,
 	}, nil
@@ -435,7 +435,7 @@ func (c *QueueSDKClient) PutImpl(ctx context.Context, shipment *model.Shipment, 
 //   - newStatus: The new status to set for the record.
 //
 // Returns:
-//   - A pointer to a ReturnResult object containing the result of the update operation.
+//   - A pointer to a Result object containing the result of the update operation.
 //   - An error if one occurs during the process. A nil error indicates successful completion.
 //
 // Example JSON DynamoDB API Request:
@@ -470,14 +470,14 @@ func (c *QueueSDKClient) PutImpl(ctx context.Context, shipment *model.Shipment, 
 //	 "ConditionExpression": "#sys.#v = :v",
 //	 "ReturnValues": "ALL_NEW"
 //	}
-func (c *QueueSDKClient) UpdateStatus(ctx context.Context, id string, newStatus model.StatusEnum) (*model.ReturnResult, error) {
-	result := &model.ReturnResult{
+func (c *QueueSDKClient) UpdateStatus(ctx context.Context, id string, newStatus model.Status) (*model.Result, error) {
+	result := &model.Result{
 		ID: id,
 	}
 
 	if id == "" {
 		fmt.Println("ERROR: ID is not provided ... cannot retrieve the record!")
-		result.ReturnValue = model.ReturnStatusEnumFailedIDNotFound
+		result.ReturnValue = model.ReturnStatusFailedIDNotFound
 		return result, nil
 	}
 
@@ -488,7 +488,7 @@ func (c *QueueSDKClient) UpdateStatus(ctx context.Context, id string, newStatus 
 
 	if shipment == nil {
 		fmt.Printf("ERROR: Customer with ID [%s] cannot be found!\n", id)
-		result.ReturnValue = model.ReturnStatusEnumFailedIDNotFound
+		result.ReturnValue = model.ReturnStatusFailedIDNotFound
 		return result, nil
 	}
 
@@ -500,7 +500,7 @@ func (c *QueueSDKClient) UpdateStatus(ctx context.Context, id string, newStatus 
 	if prevStatus == newStatus {
 		result.Version = version
 		result.LastUpdatedTimestamp = shipment.SystemInfo.LastUpdatedTimestamp
-		result.ReturnValue = model.ReturnStatusEnumSUCCESS
+		result.ReturnValue = model.ReturnStatusSUCCESS
 		return result, nil
 	}
 
@@ -541,7 +541,7 @@ func (c *QueueSDKClient) UpdateStatus(ctx context.Context, id string, newStatus 
 		fmt.Printf("updateFullyConstructedFlag() - failed to update multiple attributes in %s\n", c.tableName)
 		fmt.Println(err)
 
-		result.ReturnValue = model.ReturnStatusEnumFailedDynamoError
+		result.ReturnValue = model.ReturnStatusFailedDynamoError
 		return result, nil
 	}
 
@@ -555,7 +555,7 @@ func (c *QueueSDKClient) UpdateStatus(ctx context.Context, id string, newStatus 
 	result.Version = item.SystemInfo.Version
 	result.LastUpdatedTimestamp = item.SystemInfo.LastUpdatedTimestamp
 
-	result.ReturnValue = model.ReturnStatusEnumSUCCESS
+	result.ReturnValue = model.ReturnStatusSUCCESS
 	return result, nil
 }
 
@@ -621,7 +621,7 @@ func (c *QueueSDKClient) Enqueue(ctx context.Context, id string) (*model.Enqueue
 
 	if id == "" {
 		fmt.Println("ID is not provided ... cannot proceed with the Enqueue() operation!")
-		result.ReturnValue = model.ReturnStatusEnumFailedIDNotProvided
+		result.ReturnValue = model.ReturnStatusFailedIDNotProvided
 		return result, nil
 	}
 
@@ -632,7 +632,7 @@ func (c *QueueSDKClient) Enqueue(ctx context.Context, id string) (*model.Enqueue
 
 	if retrievedShipment == nil {
 		fmt.Printf("Shipment with ID [%s] cannot be found!\n", id)
-		result.ReturnValue = model.ReturnStatusEnumFailedIDNotProvided
+		result.ReturnValue = model.ReturnStatusFailedIDNotProvided
 		return result, nil
 	}
 
@@ -642,13 +642,13 @@ func (c *QueueSDKClient) Enqueue(ctx context.Context, id string) (*model.Enqueue
 	result.Version = version
 	result.LastUpdatedTimestamp = retrievedShipment.SystemInfo.LastUpdatedTimestamp
 
-	if result.Status == model.StatusEnumUnderConstruction {
-		result.ReturnValue = model.ReturnStatusEnumFailedRecordNotConstructed
+	if result.Status == model.StatusUnderConstruction {
+		result.ReturnValue = model.ReturnStatusFailedRecordNotConstructed
 		return result, nil
 	}
 
-	if result.Status != model.StatusEnumReadyToShip {
-		result.ReturnValue = model.ReturnStatusEnumFailedIllegalState
+	if result.Status != model.StatusReadyToShip {
+		result.ReturnValue = model.ReturnStatusFailedIllegalState
 		return result, nil
 	}
 
@@ -678,7 +678,7 @@ func (c *QueueSDKClient) Enqueue(ctx context.Context, id string) (*model.Enqueue
 			expression.Value(now.Format(time.RFC3339)),
 		).Set(
 			expression.Name("system_info.status"),
-			expression.Value(model.StatusEnumReadyToShip),
+			expression.Value(model.StatusReadyToShip),
 		)).
 		WithCondition(expression.Name("system_info.version").Equal(expression.Value(version))).
 		Build()
@@ -704,7 +704,7 @@ func (c *QueueSDKClient) Enqueue(ctx context.Context, id string) (*model.Enqueue
 	if err != nil {
 		fmt.Printf("enqueue() - failed to update multiple attributes in %s", c.tableName)
 		fmt.Println(err)
-		result.ReturnValue = model.ReturnStatusEnumFailedDynamoError
+		result.ReturnValue = model.ReturnStatusFailedDynamoError
 		return result, nil
 	}
 
@@ -724,7 +724,7 @@ func (c *QueueSDKClient) Enqueue(ctx context.Context, id string) (*model.Enqueue
 	}
 
 	result.Shipment = shipment
-	result.ReturnValue = model.ReturnStatusEnumSUCCESS
+	result.ReturnValue = model.ReturnStatusSUCCESS
 
 	return result, nil
 }
@@ -828,7 +828,7 @@ func (c *QueueSDKClient) Peek(ctx context.Context) (*model.PeekResult, error) {
 	result := model.NewPeekResult()
 
 	if selectedID == "" {
-		result.ReturnValue = model.ReturnStatusEnumFailedEmptyQueue
+		result.ReturnValue = model.ReturnStatusFailedEmptyQueue
 		return result, nil
 	}
 
@@ -852,7 +852,7 @@ func (c *QueueSDKClient) Peek(ctx context.Context) (*model.PeekResult, error) {
 			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(now.Format(time.RFC3339))).
 			Set(expression.Name("system_info.queue_peek_timestamp"), expression.Value(now.Format(time.RFC3339))).
 			Set(expression.Name("system_info.peek_utc_timestamp"), expression.Value(tsUTC)).
-			Set(expression.Name("system_info.status"), expression.Value(model.StatusEnumProcessingShipment))).
+			Set(expression.Name("system_info.status"), expression.Value(model.StatusProcessingShipment))).
 		WithCondition(expression.Name("system_info.version").Equal(expression.Value(selectedVersion))).
 		Build()
 	if err != nil {
@@ -877,7 +877,7 @@ func (c *QueueSDKClient) Peek(ctx context.Context) (*model.PeekResult, error) {
 	if err != nil {
 		fmt.Printf("peek() - failed to update multiple attributes in %s\n", c.tableName)
 		fmt.Println(err)
-		result.ReturnValue = model.ReturnStatusEnumFailedDynamoError
+		result.ReturnValue = model.ReturnStatusFailedDynamoError
 		return result, nil
 	}
 
@@ -901,7 +901,7 @@ func (c *QueueSDKClient) Peek(ctx context.Context) (*model.PeekResult, error) {
 	result.Status = item.SystemInfo.Status
 	result.TimestampMillisUTC = item.SystemInfo.PeekUTCTimestamp
 
-	result.ReturnValue = model.ReturnStatusEnumSUCCESS
+	result.ReturnValue = model.ReturnStatusSUCCESS
 	return result, nil
 }
 
@@ -922,7 +922,7 @@ func (c *QueueSDKClient) Dequeue(ctx context.Context) (*model.DequeueResult, err
 
 	var dequeueResult *model.DequeueResult
 
-	if peekResult.ReturnValue == model.ReturnStatusEnumSUCCESS {
+	if peekResult.ReturnValue == model.ReturnStatusSUCCESS {
 		ID := peekResult.ID
 		removeResult, err := c.Remove(ctx, ID)
 		if err != nil {
@@ -936,7 +936,7 @@ func (c *QueueSDKClient) Dequeue(ctx context.Context) (*model.DequeueResult, err
 			dequeueResult.DequeuedShipmentObject = peekResult.PeekedShipmentObject
 		}
 	} else {
-		dequeueResult = model.NewDequeueResultFromReturnResult(peekResult.ReturnResult)
+		dequeueResult = model.NewDequeueResultFromReturnResult(peekResult.Result)
 	}
 
 	return dequeueResult, nil
@@ -950,15 +950,15 @@ func (c *QueueSDKClient) Dequeue(ctx context.Context) (*model.DequeueResult, err
 //   - id: string is the unique identifier of the item to be removed.
 //
 // Returns:
-//   - *model.ReturnResult: the result of the remove operation, containing information about the removed item's status.
+//   - *model.Result: the result of the remove operation, containing information about the removed item's status.
 //   - error: any error encountered during the operation, especially related to data marshaling and database interactions.
-//     If successful and the item is just not found, the error is nil but the ReturnResult reflects the status.
-func (c *QueueSDKClient) Remove(ctx context.Context, id string) (*model.ReturnResult, error) {
-	result := &model.ReturnResult{ID: id}
+//     If successful and the item is just not found, the error is nil but the Result reflects the status.
+func (c *QueueSDKClient) Remove(ctx context.Context, id string) (*model.Result, error) {
+	result := &model.Result{ID: id}
 
 	shipment, err := c.Get(ctx, id)
 	if shipment == nil {
-		result.ReturnValue = model.ReturnStatusEnumFailedIDNotFound
+		result.ReturnValue = model.ReturnStatusFailedIDNotFound
 		return result, nil
 	}
 
@@ -999,7 +999,7 @@ func (c *QueueSDKClient) Remove(ctx context.Context, id string) (*model.ReturnRe
 	if err != nil {
 		fmt.Printf("remove() - failed to update multiple attributes in %s\n", c.tableName)
 		fmt.Println(err)
-		result.ReturnValue = model.ReturnStatusEnumFailedDynamoError
+		result.ReturnValue = model.ReturnStatusFailedDynamoError
 		return result, nil
 	}
 
@@ -1013,7 +1013,7 @@ func (c *QueueSDKClient) Remove(ctx context.Context, id string) (*model.ReturnRe
 	result.Status = item.SystemInfo.Status
 	result.LastUpdatedTimestamp = item.SystemInfo.LastUpdatedTimestamp
 
-	result.ReturnValue = model.ReturnStatusEnumSUCCESS
+	result.ReturnValue = model.ReturnStatusSUCCESS
 	return result, nil
 }
 
@@ -1027,13 +1027,13 @@ func (c *QueueSDKClient) Remove(ctx context.Context, id string) (*model.ReturnRe
 //
 // Returns:
 //
-//	*model.ReturnResult: A pointer to a ReturnResult object that contains
+//	*model.Result: A pointer to a Result object that contains
 //	information about the result of the restore operation, such as the version,
 //	status, and last updated timestamp.
 //
 //	error: An error that describes any issues that occurred during the
 //	restore operation. If the operation is successful, this will be nil.
-func (c *QueueSDKClient) Restore(ctx context.Context, id string) (*model.ReturnResult, error) {
+func (c *QueueSDKClient) Restore(ctx context.Context, id string) (*model.Result, error) {
 	result := model.NewReturnResultWithID(id)
 
 	shipment, err := c.Get(ctx, id)
@@ -1041,7 +1041,7 @@ func (c *QueueSDKClient) Restore(ctx context.Context, id string) (*model.ReturnR
 		return nil, err
 	}
 	if shipment == nil || err != nil {
-		result.ReturnValue = model.ReturnStatusEnumFailedIDNotFound
+		result.ReturnValue = model.ReturnStatusFailedIDNotFound
 		return result, nil
 	}
 
@@ -1057,7 +1057,7 @@ func (c *QueueSDKClient) Restore(ctx context.Context, id string) (*model.ReturnR
 			Set(expression.Name("last_updated_timestamp"), expression.Value(now.Format(time.RFC3339))).
 			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(now.Format(time.RFC3339))).
 			Set(expression.Name("system_info.queue_add_timestamp"), expression.Value(now.Format(time.RFC3339))).
-			Set(expression.Name("system_info.status"), expression.Value(model.StatusEnumReadyToShip))).
+			Set(expression.Name("system_info.status"), expression.Value(model.StatusReadyToShip))).
 		WithCondition(expression.Name("system_info.version").Equal(expression.Value(shipment.SystemInfo.Version))).
 		Build()
 	if err != nil {
@@ -1082,7 +1082,7 @@ func (c *QueueSDKClient) Restore(ctx context.Context, id string) (*model.ReturnR
 	if err != nil {
 		fmt.Printf("restore() - failed to update multiple attributes in %s\n", c.tableName)
 		fmt.Println(err)
-		result.ReturnValue = model.ReturnStatusEnumFailedDynamoError
+		result.ReturnValue = model.ReturnStatusFailedDynamoError
 		return result, nil
 	}
 
@@ -1096,7 +1096,7 @@ func (c *QueueSDKClient) Restore(ctx context.Context, id string) (*model.ReturnR
 	result.Status = item.SystemInfo.Status
 	result.LastUpdatedTimestamp = item.SystemInfo.LastUpdatedTimestamp
 
-	result.ReturnValue = model.ReturnStatusEnumSUCCESS
+	result.ReturnValue = model.ReturnStatusSUCCESS
 	return result, nil
 }
 
@@ -1112,15 +1112,15 @@ func (c *QueueSDKClient) Restore(ctx context.Context, id string) (*model.ReturnR
 //	id: The ID of the record that needs to be sent to the DLQ.
 //
 // Returns:
-//   - *model.ReturnResult: A pointer to the result structure which contains details like Version, Status, LastUpdatedTimestamp,
+//   - *model.Result: A pointer to the result structure which contains details like Version, Status, LastUpdatedTimestamp,
 //     and ReturnValue indicating the result of the operation (e.g., success, failed due to ID not found, etc.).
 //   - error: Non-nil if there was an error during the operation.
-func (c *QueueSDKClient) SendToDLQ(ctx context.Context, id string) (*model.ReturnResult, error) {
+func (c *QueueSDKClient) SendToDLQ(ctx context.Context, id string) (*model.Result, error) {
 	result := model.NewReturnResultWithID(id)
 
 	shipment, err := c.Get(ctx, id)
 	if err != nil || shipment == nil {
-		result.ReturnValue = model.ReturnStatusEnumFailedIDNotFound
+		result.ReturnValue = model.ReturnStatusFailedIDNotFound
 		return result, nil
 	}
 
@@ -1136,7 +1136,7 @@ func (c *QueueSDKClient) SendToDLQ(ctx context.Context, id string) (*model.Retur
 			Set(expression.Name("last_updated_timestamp"), expression.Value(now.Format(time.RFC3339))).
 			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(now.Format(time.RFC3339))).
 			Set(expression.Name("system_info.dlq_add_timestamp"), expression.Value(now.Format(time.RFC3339))).
-			Set(expression.Name("system_info.status"), expression.Value(model.StatusEnumInDLQ))).
+			Set(expression.Name("system_info.status"), expression.Value(model.StatusInDLQ))).
 		WithCondition(expression.And(
 			expression.Name("system_info.version").Equal(expression.Value(shipment.SystemInfo.Version)),
 			expression.Name("system_info.queued").Equal(expression.Value(1)),
@@ -1164,7 +1164,7 @@ func (c *QueueSDKClient) SendToDLQ(ctx context.Context, id string) (*model.Retur
 	if err != nil {
 		fmt.Printf("SendToDLQ() - failed to update multiple attributes in %s\n", c.tableName)
 		fmt.Println(err)
-		result.ReturnValue = model.ReturnStatusEnumFailedDynamoError
+		result.ReturnValue = model.ReturnStatusFailedDynamoError
 		return result, nil
 	}
 
@@ -1178,7 +1178,7 @@ func (c *QueueSDKClient) SendToDLQ(ctx context.Context, id string) (*model.Retur
 	result.Status = item.SystemInfo.Status
 	result.LastUpdatedTimestamp = item.SystemInfo.LastUpdatedTimestamp
 
-	result.ReturnValue = model.ReturnStatusEnumSUCCESS
+	result.ReturnValue = model.ReturnStatusSUCCESS
 	return result, nil
 }
 
@@ -1192,20 +1192,20 @@ func (c *QueueSDKClient) SendToDLQ(ctx context.Context, id string) (*model.Retur
 // id: The identifier of the item to update.
 //
 // Returns:
-// *model.ReturnResult: A result object that contains updated values and status of the operation.
-// - If the given 'id' does not exist, the 'ReturnValue' of the result will be set to 'ReturnStatusEnumFailedIDNotFound'.
-// - If the operation succeeds in updating the item, the 'ReturnValue' will be set to 'ReturnStatusEnumSUCCESS'.
-// - If there is an error while updating in DynamoDB, the 'ReturnValue' will be set to 'ReturnStatusEnumFailedDynamoError'.
+// *model.Result: A result object that contains updated values and status of the operation.
+// - If the given 'id' does not exist, the 'ReturnValue' of the result will be set to 'ReturnStatusFailedIDNotFound'.
+// - If the operation succeeds in updating the item, the 'ReturnValue' will be set to 'ReturnStatusSUCCESS'.
+// - If there is an error while updating in DynamoDB, the 'ReturnValue' will be set to 'ReturnStatusFailedDynamoError'.
 // error: An error object indicating any error that occurred during the operation.
 // - If there's an error while building the DynamoDB expression, this error is returned.
 // - If there's an error unmarshalling the DynamoDB response, this error is returned.
 // Otherwise, if the operation succeeds, the error will be 'nil'.
-func (c *QueueSDKClient) Touch(ctx context.Context, id string) (*model.ReturnResult, error) {
+func (c *QueueSDKClient) Touch(ctx context.Context, id string) (*model.Result, error) {
 	result := model.NewReturnResultWithID(id)
 
 	shipment, err := c.Get(ctx, id)
 	if err != nil || shipment == nil {
-		result.ReturnValue = model.ReturnStatusEnumFailedIDNotFound
+		result.ReturnValue = model.ReturnStatusFailedIDNotFound
 		return result, nil
 	}
 
@@ -1239,7 +1239,7 @@ func (c *QueueSDKClient) Touch(ctx context.Context, id string) (*model.ReturnRes
 	if err != nil {
 		fmt.Printf("Touch() - failed to update multiple attributes in %s\n", c.tableName)
 		fmt.Println(err)
-		result.ReturnValue = model.ReturnStatusEnumFailedDynamoError
+		result.ReturnValue = model.ReturnStatusFailedDynamoError
 		return result, nil
 	}
 
@@ -1253,7 +1253,7 @@ func (c *QueueSDKClient) Touch(ctx context.Context, id string) (*model.ReturnRes
 	result.Status = item.SystemInfo.Status
 	result.LastUpdatedTimestamp = item.SystemInfo.LastUpdatedTimestamp
 
-	result.ReturnValue = model.ReturnStatusEnumSUCCESS
+	result.ReturnValue = model.ReturnStatusSUCCESS
 	return result, nil
 }
 
