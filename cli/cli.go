@@ -143,7 +143,6 @@ func Run() {
 				awsCredentialsProfile = *credentialsProfile
 			} else {
 				awsCredentialsProfile = "default"
-
 			}
 
 			client, err = sdk.NewBuilder().
@@ -166,21 +165,23 @@ func Run() {
 
 			if client == nil {
 				fmt.Println(needAWSMessage)
-			} else {
-				id := params[0]
-				shipment, err = client.Get(context.Background(), id)
-				if err != nil {
-					fmt.Printf("ERROR: %s\n", err)
-					continue
-				}
-
-				dump, err := json.MarshalIndent(shipment, "", "  ")
-				if err != nil {
-					fmt.Printf("ERROR: %s\n", err)
-					continue
-				}
-				fmt.Printf("Shipment's [%s] record dump:\n%s\n", id, dump)
+				continue
 			}
+
+			id := params[0]
+			shipment, err = client.Get(context.Background(), id)
+			if err != nil {
+				printError(err)
+				continue
+			}
+
+			dump, err := marshalIndent(shipment)
+			if err != nil {
+				printError(err)
+				continue
+			}
+			fmt.Printf("Shipment's [%s] record dump:\n%s\n", id, dump)
+
 		case "sys", "system":
 			if client == nil {
 				fmt.Println(needAWSMessage)
@@ -613,4 +614,16 @@ func Run() {
 EndLoop:
 
 	fmt.Printf(" ... CLI is ending\n\n\n")
+}
+
+func marshalIndent(v any) ([]byte, error) {
+	dump, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	return dump, nil
+}
+
+func printError(err error) {
+	fmt.Printf("ERROR: %s\n", err)
 }
