@@ -92,6 +92,8 @@ func Run() {
 			}
 		}
 
+		ctx := context.Background()
+
 		// 4. Now, you can do anything with the input string that you need to.
 		// Like, output it to the user.
 
@@ -149,7 +151,7 @@ func Run() {
 				WithRegion(*region).
 				WithCredentialsProfileName(*credentialsProfile).
 				WithTableName(*tableName).
-				Build(context.Background())
+				Build(ctx)
 			if err != nil {
 				fmt.Printf(" ... AWS session could not be established!: %v\n", err)
 			} else {
@@ -167,7 +169,7 @@ func Run() {
 				continue
 			}
 			id := params[0]
-			shipment, err = client.Get(context.Background(), id)
+			shipment, err = client.Get(ctx, id)
 			if err != nil {
 				printError(err)
 				continue
@@ -198,7 +200,7 @@ func Run() {
 				fmt.Println(needAWSMessage)
 				continue
 			}
-			ids, err := client.ListExtendedIDs(context.Background(), 10)
+			ids, err := client.ListExtendedIDs(ctx, 10)
 			if err != nil {
 				printError(err)
 				continue
@@ -216,7 +218,6 @@ func Run() {
 				fmt.Println(needAWSMessage)
 				continue
 			}
-			ctx := context.Background()
 			ids, err := client.ListIDs(ctx, 10)
 			if err != nil {
 				printError(err)
@@ -240,7 +241,6 @@ func Run() {
 				fmt.Println(needAWSMessage)
 				continue
 			}
-			ctx := context.Background()
 			ids := []string{"A-101", "A-202", "A-303", "A-404"}
 			for _, id := range ids {
 				_, err := client.CreateTestData(ctx, id)
@@ -259,7 +259,7 @@ func Run() {
 				fmt.Println("ERROR: 'stat' command can be only used in the ID mode. Use 'qstat' instead!")
 				continue
 			}
-			stats, err := client.GetQueueStats(context.Background())
+			stats, err := client.GetQueueStats(ctx)
 			if err != nil {
 				fmt.Println(err)
 				continue
@@ -275,7 +275,7 @@ func Run() {
 				fmt.Println(needAWSMessage)
 				continue
 			}
-			stats, err := client.GetDLQStats(context.Background())
+			stats, err := client.GetDLQStats(ctx)
 			if err != nil {
 				fmt.Println(err)
 				continue
@@ -296,7 +296,7 @@ func Run() {
 				continue
 			}
 			shipment.ResetSystemInfo()
-			err := client.Put(context.Background(), shipment)
+			err := client.Put(ctx, shipment)
 			if err != nil {
 				fmt.Println(err)
 				continue
@@ -318,7 +318,7 @@ func Run() {
 			}
 			shipment.ResetSystemInfo()
 			shipment.SystemInfo.Status = model.StatusEnumReadyToShip
-			err := client.Put(context.Background(), shipment)
+			err := client.Put(ctx, shipment)
 			if err != nil {
 				fmt.Println(err)
 				continue
@@ -338,7 +338,6 @@ func Run() {
 				fmt.Println("ERROR: 'done' command can be only used in the CLI's App mode. Call first `id <record-id>`")
 				continue
 			}
-			ctx := context.Background()
 			_, err := client.UpdateStatus(ctx, shipment.ID, model.StatusEnumCompleted)
 			if err != nil {
 				fmt.Println(err)
@@ -378,7 +377,6 @@ func Run() {
 				continue
 			}
 
-			ctx := context.Background()
 			_, err := client.Restore(ctx, shipment.ID)
 			if err != nil {
 				fmt.Println(err)
@@ -413,7 +411,6 @@ func Run() {
 				continue
 			}
 
-			ctx := context.Background()
 			_, err := client.SendToDLQ(ctx, shipment.ID)
 			if err != nil {
 				fmt.Println(err)
@@ -472,7 +469,6 @@ func Run() {
 				fmt.Println("ERROR: 'enqueue' command can be only used in the CLI's App mode. Call first `id <record-id>`")
 				continue
 			}
-			ctx := context.Background()
 			shipment, err := client.Get(ctx, shipment.ID)
 			if err != nil {
 				fmt.Println(err)
@@ -536,7 +532,6 @@ func Run() {
 				continue
 			}
 
-			ctx := context.Background()
 			result, err := client.Peek(ctx)
 			if err != nil {
 				fmt.Println(err)
@@ -586,7 +581,7 @@ func Run() {
 			if statusStr == string(model.StatusEnumReadyToShip) {
 
 				shipment.MarkAsReadyForShipment()
-				rr, err := client.UpdateStatus(context.Background(), shipment.ID, model.StatusEnumReadyToShip)
+				rr, err := client.UpdateStatus(ctx, shipment.ID, model.StatusEnumReadyToShip)
 				if err != nil {
 					fmt.Println(err)
 					continue
