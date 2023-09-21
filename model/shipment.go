@@ -1,5 +1,13 @@
 package model
 
+func NewShipmentWithIDAndData(id string, data *ShipmentData) *Shipment {
+	return &Shipment{
+		ID:         id,
+		Data:       data,
+		SystemInfo: NewSystemInfoWithID(id),
+	}
+}
+
 type Shipment struct {
 	ID         string        `json:"id" dynamodbav:"id"`
 	Data       *ShipmentData `json:"data" dynamodbav:"data"`
@@ -8,17 +16,6 @@ type Shipment struct {
 	Queued               int    `json:"queued" dynamodbav:"queued,omitempty"`
 	LastUpdatedTimestamp string `json:"last_updated_timestamp" dynamodbav:"last_updated_timestamp,omitempty"`
 	DLQ                  int    `json:"DLQ" dynamodbav:"DLQ,omitempty"`
-}
-
-func NewShipmentWithID(id string) *Shipment {
-	if id == "" {
-		panic("Shipment ID cannot be null!")
-	}
-	return &Shipment{
-		ID:         id,
-		SystemInfo: NewSystemInfoWithID(id),
-		Data:       NewShipmentDataWithID(id),
-	}
 }
 
 func (s *Shipment) MarkAsReadyForShipment() {
@@ -35,13 +32,6 @@ type ShipmentData struct {
 	Data1 string         `json:"data_element_1" dynamodbav:"data_1"`
 	Data2 string         `json:"data_element_2" dynamodbav:"data_2"`
 	Data3 string         `json:"data_element_3" dynamodbav:"data_3"`
-}
-
-func NewShipmentDataWithID(id string) *ShipmentData {
-	return &ShipmentData{
-		ID:    id,
-		Items: make([]ShipmentItem, 0),
-	}
 }
 
 type ShipmentItem struct {
