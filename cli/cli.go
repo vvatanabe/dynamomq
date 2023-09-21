@@ -53,311 +53,35 @@ func (c *CLI) Run(ctx context.Context, command string, params []string) {
 	case "sys", "system":
 		c.system(ctx, params)
 	case "ls":
-		if c.Client == nil {
-			fmt.Println(needAWSMessage)
-			return
-		}
-		ids, err := c.Client.ListExtendedIDs(ctx, 10)
-		if err != nil {
-			printError(err)
-			return
-		}
-		if len(ids) == 0 {
-			fmt.Println("Shipment table is empty!")
-			return
-		}
-		fmt.Println("List of first 10 IDs:")
-		for _, id := range ids {
-			fmt.Printf("* %s\n", id)
-		}
+		c.ls(ctx, params)
 	case "purge":
-		if c.Client == nil {
-			fmt.Println(needAWSMessage)
-			return
-		}
-		ids, err := c.Client.ListIDs(ctx, 10)
-		if err != nil {
-			printError(err)
-			return
-		}
-		if len(ids) == 0 {
-			fmt.Println("Shipment table is empty ... nothing to remove!")
-			return
-		}
-		fmt.Println("List of removed IDs:")
-		for _, id := range ids {
-			err := c.Client.Delete(ctx, id)
-			if err != nil {
-				printError(err)
-				continue
-			}
-			fmt.Printf("* ID: %s\n", id)
-		}
+		c.purge(ctx, params)
 	case "create-test", "ct":
-		if c.Client == nil {
-			fmt.Println(needAWSMessage)
-			return
-		}
-		fmt.Println("Creating shipment with IDs:")
-		ids := []string{"A-101", "A-202", "A-303", "A-404"}
-		for _, id := range ids {
-			_, err := c.Client.CreateTestData(ctx, id)
-			if err != nil {
-				fmt.Printf("* ID: %s, error: %s\n", id, err)
-			} else {
-				fmt.Printf("* ID: %s\n", id)
-			}
-		}
+		c.createTest(ctx, params)
 	case "qstat", "qstats":
-		if c.Client == nil {
-			fmt.Println(needAWSMessage)
-			return
-		}
-		stats, err := c.Client.GetQueueStats(ctx)
-		if err != nil {
-			printError(err)
-			return
-		}
-		printMessageWithData("Queue status:\n", stats)
+		c.qstat(ctx, params)
 	case "dlq":
-		if c.Client == nil {
-			fmt.Println(needAWSMessage)
-			return
-		}
-		stats, err := c.Client.GetDLQStats(ctx)
-		if err != nil {
-			printError(err)
-			return
-		}
-		printMessageWithData("DLQ status:\n", stats)
+		c.dlq(ctx, params)
 	case "reset":
-		if c.Client == nil {
-			fmt.Println(needAWSMessage)
-			return
-		}
-		if c.Shipment == nil {
-			printCLIModeRestriction("`reset`")
-			return
-		}
-		c.Shipment.ResetSystemInfo()
-		err := c.Client.Put(ctx, c.Shipment)
-		if err != nil {
-			printError(err)
-			return
-		}
-		printMessageWithData("Reset system info:\n", c.Shipment.SystemInfo)
+		c.reset(ctx, params)
 	case "ready":
-		if c.Client == nil {
-			fmt.Println(needAWSMessage)
-			return
-		}
-		if c.Shipment == nil {
-			printCLIModeRestriction("`ready`")
-			return
-		}
-		c.Shipment.ResetSystemInfo()
-		c.Shipment.SystemInfo.Status = model.StatusReadyToShip
-		err := c.Client.Put(ctx, c.Shipment)
-		if err != nil {
-			printError(err)
-			return
-		}
-		printMessageWithData("Ready system info:\n", c.Shipment.SystemInfo)
+		c.ready(ctx, params)
 	case "done":
-		if c.Client == nil {
-			fmt.Println(needAWSMessage)
-			return
-		}
-		if c.Shipment == nil {
-			printCLIModeRestriction("`done`")
-			return
-		}
-		_, err := c.Client.UpdateStatus(ctx, c.Shipment.ID, model.StatusCompleted)
-		if err != nil {
-			printError(err)
-			return
-		}
-		_, err = c.Client.Remove(ctx, c.Shipment.ID)
-		if err != nil {
-			printError(err)
-			return
-		}
-		shipment, err := c.Client.Get(ctx, c.Shipment.ID)
-		if err != nil {
-			printError(err)
-			return
-		}
-		if shipment == nil {
-			printError(fmt.Sprintf("Shipment's [%s] not found!", shipment.ID))
-			return
-		}
-		fmt.Printf("Processing for ID [%s] is completed successfully! Remove from the queue!\n", shipment.ID)
-		stats, err := c.Client.GetQueueStats(ctx)
-		if err != nil {
-			printError(err)
-			return
-		}
-		printMessageWithData("Queue status:\n", stats)
+		c.done(ctx, params)
 	case "fail":
-		if c.Client == nil {
-			fmt.Println(needAWSMessage)
-			return
-		}
-		if c.Shipment == nil {
-			printCLIModeRestriction("`fail`")
-			return
-		}
-		_, err := c.Client.Restore(ctx, c.Shipment.ID)
-		if err != nil {
-			printError(err)
-			return
-		}
-		c.Shipment, err = c.Client.Get(ctx, c.Shipment.ID)
-		if err != nil {
-			printError(err)
-			return
-		}
-		if c.Shipment == nil {
-			printError(fmt.Sprintf("Shipment's [%s] not found!", c.Shipment.ID))
-			return
-		}
-		fmt.Printf("Processing for ID [%s] has failed! Put the record back to the queue!\n", c.Shipment.ID)
-		stats, err := c.Client.GetQueueStats(ctx)
-		if err != nil {
-			printError(err)
-			return
-		}
-		printMessageWithData("Queue status:\n", stats)
+		c.fail(ctx, params)
 	case "invalid":
-		if c.Client == nil {
-			fmt.Println(needAWSMessage)
-			return
-		}
-		if c.Shipment == nil {
-			printCLIModeRestriction("`invalid`")
-			return
-		}
-		_, err := c.Client.SendToDLQ(ctx, c.Shipment.ID)
-		if err != nil {
-			printError(err)
-			return
-		}
-		fmt.Printf("Processing for ID [%s] has failed .. invalid data! Send record to DLQ!\n", c.Shipment.ID)
-		stats, err := c.Client.GetQueueStats(ctx)
-		if err != nil {
-			printError(err)
-			return
-		}
-		printMessageWithData("Queue status:\n", stats)
+		c.invalid(ctx, params)
 	case "data":
-		if c.Client == nil {
-			fmt.Println(needAWSMessage)
-			return
-		}
-		if c.Shipment == nil {
-			printCLIModeRestriction("`data`")
-			return
-		}
-		printMessageWithData("Data info:\n", c.Shipment.Data)
+		c.data(ctx, params)
 	case "info":
-		if c.Client == nil {
-			fmt.Println(needAWSMessage)
-			return
-		}
-		if c.Shipment == nil {
-			printCLIModeRestriction("`info`")
-			return
-		}
-		printMessageWithData("Record's dump:\n", c.Shipment)
+		c.info(ctx, params)
 	case "enqueue", "en":
-		if c.Client == nil {
-			fmt.Println(needAWSMessage)
-			return
-		}
-		if c.Shipment == nil {
-			printCLIModeRestriction("`enqueue`")
-			return
-		}
-		shipment, err := c.Client.Get(ctx, c.Shipment.ID)
-		if err != nil {
-			printError(err)
-			return
-		}
-		if shipment == nil {
-			printError(fmt.Sprintf("Shipment's [%s] not found!", shipment.ID))
-			return
-		}
-		// convert under_construction to ready to ship
-		if shipment.SystemInfo.Status == model.StatusUnderConstruction {
-			shipment.ResetSystemInfo()
-			shipment.SystemInfo.Status = model.StatusReadyToShip
-			err = c.Client.Put(ctx, shipment)
-			if err != nil {
-				printError(err)
-				return
-			}
-		}
-		rr, err := c.Client.Enqueue(ctx, shipment.ID)
-		if err != nil {
-			printError(fmt.Sprintf("Enqueue has failed! message: %s", err))
-			return
-		}
-		printMessageWithData("Record's system info:\n", rr.Shipment.SystemInfo)
-		stats, err := c.Client.GetQueueStats(ctx)
-		if err != nil {
-			printError(err)
-			return
-		}
-		printMessageWithData("Queue stats:\n", stats)
+		c.enqueue(ctx, params)
 	case "peek":
-		if c.Client == nil {
-			fmt.Println(needAWSMessage)
-			return
-		}
-		if c.Shipment == nil {
-			printCLIModeRestriction("`peek`")
-			return
-		}
-		rr, err := c.Client.Peek(ctx)
-		if err != nil {
-			printError(fmt.Sprintf("Peek has failed! message: %s", err))
-			return
-		}
-		c.Shipment = rr.PeekedShipmentObject
-		printMessageWithData(
-			fmt.Sprintf("Peek was successful ... record peeked is: [%s]\n", c.Shipment.ID),
-			c.Shipment.SystemInfo)
-		stats, err := c.Client.GetQueueStats(ctx)
-		if err != nil {
-			printError(err)
-			return
-		}
-		printMessageWithData("Queue stats:\n", stats)
+		c.peek(ctx, params)
 	case "update":
-		if c.Client == nil {
-			fmt.Println(needAWSMessage)
-			return
-		}
-		if c.Shipment == nil {
-			printCLIModeRestriction("`update <status>`")
-			return
-		}
-		if params == nil {
-			printError("'update <status>' command requires a new Status parameter to be specified!")
-			return
-		}
-		statusStr := strings.TrimSpace(strings.ToUpper(params[0]))
-		if statusStr == string(model.StatusReadyToShip) {
-			c.Shipment.MarkAsReadyForShipment()
-			rr, err := c.Client.UpdateStatus(ctx, c.Shipment.ID, model.StatusReadyToShip)
-			if err != nil {
-				printError(err)
-				return
-			}
-			printMessageWithData("Status changed result:\n", rr)
-		} else {
-			fmt.Printf("Status change [%s] is not applied!\n", strings.TrimSpace(params[0]))
-		}
+		c.update(ctx, params)
 	default:
 		fmt.Println(" ... unrecognized command!")
 	}
@@ -431,6 +155,342 @@ func (c *CLI) system(_ context.Context, _ []string) {
 		return
 	}
 	printMessageWithData("ID's system info:\n", c.Shipment.SystemInfo)
+}
+
+func (c *CLI) ls(ctx context.Context, _ []string) {
+	if c.Client == nil {
+		fmt.Println(needAWSMessage)
+		return
+	}
+	ids, err := c.Client.ListExtendedIDs(ctx, 10)
+	if err != nil {
+		printError(err)
+		return
+	}
+	if len(ids) == 0 {
+		fmt.Println("Shipment table is empty!")
+		return
+	}
+	fmt.Println("List of first 10 IDs:")
+	for _, id := range ids {
+		fmt.Printf("* %s\n", id)
+	}
+}
+
+func (c *CLI) purge(ctx context.Context, _ []string) {
+	if c.Client == nil {
+		fmt.Println(needAWSMessage)
+		return
+	}
+	ids, err := c.Client.ListIDs(ctx, 10)
+	if err != nil {
+		printError(err)
+		return
+	}
+	if len(ids) == 0 {
+		fmt.Println("Shipment table is empty ... nothing to remove!")
+		return
+	}
+	fmt.Println("List of removed IDs:")
+	for _, id := range ids {
+		err := c.Client.Delete(ctx, id)
+		if err != nil {
+			printError(err)
+			continue
+		}
+		fmt.Printf("* ID: %s\n", id)
+	}
+}
+
+func (c *CLI) createTest(ctx context.Context, _ []string) {
+	if c.Client == nil {
+		fmt.Println(needAWSMessage)
+		return
+	}
+	fmt.Println("Creating shipment with IDs:")
+	ids := []string{"A-101", "A-202", "A-303", "A-404"}
+	for _, id := range ids {
+		_, err := c.Client.CreateTestData(ctx, id)
+		if err != nil {
+			fmt.Printf("* ID: %s, error: %s\n", id, err)
+		} else {
+			fmt.Printf("* ID: %s\n", id)
+		}
+	}
+}
+
+func (c *CLI) qstat(ctx context.Context, _ []string) {
+	if c.Client == nil {
+		fmt.Println(needAWSMessage)
+		return
+	}
+	stats, err := c.Client.GetQueueStats(ctx)
+	if err != nil {
+		printError(err)
+		return
+	}
+	printMessageWithData("Queue status:\n", stats)
+}
+
+func (c *CLI) dlq(ctx context.Context, _ []string) {
+	if c.Client == nil {
+		fmt.Println(needAWSMessage)
+		return
+	}
+	stats, err := c.Client.GetDLQStats(ctx)
+	if err != nil {
+		printError(err)
+		return
+	}
+	printMessageWithData("DLQ status:\n", stats)
+}
+
+func (c *CLI) reset(ctx context.Context, _ []string) {
+	if c.Client == nil {
+		fmt.Println(needAWSMessage)
+		return
+	}
+	if c.Shipment == nil {
+		printCLIModeRestriction("`reset`")
+		return
+	}
+	c.Shipment.ResetSystemInfo()
+	err := c.Client.Put(ctx, c.Shipment)
+	if err != nil {
+		printError(err)
+		return
+	}
+	printMessageWithData("Reset system info:\n", c.Shipment.SystemInfo)
+}
+
+func (c *CLI) ready(ctx context.Context, _ []string) {
+	if c.Client == nil {
+		fmt.Println(needAWSMessage)
+		return
+	}
+	if c.Shipment == nil {
+		printCLIModeRestriction("`ready`")
+		return
+	}
+	c.Shipment.ResetSystemInfo()
+	c.Shipment.SystemInfo.Status = model.StatusReadyToShip
+	err := c.Client.Put(ctx, c.Shipment)
+	if err != nil {
+		printError(err)
+		return
+	}
+	printMessageWithData("Ready system info:\n", c.Shipment.SystemInfo)
+}
+
+func (c *CLI) done(ctx context.Context, _ []string) {
+	if c.Client == nil {
+		fmt.Println(needAWSMessage)
+		return
+	}
+	if c.Shipment == nil {
+		printCLIModeRestriction("`done`")
+		return
+	}
+	_, err := c.Client.UpdateStatus(ctx, c.Shipment.ID, model.StatusCompleted)
+	if err != nil {
+		printError(err)
+		return
+	}
+	_, err = c.Client.Remove(ctx, c.Shipment.ID)
+	if err != nil {
+		printError(err)
+		return
+	}
+	shipment, err := c.Client.Get(ctx, c.Shipment.ID)
+	if err != nil {
+		printError(err)
+		return
+	}
+	if shipment == nil {
+		printError(fmt.Sprintf("Shipment's [%s] not found!", shipment.ID))
+		return
+	}
+	fmt.Printf("Processing for ID [%s] is completed successfully! Remove from the queue!\n", shipment.ID)
+	stats, err := c.Client.GetQueueStats(ctx)
+	if err != nil {
+		printError(err)
+		return
+	}
+	printMessageWithData("Queue status:\n", stats)
+}
+
+func (c *CLI) fail(ctx context.Context, _ []string) {
+	if c.Client == nil {
+		fmt.Println(needAWSMessage)
+		return
+	}
+	if c.Shipment == nil {
+		printCLIModeRestriction("`fail`")
+		return
+	}
+	_, err := c.Client.Restore(ctx, c.Shipment.ID)
+	if err != nil {
+		printError(err)
+		return
+	}
+	c.Shipment, err = c.Client.Get(ctx, c.Shipment.ID)
+	if err != nil {
+		printError(err)
+		return
+	}
+	if c.Shipment == nil {
+		printError(fmt.Sprintf("Shipment's [%s] not found!", c.Shipment.ID))
+		return
+	}
+	fmt.Printf("Processing for ID [%s] has failed! Put the record back to the queue!\n", c.Shipment.ID)
+	stats, err := c.Client.GetQueueStats(ctx)
+	if err != nil {
+		printError(err)
+		return
+	}
+	printMessageWithData("Queue status:\n", stats)
+}
+
+func (c *CLI) invalid(ctx context.Context, _ []string) {
+	if c.Client == nil {
+		fmt.Println(needAWSMessage)
+		return
+	}
+	if c.Shipment == nil {
+		printCLIModeRestriction("`invalid`")
+		return
+	}
+	_, err := c.Client.SendToDLQ(ctx, c.Shipment.ID)
+	if err != nil {
+		printError(err)
+		return
+	}
+	fmt.Printf("Processing for ID [%s] has failed .. invalid data! Send record to DLQ!\n", c.Shipment.ID)
+	stats, err := c.Client.GetQueueStats(ctx)
+	if err != nil {
+		printError(err)
+		return
+	}
+	printMessageWithData("Queue status:\n", stats)
+}
+
+func (c *CLI) data(_ context.Context, _ []string) {
+	if c.Client == nil {
+		fmt.Println(needAWSMessage)
+		return
+	}
+	if c.Shipment == nil {
+		printCLIModeRestriction("`data`")
+		return
+	}
+	printMessageWithData("Data info:\n", c.Shipment.Data)
+}
+
+func (c *CLI) info(_ context.Context, _ []string) {
+	if c.Client == nil {
+		fmt.Println(needAWSMessage)
+		return
+	}
+	if c.Shipment == nil {
+		printCLIModeRestriction("`info`")
+		return
+	}
+	printMessageWithData("Record's dump:\n", c.Shipment)
+}
+
+func (c *CLI) enqueue(ctx context.Context, _ []string) {
+	if c.Client == nil {
+		fmt.Println(needAWSMessage)
+		return
+	}
+	if c.Shipment == nil {
+		printCLIModeRestriction("`enqueue`")
+		return
+	}
+	shipment, err := c.Client.Get(ctx, c.Shipment.ID)
+	if err != nil {
+		printError(err)
+		return
+	}
+	if shipment == nil {
+		printError(fmt.Sprintf("Shipment's [%s] not found!", shipment.ID))
+		return
+	}
+	// convert under_construction to ready to ship
+	if shipment.SystemInfo.Status == model.StatusUnderConstruction {
+		shipment.ResetSystemInfo()
+		shipment.SystemInfo.Status = model.StatusReadyToShip
+		err = c.Client.Put(ctx, shipment)
+		if err != nil {
+			printError(err)
+			return
+		}
+	}
+	rr, err := c.Client.Enqueue(ctx, shipment.ID)
+	if err != nil {
+		printError(fmt.Sprintf("Enqueue has failed! message: %s", err))
+		return
+	}
+	printMessageWithData("Record's system info:\n", rr.Shipment.SystemInfo)
+	stats, err := c.Client.GetQueueStats(ctx)
+	if err != nil {
+		printError(err)
+		return
+	}
+	printMessageWithData("Queue stats:\n", stats)
+}
+
+func (c *CLI) peek(ctx context.Context, _ []string) {
+	if c.Client == nil {
+		fmt.Println(needAWSMessage)
+		return
+	}
+	if c.Shipment == nil {
+		printCLIModeRestriction("`peek`")
+		return
+	}
+	rr, err := c.Client.Peek(ctx)
+	if err != nil {
+		printError(fmt.Sprintf("Peek has failed! message: %s", err))
+		return
+	}
+	c.Shipment = rr.PeekedShipmentObject
+	printMessageWithData(
+		fmt.Sprintf("Peek was successful ... record peeked is: [%s]\n", c.Shipment.ID),
+		c.Shipment.SystemInfo)
+	stats, err := c.Client.GetQueueStats(ctx)
+	if err != nil {
+		printError(err)
+		return
+	}
+	printMessageWithData("Queue stats:\n", stats)
+}
+
+func (c *CLI) update(ctx context.Context, params []string) {
+	if c.Client == nil {
+		fmt.Println(needAWSMessage)
+		return
+	}
+	if c.Shipment == nil {
+		printCLIModeRestriction("`update <status>`")
+		return
+	}
+	if params == nil {
+		printError("'update <status>' command requires a new Status parameter to be specified!")
+		return
+	}
+	statusStr := strings.TrimSpace(strings.ToUpper(params[0]))
+	if statusStr == string(model.StatusReadyToShip) {
+		c.Shipment.MarkAsReadyForShipment()
+		rr, err := c.Client.UpdateStatus(ctx, c.Shipment.ID, model.StatusReadyToShip)
+		if err != nil {
+			printError(err)
+			return
+		}
+		printMessageWithData("Status changed result:\n", rr)
+	} else {
+		fmt.Printf("Status change [%s] is not applied!\n", strings.TrimSpace(params[0]))
+	}
 }
 
 func printMessageWithData(message string, data any) {
