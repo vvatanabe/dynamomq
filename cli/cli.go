@@ -51,15 +51,7 @@ func (c *CLI) Run(ctx context.Context, command string, params []string) {
 	case "id":
 		c.id(ctx, params)
 	case "sys", "system":
-		if c.Client == nil {
-			fmt.Println(needAWSMessage)
-			return
-		}
-		if c.Shipment == nil {
-			printError("`system` or `sys` command can be only used in the CLI's App mode. Call first `id <record-id>`")
-			return
-		}
-		printMessageWithData("ID's system info:\n", c.Shipment.SystemInfo)
+		c.system(ctx, params)
 	case "ls":
 		if c.Client == nil {
 			fmt.Println(needAWSMessage)
@@ -144,7 +136,7 @@ func (c *CLI) Run(ctx context.Context, command string, params []string) {
 			return
 		}
 		if c.Shipment == nil {
-			printError("'reset' command can be only used in the CLI's App mode. Call first `id <record-id>`")
+			printCLIModeRestriction("`reset`")
 			return
 		}
 		c.Shipment.ResetSystemInfo()
@@ -160,7 +152,7 @@ func (c *CLI) Run(ctx context.Context, command string, params []string) {
 			return
 		}
 		if c.Shipment == nil {
-			printError("'ready' command can be only used in the CLI's App mode. Call first `id <record-id>`")
+			printCLIModeRestriction("`ready`")
 			return
 		}
 		c.Shipment.ResetSystemInfo()
@@ -177,25 +169,17 @@ func (c *CLI) Run(ctx context.Context, command string, params []string) {
 			return
 		}
 		if c.Shipment == nil {
-			printError("'done' command can be only used in the CLI's App mode. Call first `id <record-id>`")
+			printCLIModeRestriction("`done`")
 			return
 		}
-		rr, err := c.Client.UpdateStatus(ctx, c.Shipment.ID, model.StatusCompleted)
+		_, err := c.Client.UpdateStatus(ctx, c.Shipment.ID, model.StatusCompleted)
 		if err != nil {
 			printError(err)
 			return
 		}
-		if !rr.IsSuccessful() {
-			printError(rr.GetErrorMessage())
-			return
-		}
-		rr, err = c.Client.Remove(ctx, c.Shipment.ID)
+		_, err = c.Client.Remove(ctx, c.Shipment.ID)
 		if err != nil {
 			printError(err)
-			return
-		}
-		if !rr.IsSuccessful() {
-			printError(rr.GetErrorMessage())
 			return
 		}
 		shipment, err := c.Client.Get(ctx, c.Shipment.ID)
@@ -220,16 +204,12 @@ func (c *CLI) Run(ctx context.Context, command string, params []string) {
 			return
 		}
 		if c.Shipment == nil {
-			printError("'fail' command can be only used in the CLI's App mode. Call first `id <record-id>`")
+			printCLIModeRestriction("`fail`")
 			return
 		}
-		rr, err := c.Client.Restore(ctx, c.Shipment.ID)
+		_, err := c.Client.Restore(ctx, c.Shipment.ID)
 		if err != nil {
 			printError(err)
-			return
-		}
-		if !rr.IsSuccessful() {
-			printError(rr.GetErrorMessage())
 			return
 		}
 		c.Shipment, err = c.Client.Get(ctx, c.Shipment.ID)
@@ -254,16 +234,12 @@ func (c *CLI) Run(ctx context.Context, command string, params []string) {
 			return
 		}
 		if c.Shipment == nil {
-			printError("'invalid' command can be only used in the CLI's App mode. Call first `id <record-id>`")
+			printCLIModeRestriction("`invalid`")
 			return
 		}
-		rr, err := c.Client.SendToDLQ(ctx, c.Shipment.ID)
+		_, err := c.Client.SendToDLQ(ctx, c.Shipment.ID)
 		if err != nil {
 			printError(err)
-			return
-		}
-		if !rr.IsSuccessful() {
-			printError(rr.GetErrorMessage())
 			return
 		}
 		fmt.Printf("Processing for ID [%s] has failed .. invalid data! Send record to DLQ!\n", c.Shipment.ID)
@@ -279,7 +255,7 @@ func (c *CLI) Run(ctx context.Context, command string, params []string) {
 			return
 		}
 		if c.Shipment == nil {
-			printError("'data' command can be only used in the CLI's App mode. Call first `id <record-id>`")
+			printCLIModeRestriction("`data`")
 			return
 		}
 		printMessageWithData("Data info:\n", c.Shipment.Data)
@@ -289,7 +265,7 @@ func (c *CLI) Run(ctx context.Context, command string, params []string) {
 			return
 		}
 		if c.Shipment == nil {
-			printError("'info' command can be only used in the CLI's App mode. Call first `id <record-id>`")
+			printCLIModeRestriction("`info`")
 			return
 		}
 		printMessageWithData("Record's dump:\n", c.Shipment)
@@ -299,7 +275,7 @@ func (c *CLI) Run(ctx context.Context, command string, params []string) {
 			return
 		}
 		if c.Shipment == nil {
-			printError("'enqueue' command can be only used in the CLI's App mode. Call first `id <record-id>`")
+			printCLIModeRestriction("`enqueue`")
 			return
 		}
 		shipment, err := c.Client.Get(ctx, c.Shipment.ID)
@@ -323,56 +299,47 @@ func (c *CLI) Run(ctx context.Context, command string, params []string) {
 		}
 		rr, err := c.Client.Enqueue(ctx, shipment.ID)
 		if err != nil {
+			printError(fmt.Sprintf("Enqueue has failed! message: %s", err))
+			return
+		}
+		printMessageWithData("Record's system info:\n", rr.Shipment.SystemInfo)
+		stats, err := c.Client.GetQueueStats(ctx)
+		if err != nil {
 			printError(err)
 			return
 		}
-		shipment = rr.Shipment
-		if rr.IsSuccessful() {
-			printMessageWithData("Record's system info:\n", shipment.SystemInfo)
-			stats, err := c.Client.GetQueueStats(ctx)
-			if err != nil {
-				printError(err)
-				return
-			}
-			printMessageWithData("Queue stats:\n", stats)
-		} else {
-			printError(fmt.Sprintf("Enqueue has failed! message: %s", rr.GetErrorMessage()))
-		}
+		printMessageWithData("Queue stats:\n", stats)
 	case "peek":
 		if c.Client == nil {
 			fmt.Println(needAWSMessage)
 			return
 		}
 		if c.Shipment == nil {
-			printError("'peek' command can be only used in the CLI's App mode. Call first `id <record-id>`")
+			printCLIModeRestriction("`peek`")
 			return
 		}
 		rr, err := c.Client.Peek(ctx)
 		if err != nil {
+			printError(fmt.Sprintf("Peek has failed! message: %s", err))
+			return
+		}
+		c.Shipment = rr.PeekedShipmentObject
+		printMessageWithData(
+			fmt.Sprintf("Peek was successful ... record peeked is: [%s]\n", c.Shipment.ID),
+			c.Shipment.SystemInfo)
+		stats, err := c.Client.GetQueueStats(ctx)
+		if err != nil {
 			printError(err)
 			return
 		}
-		if rr.IsSuccessful() {
-			c.Shipment = rr.PeekedShipmentObject
-			printMessageWithData(
-				fmt.Sprintf("Peek was successful ... record peeked is: [%s]\n", c.Shipment.ID),
-				c.Shipment.SystemInfo)
-			stats, err := c.Client.GetQueueStats(ctx)
-			if err != nil {
-				printError(err)
-				return
-			}
-			printMessageWithData("Queue stats:\n", stats)
-		} else {
-			printError(fmt.Sprintf("Peek has failed! message: %s", rr.GetErrorMessage()))
-		}
+		printMessageWithData("Queue stats:\n", stats)
 	case "update":
 		if c.Client == nil {
 			fmt.Println(needAWSMessage)
 			return
 		}
 		if c.Shipment == nil {
-			printError("'update <status>' command can be only used in the CLI's App mode. Call first `id <record-id>`")
+			printCLIModeRestriction("`update <status>`")
 			return
 		}
 		if params == nil {
@@ -385,10 +352,6 @@ func (c *CLI) Run(ctx context.Context, command string, params []string) {
 			rr, err := c.Client.UpdateStatus(ctx, c.Shipment.ID, model.StatusReadyToShip)
 			if err != nil {
 				printError(err)
-				return
-			}
-			if !rr.IsSuccessful() {
-				printError(rr.GetErrorMessage())
 				return
 			}
 			printMessageWithData("Status changed result:\n", rr)
@@ -458,6 +421,18 @@ func (c *CLI) id(ctx context.Context, params []string) {
 	printMessageWithData(fmt.Sprintf("Shipment's [%s] record dump:\n", id), c.Shipment)
 }
 
+func (c *CLI) system(_ context.Context, _ []string) {
+	if c.Client == nil {
+		fmt.Println(needAWSMessage)
+		return
+	}
+	if c.Shipment == nil {
+		printCLIModeRestriction("`system` or `sys`")
+		return
+	}
+	printMessageWithData("ID's system info:\n", c.Shipment.SystemInfo)
+}
+
 func printMessageWithData(message string, data any) {
 	dump, err := marshalIndent(data)
 	if err != nil {
@@ -473,6 +448,10 @@ func marshalIndent(v any) ([]byte, error) {
 		return nil, err
 	}
 	return dump, nil
+}
+
+func printCLIModeRestriction(command string) {
+	printError(fmt.Sprintf("%s command can be only used in the CLI's App mode. Call first `id <record-id>", command))
 }
 
 func printError(err any) {
