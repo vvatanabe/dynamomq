@@ -37,23 +37,19 @@ type QueueSDKClient struct {
 }
 
 func initialize(ctx context.Context, builder *Builder) (*QueueSDKClient, error) {
-
 	c := &QueueSDKClient{
 		tableName:                 builder.tableName,
 		awsRegion:                 builder.awsRegion,
 		credentialsProvider:       builder.credentialsProvider,
 		awsCredentialsProfileName: builder.awsCredentialsProfileName,
 	}
-
 	if c.credentialsProvider == nil {
 		accessKey := os.Getenv("AWS_ACCESS_KEY_ID")
 		secretKey := os.Getenv("AWS_SECRET_ACCESS_KEY")
 		sessionToken := os.Getenv("AWS_SESSION_TOKEN")
-
 		creds := credentials.NewStaticCredentialsProvider(accessKey, secretKey, sessionToken)
 		c.credentialsProvider = &creds
 	}
-
 	cfg, err := config.LoadDefaultConfig(
 		ctx,
 		config.WithRegion(c.awsRegion),
@@ -63,11 +59,9 @@ func initialize(ctx context.Context, builder *Builder) (*QueueSDKClient, error) 
 	if err != nil {
 		return nil, fmt.Errorf("failed to load aws config: %w", err)
 	}
-
 	c.dynamoDB = dynamodb.NewFromConfig(cfg, func(options *dynamodb.Options) {
 		options.RetryMaxAttempts = 10
 	})
-
 	return c, nil
 }
 
@@ -89,41 +83,21 @@ func initialize(ctx context.Context, builder *Builder) (*QueueSDKClient, error) 
 //
 // Note: The function uses pagination to query the DynamoDB table and will continue querying
 // until all records have been fetched or an error occurs.
-//
-// Example DynamoDB Query (expressed in a JSON-like representation):
-//
-//	{
-//	  "ProjectionExpression": "id, system_info",
-//	  "IndexName": "QueueingIndexName",
-//	  "TableName": "ActualTableName",
-//	  "ExpressionAttributeNames": {
-//	    "#queued": "queued"
-//	  },
-//	  "KeyConditionExpression": "#queued = :value",
-//	  "ScanIndexForward": true,
-//	  "Limit": 250,
-//	  "ExpressionAttributeValues": {
-//	    ":value": {"S": "1"}
-//	  }
-//	}
 func (c *QueueSDKClient) GetQueueStats(ctx context.Context) (*model.QueueStats, error) {
+	expr, err := expression.NewBuilder().
+		WithProjection(expression.NamesList(expression.Name("id"), expression.Name("system_info"))).
+		WithKeyCondition(expression.KeyEqual(expression.Key("queued"), expression.Value(1))).
+		Build()
+	if err != nil {
+		return nil, &BuildingExpressionError{Cause: err}
+	}
 	var totalQueueSize int
 	var exclusiveStartKey map[string]types.AttributeValue
-
-	keyCond := expression.KeyEqual(expression.Key("queued"), expression.Value(1))
-	proj := expression.NamesList(expression.Name("id"), expression.Name("system_info"))
-
-	expr, err := expression.NewBuilder().WithKeyCondition(keyCond).WithProjection(proj).Build()
-	if err != nil {
-		return nil, fmt.Errorf("error building expression: %w", err)
-	}
-
 	var peekedRecords int
 	allQueueIDs := make([]string, 0)
 	processingIDs := make([]string, 0)
-
 	for {
-		queryInput := &dynamodb.QueryInput{
+		queryOutput, err := c.dynamoDB.Query(ctx, &dynamodb.QueryInput{
 			ProjectionExpression:      expr.Projection(),
 			IndexName:                 aws.String(QueueingIndexName),
 			TableName:                 aws.String(c.tableName),
@@ -133,41 +107,32 @@ func (c *QueueSDKClient) GetQueueStats(ctx context.Context) (*model.QueueStats, 
 			Limit:                     aws.Int32(250),
 			ExpressionAttributeValues: expr.Values(),
 			ExclusiveStartKey:         exclusiveStartKey,
-		}
-
-		queryOutput, err := c.dynamoDB.Query(ctx, queryInput)
+		})
 		if err != nil {
-			return nil, fmt.Errorf("error querying dynamodb: %w", err)
+			return nil, handleDynamoDBError(err)
 		}
-
 		exclusiveStartKey = queryOutput.LastEvaluatedKey
-
 		for _, itemMap := range queryOutput.Items {
 			totalQueueSize++
-
 			item := model.Shipment{}
 			err := attributevalue.UnmarshalMap(itemMap, &item)
 			if err != nil {
-				return nil, fmt.Errorf("failed to unmarshal map: %s", err)
+				return nil, &UnmarshalingAttributeError{Cause: err}
 			}
-
 			if item.SystemInfo.SelectedFromQueue {
 				peekedRecords++
 				if len(processingIDs) < 100 {
 					processingIDs = append(processingIDs, item.ID)
 				}
 			}
-
 			if len(allQueueIDs) < 100 {
 				allQueueIDs = append(allQueueIDs, item.ID)
 			}
 		}
-
 		if exclusiveStartKey == nil {
 			break
 		}
 	}
-
 	return &model.QueueStats{
 		TotalRecordsInProcessing:   peekedRecords,
 		TotalRecordsInQueue:        totalQueueSize,
@@ -192,38 +157,22 @@ func (c *QueueSDKClient) GetQueueStats(ctx context.Context) (*model.QueueStats, 
 //
 // Note: The function uses pagination to query the DynamoDB table and will continue querying
 // until all records have been fetched or an error occurs.
-//
-// Example DynamoDB Query (expressed in a JSON-like representation):
-//
-//	{
-//	  "ProjectionExpression": "id, DLQ, system_info",
-//	  "IndexName": "DLQQueueingIndexName",
-//	  "TableName": "ActualTableName",
-//	  "ExpressionAttributeNames": {
-//	    "#DLQ": "DLQ"
-//	  },
-//	  "KeyConditionExpression": "#DLQ = :value",
-//	  "Limit": 250,
-//	  "ExpressionAttributeValues": {
-//	    ":value": {"S": "1"}
-//	  }
-//	}
 func (c *QueueSDKClient) GetDLQStats(ctx context.Context) (*model.DLQStats, error) {
+	expr, err := expression.NewBuilder().
+		WithProjection(expression.NamesList(
+			expression.Name("id"),
+			expression.Name("DLQ"),
+			expression.Name("system_info"))).
+		WithKeyCondition(expression.KeyEqual(expression.Key("DLQ"), expression.Value(1))).
+		Build()
+	if err != nil {
+		return nil, &BuildingExpressionError{Cause: err}
+	}
 	var totalDLQSize int
 	var lastEvaluatedKey map[string]types.AttributeValue
-
 	listBANs := make([]string, 0)
-
-	keyCondition := expression.KeyEqual(expression.Key("DLQ"), expression.Value(1))
-	proj := expression.NamesList(expression.Name("id"), expression.Name("DLQ"), expression.Name("system_info"))
-
-	expr, err := expression.NewBuilder().WithKeyCondition(keyCondition).WithProjection(proj).Build()
-	if err != nil {
-		return nil, fmt.Errorf("error building expression: %w", err)
-	}
-
 	for {
-		input := &dynamodb.QueryInput{
+		resp, err := c.dynamoDB.Query(ctx, &dynamodb.QueryInput{
 			ProjectionExpression:      expr.Projection(),
 			IndexName:                 aws.String(DlqQueueingIndexName),
 			TableName:                 aws.String(c.tableName),
@@ -232,33 +181,26 @@ func (c *QueueSDKClient) GetDLQStats(ctx context.Context) (*model.DLQStats, erro
 			KeyConditionExpression:    expr.KeyCondition(),
 			Limit:                     aws.Int32(250),
 			ExclusiveStartKey:         lastEvaluatedKey,
-		}
-
-		resp, err := c.dynamoDB.Query(ctx, input)
+		})
 		if err != nil {
-			return nil, fmt.Errorf("error querying dynamodb: %w", err)
+			return nil, handleDynamoDBError(err)
 		}
-
 		lastEvaluatedKey = resp.LastEvaluatedKey
-
 		for _, itemMap := range resp.Items {
 			totalDLQSize++
-
 			if len(listBANs) < 100 {
 				item := model.Shipment{}
 				err := attributevalue.UnmarshalMap(itemMap, &item)
 				if err != nil {
-					return nil, fmt.Errorf("failed to unmarshal map: %s", err)
+					return nil, &UnmarshalingAttributeError{Cause: err}
 				}
 				listBANs = append(listBANs, item.ID)
 			}
 		}
-
 		if lastEvaluatedKey == nil {
 			break
 		}
 	}
-
 	return &model.DLQStats{
 		First100IDsInQueue: listBANs,
 		TotalRecordsInDLQ:  totalDLQSize,
@@ -279,45 +221,28 @@ func (c *QueueSDKClient) GetDLQStats(ctx context.Context) (*model.DLQStats, erro
 //   - (error): An error if any occurred during the retrieval process, including
 //     if the 'id' is empty, the database query fails, or unmarshaling the response
 //     fails.
-//
-// Example JSON DynamoDB API Request:
-//
-//	{
-//	  "TableName": "ActualTableName",
-//	  "Key": {
-//	    "id": {
-//	      "S": "your-id-value"
-//	    }
-//	  }
-//	}
 func (c *QueueSDKClient) Get(ctx context.Context, id string) (*model.Shipment, error) {
 	if id == "" {
-		return nil, errors.New("id is not provided ... cannot retrieve the shipment record")
+		return nil, &IDNotProvidedError{}
 	}
-
-	input := &dynamodb.GetItemInput{
+	resp, err := c.dynamoDB.GetItem(ctx, &dynamodb.GetItemInput{
 		Key: map[string]types.AttributeValue{
 			"id": &types.AttributeValueMemberS{Value: id},
 		},
 		TableName:      aws.String(c.tableName),
 		ConsistentRead: aws.Bool(true),
-	}
-
-	resp, err := c.dynamoDB.GetItem(ctx, input)
+	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to dynamodb get item: %s", err)
+		return nil, handleDynamoDBError(err)
 	}
-
 	if resp.Item == nil {
 		return nil, nil
 	}
-
 	item := model.Shipment{}
 	err = attributevalue.UnmarshalMap(resp.Item, &item)
 	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal map: %s", err)
+		return nil, &UnmarshalingAttributeError{Cause: err}
 	}
-
 	return &item, nil
 }
 
@@ -363,18 +288,12 @@ func (c *QueueSDKClient) Upsert(ctx context.Context, shipment *model.Shipment) e
 // Returns:
 //   - (error): An error if one occurs, otherwise, it returns nil on success.
 func (c *QueueSDKClient) PutImpl(ctx context.Context, shipment *model.Shipment, useUpsert bool) error {
-	if shipment == nil {
-		return errors.New("shipment object cannot be nil")
-	}
-
 	// Check if already present
 	retrievedShipment, err := c.Get(ctx, shipment.ID)
 	if err != nil {
-		return fmt.Errorf("failed to get a shipment: %s", err)
+		return err
 	}
-
 	var version int
-
 	// Upsert or delete
 	if retrievedShipment != nil {
 		if useUpsert {
@@ -387,34 +306,33 @@ func (c *QueueSDKClient) PutImpl(ctx context.Context, shipment *model.Shipment, 
 				},
 			})
 			if err != nil {
-				return fmt.Errorf("failed to delete item: %w", err)
+				return handleDynamoDBError(err)
 			}
 		}
 	}
-
-	nowStr := time.Now().UTC().Format(time.RFC3339)
-	system := model.NewSystemInfoWithID(shipment.ID)
-	system.InQueue = 0
-	system.SelectedFromQueue = false
-	system.Status = shipment.SystemInfo.Status
-	system.CreationTimestamp = nowStr
-	system.LastUpdatedTimestamp = nowStr
-	system.Version = version + 1
-
-	shipment.SystemInfo = system
-
-	item, err := attributevalue.MarshalMap(shipment)
+	formattedUTCTime := formattedCurrentTime()
+	item, err := attributevalue.MarshalMap(&model.Shipment{
+		ID: shipment.ID,
+		SystemInfo: &model.SystemInfo{
+			ID:                   shipment.ID,
+			CreationTimestamp:    formattedUTCTime,
+			LastUpdatedTimestamp: formattedUTCTime,
+			Status:               shipment.SystemInfo.Status,
+			Version:              version + 1,
+			InQueue:              0,
+			SelectedFromQueue:    false,
+		},
+	})
 	if err != nil {
-		return fmt.Errorf("failed to marshal map: %w", err)
+		return &MarshalingAttributeError{Cause: err}
 	}
 	_, err = c.dynamoDB.PutItem(ctx, &dynamodb.PutItemInput{
 		TableName: aws.String(c.tableName),
 		Item:      item,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to put item: %w", err)
+		return handleDynamoDBError(err)
 	}
-
 	return nil
 }
 
@@ -437,126 +355,48 @@ func (c *QueueSDKClient) PutImpl(ctx context.Context, shipment *model.Shipment, 
 // Returns:
 //   - A pointer to a Result object containing the result of the update operation.
 //   - An error if one occurs during the process. A nil error indicates successful completion.
-//
-// Example JSON DynamoDB API Request:
-//
-//	{
-//	 "TableName": "ActualTableName",
-//	 "Key": {
-//	   "id": {
-//	     "S": "YourIdValue"
-//	   }
-//	 },
-//	 "UpdateExpression": "ADD #sys.#v :inc SET #sys.#st = :st, #sys.last_updated_timestamp = :lut, last_updated_timestamp = :lut",
-//	 "ExpressionAttributeNames": {
-//	   "#v": "version",
-//	   "#st": "status",
-//	   "#sys": "system_info"
-//	 },
-//	 "ExpressionAttributeValues": {
-//	   ":inc": {
-//	     "N": "1"
-//	   },
-//	   ":v": {
-//	     "N": "YourVersionValue"
-//	   },
-//	   ":lut": {
-//	     "S": "LastUpdatedTimestamp"
-//	   },
-//	   ":st": {
-//	     "S": "LastUpdatedTimestamp"
-//	   }
-//	 },
-//	 "ConditionExpression": "#sys.#v = :v",
-//	 "ReturnValues": "ALL_NEW"
-//	}
 func (c *QueueSDKClient) UpdateStatus(ctx context.Context, id string, newStatus model.Status) (*model.Result, error) {
-	result := &model.Result{
-		ID: id,
-	}
-
 	if id == "" {
-		fmt.Println("ERROR: ID is not provided ... cannot retrieve the record!")
-		result.ReturnValue = model.ReturnStatusFailedIDNotFound
-		return result, nil
+		return nil, &IDNotProvidedError{}
 	}
-
 	shipment, err := c.Get(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-
 	if shipment == nil {
-		fmt.Printf("ERROR: Customer with ID [%s] cannot be found!\n", id)
-		result.ReturnValue = model.ReturnStatusFailedIDNotFound
-		return result, nil
+		return nil, &IDNotFoundError{}
 	}
-
 	prevStatus := shipment.SystemInfo.Status
 	version := shipment.SystemInfo.Version
-
-	result.Status = newStatus
-
 	if prevStatus == newStatus {
-		result.Version = version
-		result.LastUpdatedTimestamp = shipment.SystemInfo.LastUpdatedTimestamp
-		result.ReturnValue = model.ReturnStatusSUCCESS
-		return result, nil
+		return &model.Result{
+			ID:                   shipment.ID,
+			Status:               newStatus,
+			LastUpdatedTimestamp: shipment.SystemInfo.LastUpdatedTimestamp,
+			Version:              version,
+		}, nil
 	}
-
-	now := time.Now().UTC()
-
-	builder := expression.NewBuilder().
-		WithUpdate(
-			expression.Add(expression.Name("system_info.version"), expression.Value(1)).
-				Set(expression.Name("system_info.status"), expression.Value(newStatus)).
-				Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(now.Format(time.RFC3339))).
-				Set(expression.Name("last_updated_timestamp"), expression.Value(now.Format(time.RFC3339))),
-		).
-		WithCondition(
-			expression.Name("system_info.version").Equal(expression.Value(version)),
-		)
-
-	expr, err := builder.Build()
+	formattedUTCTime := formattedCurrentTime()
+	expr, err := expression.NewBuilder().
+		WithUpdate(expression.Add(expression.Name("system_info.version"), expression.Value(1)).
+			Set(expression.Name("system_info.status"), expression.Value(newStatus)).
+			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(formattedUTCTime)).
+			Set(expression.Name("last_updated_timestamp"), expression.Value(formattedUTCTime))).
+		WithCondition(expression.Name("system_info.version").Equal(expression.Value(version))).
+		Build()
 	if err != nil {
-		return nil, fmt.Errorf("error building expression: %v", err)
+		return nil, BuildingExpressionError{Cause: err}
 	}
-
-	input := &dynamodb.UpdateItemInput{
-		Key: map[string]types.AttributeValue{
-			"id": &types.AttributeValueMemberS{
-				Value: id,
-			},
-		},
-		TableName:                 aws.String(c.tableName),
-		ExpressionAttributeNames:  expr.Names(),
-		ExpressionAttributeValues: expr.Values(),
-		UpdateExpression:          expr.Update(),
-		ConditionExpression:       expr.Condition(),
-		ReturnValues:              types.ReturnValueAllNew,
-	}
-
-	outcome, err := c.dynamoDB.UpdateItem(ctx, input)
+	item, err := c.updateDynamoDBItem(ctx, id, &expr)
 	if err != nil {
-		fmt.Printf("updateFullyConstructedFlag() - failed to update multiple attributes in %s\n", c.tableName)
-		fmt.Println(err)
-
-		result.ReturnValue = model.ReturnStatusFailedDynamoError
-		return result, nil
+		return nil, err
 	}
-
-	item := model.Shipment{}
-	err = attributevalue.UnmarshalMap(outcome.Attributes, &item)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal map: %s", err)
-	}
-
-	result.Status = item.SystemInfo.Status
-	result.Version = item.SystemInfo.Version
-	result.LastUpdatedTimestamp = item.SystemInfo.LastUpdatedTimestamp
-
-	result.ReturnValue = model.ReturnStatusSUCCESS
-	return result, nil
+	return &model.Result{
+		ID:                   item.SystemInfo.ID,
+		Status:               item.SystemInfo.Status,
+		LastUpdatedTimestamp: item.SystemInfo.LastUpdatedTimestamp,
+		Version:              item.SystemInfo.Version,
+	}, nil
 }
 
 // Enqueue inserts the provided shipment ID into the queue. If the ID is not provided,
@@ -580,80 +420,26 @@ func (c *QueueSDKClient) UpdateStatus(ctx context.Context, id string, newStatus 
 //
 //	*model.EnqueueResult: A pointer to the EnqueueResult structure which contains information about the enqueued shipment.
 //	error: An error that can occur during the execution, or nil if no errors occurred.
-//
-// Example JSON DynamoDB API Request:
-//
-//	{
-//	 "TableName": "ActualTableName",
-//	 "Key": {
-//	   "id": {
-//	     "S": "YourIdValue"
-//	   }
-//	 },
-//	 "ConditionExpression": "#sys.#v = :v",
-//	 "UpdateExpression": "ADD #sys.#v :one SET queued = :one, #sys.queued = :one, #sys.queue_selected = :false, last_updated_timestamp = :lut, #sys.last_updated_timestamp = :lut, #sys.queue_added_timestamp = :lut, #sys.#st = :st",
-//	 "ExpressionAttributeNames": {
-//	   "#v": "version",
-//	   "#st": "status",
-//	   "#sys": "system_info"
-//	 },
-//	 "ExpressionAttributeValues": {
-//	   ":one": {
-//	     "N": "1"
-//	   },
-//	   ":false": {
-//	     "BOOL": false
-//	   },
-//	   ":v": {
-//	     "N": "YourVersionValue"
-//	   },
-//	   ":st": {
-//	     "S": "READY_TO_SHIP"
-//	   },
-//	   ":lut": {
-//	     "S": ""LastUpdatedTimestamp"
-//	   }
-//	 },
-//	 "ReturnValues": "ALL_NEW"
-//	}
 func (c *QueueSDKClient) Enqueue(ctx context.Context, id string) (*model.EnqueueResult, error) {
-	result := model.NewEnqueueResultWithID(id)
-
 	if id == "" {
-		fmt.Println("ID is not provided ... cannot proceed with the Enqueue() operation!")
-		result.ReturnValue = model.ReturnStatusFailedIDNotProvided
-		return result, nil
+		return nil, &IDNotProvidedError{}
 	}
-
 	retrievedShipment, err := c.Get(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-
 	if retrievedShipment == nil {
-		fmt.Printf("Shipment with ID [%s] cannot be found!\n", id)
-		result.ReturnValue = model.ReturnStatusFailedIDNotProvided
-		return result, nil
+		return nil, &IDNotFoundError{}
 	}
-
 	version := retrievedShipment.SystemInfo.Version
-
-	result.Status = retrievedShipment.SystemInfo.Status
-	result.Version = version
-	result.LastUpdatedTimestamp = retrievedShipment.SystemInfo.LastUpdatedTimestamp
-
-	if result.Status == model.StatusUnderConstruction {
-		result.ReturnValue = model.ReturnStatusFailedRecordNotConstructed
-		return result, nil
+	status := retrievedShipment.SystemInfo.Status
+	if status == model.StatusUnderConstruction {
+		return nil, &RecordNotConstructedError{}
 	}
-
-	if result.Status != model.StatusReadyToShip {
-		result.ReturnValue = model.ReturnStatusFailedIllegalState
-		return result, nil
+	if status != model.StatusReadyToShip {
+		return nil, &IllegalStateError{}
 	}
-
-	now := time.Now().UTC()
-
+	formattedUTCTime := formattedCurrentTime()
 	expr, err := expression.NewBuilder().
 		WithUpdate(expression.Add(
 			expression.Name("system_info.version"),
@@ -669,13 +455,13 @@ func (c *QueueSDKClient) Enqueue(ctx context.Context, id string) (*model.Enqueue
 			expression.Value(false),
 		).Set(
 			expression.Name("last_updated_timestamp"),
-			expression.Value(now.Format(time.RFC3339)),
+			expression.Value(formattedUTCTime),
 		).Set(
 			expression.Name("system_info.last_updated_timestamp"),
-			expression.Value(now.Format(time.RFC3339)),
+			expression.Value(formattedUTCTime),
 		).Set(
 			expression.Name("system_info.queue_added_timestamp"),
-			expression.Value(now.Format(time.RFC3339)),
+			expression.Value(formattedUTCTime),
 		).Set(
 			expression.Name("system_info.status"),
 			expression.Value(model.StatusReadyToShip),
@@ -683,50 +469,25 @@ func (c *QueueSDKClient) Enqueue(ctx context.Context, id string) (*model.Enqueue
 		WithCondition(expression.Name("system_info.version").Equal(expression.Value(version))).
 		Build()
 	if err != nil {
-		return nil, fmt.Errorf("failed to build expression: %v", err)
+		return nil, &BuildingExpressionError{Cause: err}
 	}
-
-	input := &dynamodb.UpdateItemInput{
-		TableName: &c.tableName,
-		Key: map[string]types.AttributeValue{
-			"id": &types.AttributeValueMemberS{
-				Value: id,
-			},
-		},
-		ConditionExpression:       expr.Condition(),
-		UpdateExpression:          expr.Update(),
-		ExpressionAttributeNames:  expr.Names(),
-		ExpressionAttributeValues: expr.Values(),
-		ReturnValues:              types.ReturnValueAllNew,
-	}
-
-	outcome, err := c.dynamoDB.UpdateItem(ctx, input)
+	item, err := c.updateDynamoDBItem(ctx, id, &expr)
 	if err != nil {
-		fmt.Printf("enqueue() - failed to update multiple attributes in %s", c.tableName)
-		fmt.Println(err)
-		result.ReturnValue = model.ReturnStatusFailedDynamoError
-		return result, nil
+		return nil, err
 	}
-
-	item := model.Shipment{}
-	err = attributevalue.UnmarshalMap(outcome.Attributes, &item)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal map: %s", err)
-	}
-
-	result.Version = item.SystemInfo.Version
-	result.LastUpdatedTimestamp = item.SystemInfo.LastUpdatedTimestamp
-	result.Status = item.SystemInfo.Status
-
 	shipment, err := c.Get(ctx, id)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get shipment: %s", err)
+		return nil, err
 	}
-
-	result.Shipment = shipment
-	result.ReturnValue = model.ReturnStatusSUCCESS
-
-	return result, nil
+	return &model.EnqueueResult{
+		Result: &model.Result{
+			ID:                   item.ID,
+			Status:               item.SystemInfo.Status,
+			LastUpdatedTimestamp: item.SystemInfo.LastUpdatedTimestamp,
+			Version:              item.SystemInfo.Version,
+		},
+		Shipment: shipment,
+	}, nil
 }
 
 // Peek peeks at the top of the queue to get the next item without actually removing it.
@@ -751,7 +512,6 @@ func (c *QueueSDKClient) Peek(ctx context.Context) (*model.PeekResult, error) {
 	var selectedID string
 	var selectedVersion int
 	recordForPeekIsFound := false
-
 	names := expression.NamesList(
 		expression.Name("id"),
 		expression.Name("queued"),
@@ -760,13 +520,11 @@ func (c *QueueSDKClient) Peek(ctx context.Context) (*model.PeekResult, error) {
 		WithProjection(names).
 		WithKeyCondition(expression.Key("queued").Equal(expression.Value(1))).
 		Build()
-
 	if err != nil {
-		return nil, fmt.Errorf("error building expression: %w", err)
+		return nil, &BuildingExpressionError{Cause: err}
 	}
-
 	for {
-		queryRequest := &dynamodb.QueryInput{
+		queryResult, err := c.dynamoDB.Query(ctx, &dynamodb.QueryInput{
 			ProjectionExpression:      expr.Projection(),
 			IndexName:                 aws.String(QueueingIndexName),
 			TableName:                 aws.String(c.tableName),
@@ -776,133 +534,87 @@ func (c *QueueSDKClient) Peek(ctx context.Context) (*model.PeekResult, error) {
 			Limit:                     aws.Int32(250),
 			ScanIndexForward:          aws.Bool(true),
 			ExclusiveStartKey:         exclusiveStartKey,
-		}
-
-		queryResult, err := c.dynamoDB.Query(ctx, queryRequest)
+		})
 		if err != nil {
-			return nil, fmt.Errorf("error querying dynamodb: %w", err)
+			return nil, handleDynamoDBError(err)
 		}
-
 		exclusiveStartKey = queryResult.LastEvaluatedKey
-
 		for _, itemMap := range queryResult.Items {
-
 			item := model.Shipment{}
 			err = attributevalue.UnmarshalMap(itemMap, &item)
 			if err != nil {
-				return nil, fmt.Errorf("failed to unmarshal map: %s", err)
+				return nil, &UnmarshalingAttributeError{Cause: err}
 			}
-
 			isQueueSelected := item.SystemInfo.SelectedFromQueue
-
 			// check if there are no stragglers (marked to be in processing but actually orphan)
 			if lastPeekTimeUTC := item.SystemInfo.PeekUTCTimestamp; lastPeekTimeUTC > 0 && isQueueSelected {
-				currentTS := time.Now().UnixMilli()
-
+				currentTS := now().UnixMilli()
+				timeDifference := currentTS - lastPeekTimeUTC
+				visibilityTimeoutMillis := int64(visibilityTimeoutInMinutes) * 60 * 1000
+				isPastVisibilityTimeout := timeDifference > visibilityTimeoutMillis
 				// if more than VISIBILITY_TIMEOUT_IN_MINUTES
-				if (currentTS - lastPeekTimeUTC) > (visibilityTimeoutInMinutes * 60 * 1000) {
+				if isPastVisibilityTimeout {
 					selectedID = item.ID
 					selectedVersion = item.SystemInfo.Version
 					recordForPeekIsFound = true
-
-					fmt.Printf(" >> Converted struggler, Shipment ID: [%s], age: %d\n", item.ID, currentTS-lastPeekTimeUTC)
 				}
 			} else { // otherwise, peek first record that satisfy basic condition (queued = :one)
-
 				selectedID = item.ID
 				selectedVersion = item.SystemInfo.Version
 				recordForPeekIsFound = true
 			}
-
 			// no need to go further
 			if recordForPeekIsFound {
 				break
 			}
 		}
-
 		if recordForPeekIsFound || exclusiveStartKey == nil {
 			break
 		}
 	}
-
-	result := model.NewPeekResult()
-
 	if selectedID == "" {
-		result.ReturnValue = model.ReturnStatusFailedEmptyQueue
-		return result, nil
+		return nil, &EmptyQueueError{}
 	}
-
-	result.ID = selectedID
-
 	shipment, err := c.Get(ctx, selectedID)
 	if err != nil {
 		return nil, err
 	}
-
-	now := time.Now().UTC()
+	now := now()
 	tsUTC := now.UnixMilli()
-
+	formattedCurrentTime := formattedTime(now)
 	// IMPORTANT
 	// please note, we are not updating top-level attribute `last_updated_timestamp` in order to avoid re-indexing the order
-
 	expr, err = expression.NewBuilder().
 		WithUpdate(expression.
 			Add(expression.Name("system_info.version"), expression.Value(1)).
 			Set(expression.Name("system_info.queue_selected"), expression.Value(true)).
-			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(now.Format(time.RFC3339))).
-			Set(expression.Name("system_info.queue_peek_timestamp"), expression.Value(now.Format(time.RFC3339))).
+			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(formattedCurrentTime)).
+			Set(expression.Name("system_info.queue_peek_timestamp"), expression.Value(formattedCurrentTime)).
 			Set(expression.Name("system_info.peek_utc_timestamp"), expression.Value(tsUTC)).
 			Set(expression.Name("system_info.status"), expression.Value(model.StatusProcessingShipment))).
 		WithCondition(expression.Name("system_info.version").Equal(expression.Value(selectedVersion))).
 		Build()
 	if err != nil {
+		return nil, &BuildingExpressionError{Cause: err}
+	}
+	item, err := c.updateDynamoDBItem(ctx, shipment.ID, &expr)
+	if err != nil {
 		return nil, err
 	}
-
-	input := &dynamodb.UpdateItemInput{
-		TableName: aws.String(c.tableName),
-		Key: map[string]types.AttributeValue{
-			"id": &types.AttributeValueMemberS{
-				Value: shipment.ID,
-			},
-		},
-		ConditionExpression:       expr.Condition(),
-		UpdateExpression:          expr.Update(),
-		ExpressionAttributeNames:  expr.Names(),
-		ExpressionAttributeValues: expr.Values(),
-		ReturnValues:              types.ReturnValueAllNew,
-	}
-
-	outcome, err := c.dynamoDB.UpdateItem(ctx, input)
-	if err != nil {
-		fmt.Printf("peek() - failed to update multiple attributes in %s\n", c.tableName)
-		fmt.Println(err)
-		result.ReturnValue = model.ReturnStatusFailedDynamoError
-		return result, nil
-	}
-
-	item := model.Shipment{}
-	err = attributevalue.UnmarshalMap(outcome.Attributes, &item)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal map: %s", err)
-	}
-
-	result.ID = item.ID
-
 	peekedShipment, err := c.Get(ctx, selectedID)
 	if err != nil {
 		return nil, err
 	}
-
-	result.PeekedShipmentObject = peekedShipment
-
-	result.Version = item.SystemInfo.Version
-	result.LastUpdatedTimestamp = item.SystemInfo.LastUpdatedTimestamp
-	result.Status = item.SystemInfo.Status
-	result.TimestampMillisUTC = item.SystemInfo.PeekUTCTimestamp
-
-	result.ReturnValue = model.ReturnStatusSUCCESS
-	return result, nil
+	return &model.PeekResult{
+		Result: &model.Result{
+			ID:                   item.ID,
+			Status:               item.SystemInfo.Status,
+			LastUpdatedTimestamp: item.SystemInfo.LastUpdatedTimestamp,
+			Version:              item.SystemInfo.Version,
+		},
+		TimestampMillisUTC:   item.SystemInfo.PeekUTCTimestamp,
+		PeekedShipmentObject: peekedShipment,
+	}, nil
 }
 
 // Dequeue attempts to dequeue an item from the Queue. It first peeks at the queue to get an item
@@ -919,27 +631,15 @@ func (c *QueueSDKClient) Dequeue(ctx context.Context) (*model.DequeueResult, err
 	if err != nil {
 		return nil, err
 	}
-
-	var dequeueResult *model.DequeueResult
-
-	if peekResult.ReturnValue == model.ReturnStatusSUCCESS {
-		ID := peekResult.ID
-		removeResult, err := c.Remove(ctx, ID)
-		if err != nil {
-			return nil, err
-		}
-
-		dequeueResult = model.NewDequeueResultFromReturnResult(removeResult)
-
-		if removeResult.IsSuccessful() {
-
-			dequeueResult.DequeuedShipmentObject = peekResult.PeekedShipmentObject
-		}
-	} else {
-		dequeueResult = model.NewDequeueResultFromReturnResult(peekResult.Result)
+	id := peekResult.ID
+	removeResult, err := c.Remove(ctx, id)
+	if err != nil {
+		return nil, err
 	}
-
-	return dequeueResult, nil
+	return &model.DequeueResult{
+		Result:                 removeResult,
+		DequeuedShipmentObject: peekResult.PeekedShipmentObject,
+	}, nil
 }
 
 // Remove tries to remove an item with a specified ID from the underlying datastore.
@@ -954,16 +654,14 @@ func (c *QueueSDKClient) Dequeue(ctx context.Context) (*model.DequeueResult, err
 //   - error: any error encountered during the operation, especially related to data marshaling and database interactions.
 //     If successful and the item is just not found, the error is nil but the Result reflects the status.
 func (c *QueueSDKClient) Remove(ctx context.Context, id string) (*model.Result, error) {
-	result := &model.Result{ID: id}
-
 	shipment, err := c.Get(ctx, id)
-	if shipment == nil {
-		result.ReturnValue = model.ReturnStatusFailedIDNotFound
-		return result, nil
+	if err != nil {
+		return nil, err
 	}
-
-	now := time.Now().UTC()
-
+	if shipment == nil {
+		return nil, &IDNotProvidedError{}
+	}
+	formattedUTCTime := formattedCurrentTime()
 	expr, err := expression.NewBuilder().
 		WithUpdate(expression.
 			Add(expression.Name("system_info.version"), expression.Value(1)).
@@ -972,49 +670,24 @@ func (c *QueueSDKClient) Remove(ctx context.Context, id string) (*model.Result, 
 			Remove(expression.Name("DLQ")).
 			Set(expression.Name("system_info.queued"), expression.Value(0)).
 			Set(expression.Name("system_info.queue_selected"), expression.Value(false)).
-			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(now.Format(time.RFC3339))).
-			Set(expression.Name("last_updated_timestamp"), expression.Value(now.Format(time.RFC3339))).
-			Set(expression.Name("system_info.queue_remove_timestamp"), expression.Value(now.Format(time.RFC3339)))).
+			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(formattedUTCTime)).
+			Set(expression.Name("last_updated_timestamp"), expression.Value(formattedUTCTime)).
+			Set(expression.Name("system_info.queue_remove_timestamp"), expression.Value(formattedUTCTime))).
 		WithCondition(expression.Name("system_info.version").Equal(expression.Value(shipment.SystemInfo.Version))).
 		Build()
 	if err != nil {
-		return nil, fmt.Errorf("building expression: %w", err)
+		return nil, &BuildingExpressionError{Cause: err}
 	}
-
-	input := &dynamodb.UpdateItemInput{
-		TableName: &c.tableName,
-		Key: map[string]types.AttributeValue{
-			"id": &types.AttributeValueMemberS{
-				Value: id,
-			},
-		},
-		ConditionExpression:       expr.Condition(),
-		UpdateExpression:          expr.Update(),
-		ExpressionAttributeNames:  expr.Names(),
-		ExpressionAttributeValues: expr.Values(),
-		ReturnValues:              types.ReturnValueAllNew,
-	}
-
-	outcome, err := c.dynamoDB.UpdateItem(ctx, input)
+	item, err := c.updateDynamoDBItem(ctx, id, &expr)
 	if err != nil {
-		fmt.Printf("remove() - failed to update multiple attributes in %s\n", c.tableName)
-		fmt.Println(err)
-		result.ReturnValue = model.ReturnStatusFailedDynamoError
-		return result, nil
+		return nil, err
 	}
-
-	item := model.Shipment{}
-	err = attributevalue.UnmarshalMap(outcome.Attributes, &item)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal map: %s", err)
-	}
-
-	result.Version = item.SystemInfo.Version
-	result.Status = item.SystemInfo.Status
-	result.LastUpdatedTimestamp = item.SystemInfo.LastUpdatedTimestamp
-
-	result.ReturnValue = model.ReturnStatusSUCCESS
-	return result, nil
+	return &model.Result{
+		ID:                   id,
+		Status:               item.SystemInfo.Status,
+		LastUpdatedTimestamp: item.SystemInfo.LastUpdatedTimestamp,
+		Version:              item.SystemInfo.Version,
+	}, nil
 }
 
 // Restore adds back a record to the queue by its ID. The function updates the
@@ -1034,19 +707,14 @@ func (c *QueueSDKClient) Remove(ctx context.Context, id string) (*model.Result, 
 //	error: An error that describes any issues that occurred during the
 //	restore operation. If the operation is successful, this will be nil.
 func (c *QueueSDKClient) Restore(ctx context.Context, id string) (*model.Result, error) {
-	result := model.NewReturnResultWithID(id)
-
 	shipment, err := c.Get(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-	if shipment == nil || err != nil {
-		result.ReturnValue = model.ReturnStatusFailedIDNotFound
-		return result, nil
+	if shipment == nil {
+		return nil, &IDNotFoundError{}
 	}
-
-	now := time.Now().UTC()
-
+	formattedUTCTime := formattedCurrentTime()
 	expr, err := expression.NewBuilder().
 		WithUpdate(expression.
 			Add(expression.Name("system_info.version"), expression.Value(1)).
@@ -1054,50 +722,25 @@ func (c *QueueSDKClient) Restore(ctx context.Context, id string) (*model.Result,
 			Set(expression.Name("system_info.queued"), expression.Value(1)).
 			Set(expression.Name("queued"), expression.Value(1)).
 			Set(expression.Name("system_info.queue_selected"), expression.Value(false)).
-			Set(expression.Name("last_updated_timestamp"), expression.Value(now.Format(time.RFC3339))).
-			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(now.Format(time.RFC3339))).
-			Set(expression.Name("system_info.queue_add_timestamp"), expression.Value(now.Format(time.RFC3339))).
+			Set(expression.Name("last_updated_timestamp"), expression.Value(formattedUTCTime)).
+			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(formattedUTCTime)).
+			Set(expression.Name("system_info.queue_add_timestamp"), expression.Value(formattedUTCTime)).
 			Set(expression.Name("system_info.status"), expression.Value(model.StatusReadyToShip))).
 		WithCondition(expression.Name("system_info.version").Equal(expression.Value(shipment.SystemInfo.Version))).
 		Build()
 	if err != nil {
-		return nil, fmt.Errorf("building expression: %w", err)
+		return nil, &BuildingExpressionError{Cause: err}
 	}
-
-	input := &dynamodb.UpdateItemInput{
-		TableName: &c.tableName,
-		Key: map[string]types.AttributeValue{
-			"id": &types.AttributeValueMemberS{
-				Value: id,
-			},
-		},
-		ConditionExpression:       expr.Condition(),
-		UpdateExpression:          expr.Update(),
-		ExpressionAttributeNames:  expr.Names(),
-		ExpressionAttributeValues: expr.Values(),
-		ReturnValues:              types.ReturnValueAllNew,
-	}
-
-	outcome, err := c.dynamoDB.UpdateItem(ctx, input)
+	item, err := c.updateDynamoDBItem(ctx, id, &expr)
 	if err != nil {
-		fmt.Printf("restore() - failed to update multiple attributes in %s\n", c.tableName)
-		fmt.Println(err)
-		result.ReturnValue = model.ReturnStatusFailedDynamoError
-		return result, nil
+		return nil, err
 	}
-
-	item := model.Shipment{}
-	err = attributevalue.UnmarshalMap(outcome.Attributes, &item)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal map: %s", err)
-	}
-
-	result.Version = item.SystemInfo.Version
-	result.Status = item.SystemInfo.Status
-	result.LastUpdatedTimestamp = item.SystemInfo.LastUpdatedTimestamp
-
-	result.ReturnValue = model.ReturnStatusSUCCESS
-	return result, nil
+	return &model.Result{
+		ID:                   id,
+		Status:               item.SystemInfo.Status,
+		LastUpdatedTimestamp: item.SystemInfo.LastUpdatedTimestamp,
+		Version:              item.SystemInfo.Version,
+	}, nil
 }
 
 // SendToDLQ sends a specified record with the given ID to the Dead Letter Queue (DLQ).
@@ -1116,16 +759,14 @@ func (c *QueueSDKClient) Restore(ctx context.Context, id string) (*model.Result,
 //     and ReturnValue indicating the result of the operation (e.g., success, failed due to ID not found, etc.).
 //   - error: Non-nil if there was an error during the operation.
 func (c *QueueSDKClient) SendToDLQ(ctx context.Context, id string) (*model.Result, error) {
-	result := model.NewReturnResultWithID(id)
-
 	shipment, err := c.Get(ctx, id)
-	if err != nil || shipment == nil {
-		result.ReturnValue = model.ReturnStatusFailedIDNotFound
-		return result, nil
+	if err != nil {
+		return nil, err
 	}
-
-	now := time.Now().UTC()
-
+	if shipment == nil {
+		return nil, &IDNotProvidedError{}
+	}
+	formattedUTCTime := formattedCurrentTime()
 	expr, err := expression.NewBuilder().
 		WithUpdate(expression.
 			Add(expression.Name("system_info.version"), expression.Value(1)).
@@ -1133,9 +774,9 @@ func (c *QueueSDKClient) SendToDLQ(ctx context.Context, id string) (*model.Resul
 			Set(expression.Name("DLQ"), expression.Value(1)).
 			Set(expression.Name("system_info.queued"), expression.Value(0)).
 			Set(expression.Name("system_info.queue_selected"), expression.Value(false)).
-			Set(expression.Name("last_updated_timestamp"), expression.Value(now.Format(time.RFC3339))).
-			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(now.Format(time.RFC3339))).
-			Set(expression.Name("system_info.dlq_add_timestamp"), expression.Value(now.Format(time.RFC3339))).
+			Set(expression.Name("last_updated_timestamp"), expression.Value(formattedUTCTime)).
+			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(formattedUTCTime)).
+			Set(expression.Name("system_info.dlq_add_timestamp"), expression.Value(formattedUTCTime)).
 			Set(expression.Name("system_info.status"), expression.Value(model.StatusInDLQ))).
 		WithCondition(expression.And(
 			expression.Name("system_info.version").Equal(expression.Value(shipment.SystemInfo.Version)),
@@ -1143,43 +784,18 @@ func (c *QueueSDKClient) SendToDLQ(ctx context.Context, id string) (*model.Resul
 		)).
 		Build()
 	if err != nil {
-		return nil, fmt.Errorf("building expression: %w", err)
+		return nil, &BuildingExpressionError{Cause: err}
 	}
-
-	input := &dynamodb.UpdateItemInput{
-		TableName: &c.tableName,
-		Key: map[string]types.AttributeValue{
-			"id": &types.AttributeValueMemberS{
-				Value: id,
-			},
-		},
-		ConditionExpression:       expr.Condition(),
-		UpdateExpression:          expr.Update(),
-		ExpressionAttributeNames:  expr.Names(),
-		ExpressionAttributeValues: expr.Values(),
-		ReturnValues:              types.ReturnValueAllNew,
-	}
-
-	outcome, err := c.dynamoDB.UpdateItem(ctx, input)
+	item, err := c.updateDynamoDBItem(ctx, id, &expr)
 	if err != nil {
-		fmt.Printf("SendToDLQ() - failed to update multiple attributes in %s\n", c.tableName)
-		fmt.Println(err)
-		result.ReturnValue = model.ReturnStatusFailedDynamoError
-		return result, nil
+		return nil, err
 	}
-
-	item := model.Shipment{}
-	err = attributevalue.UnmarshalMap(outcome.Attributes, &item)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal map: %s", err)
-	}
-
-	result.Version = item.SystemInfo.Version
-	result.Status = item.SystemInfo.Status
-	result.LastUpdatedTimestamp = item.SystemInfo.LastUpdatedTimestamp
-
-	result.ReturnValue = model.ReturnStatusSUCCESS
-	return result, nil
+	return &model.Result{
+		ID:                   id,
+		Status:               item.SystemInfo.Status,
+		LastUpdatedTimestamp: item.SystemInfo.LastUpdatedTimestamp,
+		Version:              item.SystemInfo.Version,
+	}, nil
 }
 
 // Touch updates the 'last_updated_timestamp' of a given item identified by its 'id'
@@ -1201,60 +817,34 @@ func (c *QueueSDKClient) SendToDLQ(ctx context.Context, id string) (*model.Resul
 // - If there's an error unmarshalling the DynamoDB response, this error is returned.
 // Otherwise, if the operation succeeds, the error will be 'nil'.
 func (c *QueueSDKClient) Touch(ctx context.Context, id string) (*model.Result, error) {
-	result := model.NewReturnResultWithID(id)
-
 	shipment, err := c.Get(ctx, id)
-	if err != nil || shipment == nil {
-		result.ReturnValue = model.ReturnStatusFailedIDNotFound
-		return result, nil
+	if err != nil {
+		return nil, err
 	}
-
-	now := time.Now().UTC()
-
+	if shipment == nil {
+		return nil, &IDNotFoundError{}
+	}
+	formattedUTCTime := formattedCurrentTime()
 	expr, err := expression.NewBuilder().
 		WithUpdate(expression.
 			Add(expression.Name("system_info.version"), expression.Value(1)).
-			Set(expression.Name("last_updated_timestamp"), expression.Value(now.Format(time.RFC3339))).
-			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(now.Format(time.RFC3339)))).
+			Set(expression.Name("last_updated_timestamp"), expression.Value(formattedUTCTime)).
+			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(formattedUTCTime))).
 		WithCondition(expression.Name("system_info.version").Equal(expression.Value(shipment.SystemInfo.Version))).
 		Build()
 	if err != nil {
-		return nil, fmt.Errorf("building expression: %w", err)
+		return nil, &BuildingExpressionError{Cause: err}
 	}
-
-	input := &dynamodb.UpdateItemInput{
-		TableName: &c.tableName,
-		Key: map[string]types.AttributeValue{
-			"id": &types.AttributeValueMemberS{
-				Value: id,
-			},
-		},
-		UpdateExpression:          expr.Update(),
-		ExpressionAttributeNames:  expr.Names(),
-		ExpressionAttributeValues: expr.Values(),
-		ReturnValues:              types.ReturnValueAllNew,
-	}
-
-	outcome, err := c.dynamoDB.UpdateItem(ctx, input)
+	item, err := c.updateDynamoDBItem(ctx, id, &expr)
 	if err != nil {
-		fmt.Printf("Touch() - failed to update multiple attributes in %s\n", c.tableName)
-		fmt.Println(err)
-		result.ReturnValue = model.ReturnStatusFailedDynamoError
-		return result, nil
+		return nil, err
 	}
-
-	item := model.Shipment{}
-	err = attributevalue.UnmarshalMap(outcome.Attributes, &item)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal map: %s", err)
-	}
-
-	result.Version = item.SystemInfo.Version
-	result.Status = item.SystemInfo.Status
-	result.LastUpdatedTimestamp = item.SystemInfo.LastUpdatedTimestamp
-
-	result.ReturnValue = model.ReturnStatusSUCCESS
-	return result, nil
+	return &model.Result{
+		ID:                   id,
+		Status:               item.SystemInfo.Status,
+		LastUpdatedTimestamp: item.SystemInfo.LastUpdatedTimestamp,
+		Version:              item.SystemInfo.Version,
+	}, nil
 }
 
 // List retrieves a list of Shipments from the DynamoDB table up to the given size.
@@ -1273,27 +863,22 @@ func (c *QueueSDKClient) List(ctx context.Context, size int32) ([]*model.Shipmen
 		WithProjection(expression.NamesList(expression.Name("id"), expression.Name("system_info"))).
 		Build()
 	if err != nil {
-		return nil, fmt.Errorf("building expression: %w", err)
+		return nil, &BuildingExpressionError{Cause: err}
 	}
-
-	input := &dynamodb.ScanInput{
+	output, err := c.dynamoDB.Scan(ctx, &dynamodb.ScanInput{
 		TableName:                &c.tableName,
 		ProjectionExpression:     expr.Projection(),
 		ExpressionAttributeNames: expr.Names(),
 		Limit:                    aws.Int32(size),
-	}
-
-	output, err := c.dynamoDB.Scan(ctx, input)
+	})
 	if err != nil {
-		return nil, fmt.Errorf("scan dynamodb: %w", err)
+		return nil, handleDynamoDBError(err)
 	}
-
 	var shipments []*model.Shipment
 	err = attributevalue.UnmarshalListOfMaps(output.Items, &shipments)
 	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal list of map: %s", err)
+		return nil, &UnmarshalingAttributeError{Cause: err}
 	}
-
 	return shipments, nil
 }
 
@@ -1359,20 +944,20 @@ func (c *QueueSDKClient) ListExtendedIDs(ctx context.Context, size int32) ([]str
 //   - error: Non-nil if there was an error during the delete operation.
 func (c *QueueSDKClient) Delete(ctx context.Context, id string) error {
 	if id == "" {
-		return errors.New("shipment id cannot be empty")
+		return &IDNotProvidedError{}
 	}
-
-	input := &dynamodb.DeleteItemInput{
+	_, err := c.dynamoDB.DeleteItem(ctx, &dynamodb.DeleteItemInput{
 		TableName: &c.tableName,
 		Key: map[string]types.AttributeValue{
 			"id": &types.AttributeValueMemberS{
 				Value: id,
 			},
 		},
+	})
+	if err != nil {
+		return handleDynamoDBError(err)
 	}
-
-	_, err := c.dynamoDB.DeleteItem(ctx, input)
-	return err
+	return nil
 }
 
 // CreateTestData creates a test data shipment record associated with the provided ID.
@@ -1389,14 +974,12 @@ func (c *QueueSDKClient) Delete(ctx context.Context, id string) error {
 //   - error: Non-nil if there was an error during the creation process.
 func (c *QueueSDKClient) CreateTestData(ctx context.Context, id string) (*model.Shipment, error) {
 	if id == "" {
-		return nil, errors.New("shipment id cannot be empty")
+		return nil, &IDNotProvidedError{}
 	}
-
 	err := c.Delete(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-
 	data := &model.ShipmentData{
 		ID:    id,
 		Data1: "Data 1",
@@ -1408,58 +991,56 @@ func (c *QueueSDKClient) CreateTestData(ctx context.Context, id string) (*model.
 			{SKU: "Item-3", Packed: true},
 		},
 	}
-
-	shipment := model.NewShipmentWithID(id)
-	shipment.Data = data
-
+	shipment := model.NewShipmentWithIDAndData(id, data)
 	err = c.Put(ctx, shipment)
 	if err != nil {
 		return nil, err
 	}
-
 	return shipment, nil
 }
 
-type Builder struct {
-	awsRegion                 string
-	awsCredentialsProfileName string
-	tableName                 string
-	credentialsProvider       aws.CredentialsProvider
-}
-
-func NewBuilder() *Builder {
-	return &Builder{}
-}
-
-func (b *Builder) Build(ctx context.Context) (*QueueSDKClient, error) {
-	if b.awsRegion == "" {
-		b.awsRegion = AwsRegionDefault
+func (c *QueueSDKClient) updateDynamoDBItem(ctx context.Context,
+	id string, expr *expression.Expression) (*model.Shipment, error) {
+	outcome, err := c.dynamoDB.UpdateItem(ctx, &dynamodb.UpdateItemInput{
+		Key: map[string]types.AttributeValue{
+			"id": &types.AttributeValueMemberS{
+				Value: id,
+			},
+		},
+		TableName:                 aws.String(c.tableName),
+		ConditionExpression:       expr.Condition(),
+		ExpressionAttributeNames:  expr.Names(),
+		ExpressionAttributeValues: expr.Values(),
+		UpdateExpression:          expr.Update(),
+		ReturnValues:              types.ReturnValueAllNew,
+	})
+	if err != nil {
+		return nil, handleDynamoDBError(err)
 	}
-	if b.awsCredentialsProfileName == "" {
-		b.awsCredentialsProfileName = AwsProfileDefault
+	shipment := model.Shipment{}
+	err = attributevalue.UnmarshalMap(outcome.Attributes, &shipment)
+	if err != nil {
+		return nil, &UnmarshalingAttributeError{Cause: err}
 	}
-	if b.tableName == "" {
-		b.tableName = DefaultTableName
+	return &shipment, nil
+}
+
+func now() time.Time {
+	return time.Now().UTC()
+}
+
+func formattedCurrentTime() string {
+	return formattedTime(now())
+}
+
+func formattedTime(now time.Time) string {
+	return now.UTC().Format(time.RFC3339)
+}
+
+func handleDynamoDBError(err error) error {
+	var cause *types.ConditionalCheckFailedException
+	if errors.As(err, &cause) {
+		return &ConditionalCheckFailedError{Cause: cause}
 	}
-	return initialize(ctx, b)
-}
-
-func (b *Builder) WithRegion(region string) *Builder {
-	b.awsRegion = region
-	return b
-}
-
-func (b *Builder) WithCredentialsProfileName(profile string) *Builder {
-	b.awsCredentialsProfileName = profile
-	return b
-}
-
-func (b *Builder) WithTableName(tableName string) *Builder {
-	b.tableName = tableName
-	return b
-}
-
-func (b *Builder) WithCredentialsProvider(creds aws.CredentialsProvider) *Builder {
-	b.credentialsProvider = creds
-	return b
+	return &DynamoDBAPIError{Cause: err}
 }
