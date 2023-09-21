@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/vvatanabe/go82f46979/model"
 	"github.com/vvatanabe/go82f46979/sdk"
 )
 
@@ -20,7 +19,7 @@ type CLI struct {
 	TableName          *string
 
 	Client   *sdk.QueueSDKClient
-	Shipment *model.Shipment
+	Shipment *sdk.Shipment
 }
 
 func (c *CLI) Run(ctx context.Context, command string, params []string) {
@@ -277,7 +276,7 @@ func (c *CLI) ready(ctx context.Context, _ []string) {
 		return
 	}
 	c.Shipment.ResetSystemInfo()
-	c.Shipment.SystemInfo.Status = model.StatusReadyToShip
+	c.Shipment.SystemInfo.Status = sdk.StatusReadyToShip
 	err := c.Client.Put(ctx, c.Shipment)
 	if err != nil {
 		printError(err)
@@ -295,7 +294,7 @@ func (c *CLI) done(ctx context.Context, _ []string) {
 		printCLIModeRestriction("`done`")
 		return
 	}
-	_, err := c.Client.UpdateStatus(ctx, c.Shipment.ID, model.StatusCompleted)
+	_, err := c.Client.UpdateStatus(ctx, c.Shipment.ID, sdk.StatusCompleted)
 	if err != nil {
 		printError(err)
 		return
@@ -421,9 +420,9 @@ func (c *CLI) enqueue(ctx context.Context, _ []string) {
 		return
 	}
 	// convert under_construction to ready to ship
-	if shipment.SystemInfo.Status == model.StatusUnderConstruction {
+	if shipment.SystemInfo.Status == sdk.StatusUnderConstruction {
 		shipment.ResetSystemInfo()
-		shipment.SystemInfo.Status = model.StatusReadyToShip
+		shipment.SystemInfo.Status = sdk.StatusReadyToShip
 		err = c.Client.Put(ctx, shipment)
 		if err != nil {
 			printError(err)
@@ -484,9 +483,9 @@ func (c *CLI) update(ctx context.Context, params []string) {
 		return
 	}
 	statusStr := strings.TrimSpace(strings.ToUpper(params[0]))
-	if statusStr == string(model.StatusReadyToShip) {
+	if statusStr == string(sdk.StatusReadyToShip) {
 		c.Shipment.MarkAsReadyForShipment()
-		rr, err := c.Client.UpdateStatus(ctx, c.Shipment.ID, model.StatusReadyToShip)
+		rr, err := c.Client.UpdateStatus(ctx, c.Shipment.ID, sdk.StatusReadyToShip)
 		if err != nil {
 			printError(err)
 			return

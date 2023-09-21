@@ -14,7 +14,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/expression"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
-	"github.com/vvatanabe/go82f46979/model"
 )
 
 const (
@@ -83,7 +82,7 @@ func initialize(ctx context.Context, builder *Builder) (*QueueSDKClient, error) 
 //
 // Note: The function uses pagination to query the DynamoDB table and will continue querying
 // until all records have been fetched or an error occurs.
-func (c *QueueSDKClient) GetQueueStats(ctx context.Context) (*model.QueueStats, error) {
+func (c *QueueSDKClient) GetQueueStats(ctx context.Context) (*QueueStats, error) {
 	expr, err := expression.NewBuilder().
 		WithProjection(expression.NamesList(expression.Name("id"), expression.Name("system_info"))).
 		WithKeyCondition(expression.KeyEqual(expression.Key("queued"), expression.Value(1))).
@@ -114,7 +113,7 @@ func (c *QueueSDKClient) GetQueueStats(ctx context.Context) (*model.QueueStats, 
 		exclusiveStartKey = queryOutput.LastEvaluatedKey
 		for _, itemMap := range queryOutput.Items {
 			totalQueueSize++
-			item := model.Shipment{}
+			item := Shipment{}
 			err := attributevalue.UnmarshalMap(itemMap, &item)
 			if err != nil {
 				return nil, &UnmarshalingAttributeError{Cause: err}
@@ -133,7 +132,7 @@ func (c *QueueSDKClient) GetQueueStats(ctx context.Context) (*model.QueueStats, 
 			break
 		}
 	}
-	return &model.QueueStats{
+	return &QueueStats{
 		TotalRecordsInProcessing:   peekedRecords,
 		TotalRecordsInQueue:        totalQueueSize,
 		TotalRecordsNotStarted:     totalQueueSize - peekedRecords,
@@ -157,7 +156,7 @@ func (c *QueueSDKClient) GetQueueStats(ctx context.Context) (*model.QueueStats, 
 //
 // Note: The function uses pagination to query the DynamoDB table and will continue querying
 // until all records have been fetched or an error occurs.
-func (c *QueueSDKClient) GetDLQStats(ctx context.Context) (*model.DLQStats, error) {
+func (c *QueueSDKClient) GetDLQStats(ctx context.Context) (*DLQStats, error) {
 	expr, err := expression.NewBuilder().
 		WithProjection(expression.NamesList(
 			expression.Name("id"),
@@ -189,7 +188,7 @@ func (c *QueueSDKClient) GetDLQStats(ctx context.Context) (*model.DLQStats, erro
 		for _, itemMap := range resp.Items {
 			totalDLQSize++
 			if len(listBANs) < 100 {
-				item := model.Shipment{}
+				item := Shipment{}
 				err := attributevalue.UnmarshalMap(itemMap, &item)
 				if err != nil {
 					return nil, &UnmarshalingAttributeError{Cause: err}
@@ -201,7 +200,7 @@ func (c *QueueSDKClient) GetDLQStats(ctx context.Context) (*model.DLQStats, erro
 			break
 		}
 	}
-	return &model.DLQStats{
+	return &DLQStats{
 		First100IDsInQueue: listBANs,
 		TotalRecordsInDLQ:  totalDLQSize,
 	}, nil
@@ -217,11 +216,11 @@ func (c *QueueSDKClient) GetDLQStats(ctx context.Context) (*model.DLQStats, erro
 //   - id (string): The unique identifier of the shipment record to retrieve.
 //
 // Returns:
-//   - (*model.Shipment): A pointer to the retrieved shipment record.
+//   - (*Shipment): A pointer to the retrieved shipment record.
 //   - (error): An error if any occurred during the retrieval process, including
 //     if the 'id' is empty, the database query fails, or unmarshaling the response
 //     fails.
-func (c *QueueSDKClient) Get(ctx context.Context, id string) (*model.Shipment, error) {
+func (c *QueueSDKClient) Get(ctx context.Context, id string) (*Shipment, error) {
 	if id == "" {
 		return nil, &IDNotProvidedError{}
 	}
@@ -238,7 +237,7 @@ func (c *QueueSDKClient) Get(ctx context.Context, id string) (*model.Shipment, e
 	if resp.Item == nil {
 		return nil, nil
 	}
-	item := model.Shipment{}
+	item := Shipment{}
 	err = attributevalue.UnmarshalMap(resp.Item, &item)
 	if err != nil {
 		return nil, &UnmarshalingAttributeError{Cause: err}
@@ -256,7 +255,7 @@ func (c *QueueSDKClient) Get(ctx context.Context, id string) (*model.Shipment, e
 //
 // Returns:
 //   - error: Returns an error if one occurs, otherwise, it returns nil on successful storage.
-func (c *QueueSDKClient) Put(ctx context.Context, shipment *model.Shipment) error {
+func (c *QueueSDKClient) Put(ctx context.Context, shipment *Shipment) error {
 	return c.PutImpl(ctx, shipment, false)
 }
 
@@ -270,7 +269,7 @@ func (c *QueueSDKClient) Put(ctx context.Context, shipment *model.Shipment) erro
 //
 // Returns:
 //   - error: Returns an error if one occurs, otherwise, it returns nil on successful upsert.
-func (c *QueueSDKClient) Upsert(ctx context.Context, shipment *model.Shipment) error {
+func (c *QueueSDKClient) Upsert(ctx context.Context, shipment *Shipment) error {
 	return c.PutImpl(ctx, shipment, true)
 }
 
@@ -287,7 +286,7 @@ func (c *QueueSDKClient) Upsert(ctx context.Context, shipment *model.Shipment) e
 //
 // Returns:
 //   - (error): An error if one occurs, otherwise, it returns nil on success.
-func (c *QueueSDKClient) PutImpl(ctx context.Context, shipment *model.Shipment, useUpsert bool) error {
+func (c *QueueSDKClient) PutImpl(ctx context.Context, shipment *Shipment, useUpsert bool) error {
 	// Check if already present
 	retrievedShipment, err := c.Get(ctx, shipment.ID)
 	if err != nil {
@@ -311,9 +310,9 @@ func (c *QueueSDKClient) PutImpl(ctx context.Context, shipment *model.Shipment, 
 		}
 	}
 	formattedUTCTime := formattedCurrentTime()
-	item, err := attributevalue.MarshalMap(&model.Shipment{
+	item, err := attributevalue.MarshalMap(&Shipment{
 		ID: shipment.ID,
-		SystemInfo: &model.SystemInfo{
+		SystemInfo: &SystemInfo{
 			ID:                   shipment.ID,
 			CreationTimestamp:    formattedUTCTime,
 			LastUpdatedTimestamp: formattedUTCTime,
@@ -355,7 +354,7 @@ func (c *QueueSDKClient) PutImpl(ctx context.Context, shipment *model.Shipment, 
 // Returns:
 //   - A pointer to a Result object containing the result of the update operation.
 //   - An error if one occurs during the process. A nil error indicates successful completion.
-func (c *QueueSDKClient) UpdateStatus(ctx context.Context, id string, newStatus model.Status) (*model.Result, error) {
+func (c *QueueSDKClient) UpdateStatus(ctx context.Context, id string, newStatus Status) (*Result, error) {
 	if id == "" {
 		return nil, &IDNotProvidedError{}
 	}
@@ -369,7 +368,7 @@ func (c *QueueSDKClient) UpdateStatus(ctx context.Context, id string, newStatus 
 	prevStatus := shipment.SystemInfo.Status
 	version := shipment.SystemInfo.Version
 	if prevStatus == newStatus {
-		return &model.Result{
+		return &Result{
 			ID:                   shipment.ID,
 			Status:               newStatus,
 			LastUpdatedTimestamp: shipment.SystemInfo.LastUpdatedTimestamp,
@@ -391,7 +390,7 @@ func (c *QueueSDKClient) UpdateStatus(ctx context.Context, id string, newStatus 
 	if err != nil {
 		return nil, err
 	}
-	return &model.Result{
+	return &Result{
 		ID:                   item.SystemInfo.ID,
 		Status:               item.SystemInfo.Status,
 		LastUpdatedTimestamp: item.SystemInfo.LastUpdatedTimestamp,
@@ -418,9 +417,9 @@ func (c *QueueSDKClient) UpdateStatus(ctx context.Context, id string, newStatus 
 //
 // Returns:
 //
-//	*model.EnqueueResult: A pointer to the EnqueueResult structure which contains information about the enqueued shipment.
+//	*EnqueueResult: A pointer to the EnqueueResult structure which contains information about the enqueued shipment.
 //	error: An error that can occur during the execution, or nil if no errors occurred.
-func (c *QueueSDKClient) Enqueue(ctx context.Context, id string) (*model.EnqueueResult, error) {
+func (c *QueueSDKClient) Enqueue(ctx context.Context, id string) (*EnqueueResult, error) {
 	if id == "" {
 		return nil, &IDNotProvidedError{}
 	}
@@ -433,10 +432,10 @@ func (c *QueueSDKClient) Enqueue(ctx context.Context, id string) (*model.Enqueue
 	}
 	version := retrievedShipment.SystemInfo.Version
 	status := retrievedShipment.SystemInfo.Status
-	if status == model.StatusUnderConstruction {
+	if status == StatusUnderConstruction {
 		return nil, &RecordNotConstructedError{}
 	}
-	if status != model.StatusReadyToShip {
+	if status != StatusReadyToShip {
 		return nil, &IllegalStateError{}
 	}
 	formattedUTCTime := formattedCurrentTime()
@@ -464,7 +463,7 @@ func (c *QueueSDKClient) Enqueue(ctx context.Context, id string) (*model.Enqueue
 			expression.Value(formattedUTCTime),
 		).Set(
 			expression.Name("system_info.status"),
-			expression.Value(model.StatusReadyToShip),
+			expression.Value(StatusReadyToShip),
 		)).
 		WithCondition(expression.Name("system_info.version").Equal(expression.Value(version))).
 		Build()
@@ -479,8 +478,8 @@ func (c *QueueSDKClient) Enqueue(ctx context.Context, id string) (*model.Enqueue
 	if err != nil {
 		return nil, err
 	}
-	return &model.EnqueueResult{
-		Result: &model.Result{
+	return &EnqueueResult{
+		Result: &Result{
 			ID:                   item.ID,
 			Status:               item.SystemInfo.Status,
 			LastUpdatedTimestamp: item.SystemInfo.LastUpdatedTimestamp,
@@ -499,7 +498,7 @@ func (c *QueueSDKClient) Enqueue(ctx context.Context, id string) (*model.Enqueue
 // - ctx: The context for managing request lifetime and cancelation.
 //
 // Returns:
-//   - *model.PeekResult: The result of the peek operation, containing details like ID, Version,
+//   - *PeekResult: The result of the peek operation, containing details like ID, Version,
 //     LastUpdatedTimestamp, Status, and TimestampMillisUTC of the peeked item.
 //     It also contains the ReturnValue which denotes the outcome of the operation.
 //   - error: An error encountered during the peek operation, if any. Otherwise, nil.
@@ -507,7 +506,7 @@ func (c *QueueSDKClient) Enqueue(ctx context.Context, id string) (*model.Enqueue
 // Note:
 // The function does not update the top-level attribute `last_updated_timestamp` to
 // avoid re-indexing the order.
-func (c *QueueSDKClient) Peek(ctx context.Context) (*model.PeekResult, error) {
+func (c *QueueSDKClient) Peek(ctx context.Context) (*PeekResult, error) {
 	var exclusiveStartKey map[string]types.AttributeValue
 	var selectedID string
 	var selectedVersion int
@@ -540,7 +539,7 @@ func (c *QueueSDKClient) Peek(ctx context.Context) (*model.PeekResult, error) {
 		}
 		exclusiveStartKey = queryResult.LastEvaluatedKey
 		for _, itemMap := range queryResult.Items {
-			item := model.Shipment{}
+			item := Shipment{}
 			err = attributevalue.UnmarshalMap(itemMap, &item)
 			if err != nil {
 				return nil, &UnmarshalingAttributeError{Cause: err}
@@ -591,7 +590,7 @@ func (c *QueueSDKClient) Peek(ctx context.Context) (*model.PeekResult, error) {
 			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(formattedCurrentTime)).
 			Set(expression.Name("system_info.queue_peek_timestamp"), expression.Value(formattedCurrentTime)).
 			Set(expression.Name("system_info.peek_utc_timestamp"), expression.Value(tsUTC)).
-			Set(expression.Name("system_info.status"), expression.Value(model.StatusProcessingShipment))).
+			Set(expression.Name("system_info.status"), expression.Value(StatusProcessingShipment))).
 		WithCondition(expression.Name("system_info.version").Equal(expression.Value(selectedVersion))).
 		Build()
 	if err != nil {
@@ -605,8 +604,8 @@ func (c *QueueSDKClient) Peek(ctx context.Context) (*model.PeekResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &model.PeekResult{
-		Result: &model.Result{
+	return &PeekResult{
+		Result: &Result{
 			ID:                   item.ID,
 			Status:               item.SystemInfo.Status,
 			LastUpdatedTimestamp: item.SystemInfo.LastUpdatedTimestamp,
@@ -624,9 +623,9 @@ func (c *QueueSDKClient) Peek(ctx context.Context) (*model.PeekResult, error) {
 //   - ctx: context.Context is the context for method invocation which can be used for timeout and cancellation.
 //
 // Returns:
-//   - *model.DequeueResult: the result of the dequeue operation, containing information about the dequeued item.
+//   - *DequeueResult: the result of the dequeue operation, containing information about the dequeued item.
 //   - error: any error encountered during the operation. If successful, this is nil.
-func (c *QueueSDKClient) Dequeue(ctx context.Context) (*model.DequeueResult, error) {
+func (c *QueueSDKClient) Dequeue(ctx context.Context) (*DequeueResult, error) {
 	peekResult, err := c.Peek(ctx)
 	if err != nil {
 		return nil, err
@@ -636,7 +635,7 @@ func (c *QueueSDKClient) Dequeue(ctx context.Context) (*model.DequeueResult, err
 	if err != nil {
 		return nil, err
 	}
-	return &model.DequeueResult{
+	return &DequeueResult{
 		Result:                 removeResult,
 		DequeuedShipmentObject: peekResult.PeekedShipmentObject,
 	}, nil
@@ -650,10 +649,10 @@ func (c *QueueSDKClient) Dequeue(ctx context.Context) (*model.DequeueResult, err
 //   - id: string is the unique identifier of the item to be removed.
 //
 // Returns:
-//   - *model.Result: the result of the remove operation, containing information about the removed item's status.
+//   - *Result: the result of the remove operation, containing information about the removed item's status.
 //   - error: any error encountered during the operation, especially related to data marshaling and database interactions.
 //     If successful and the item is just not found, the error is nil but the Result reflects the status.
-func (c *QueueSDKClient) Remove(ctx context.Context, id string) (*model.Result, error) {
+func (c *QueueSDKClient) Remove(ctx context.Context, id string) (*Result, error) {
 	shipment, err := c.Get(ctx, id)
 	if err != nil {
 		return nil, err
@@ -682,7 +681,7 @@ func (c *QueueSDKClient) Remove(ctx context.Context, id string) (*model.Result, 
 	if err != nil {
 		return nil, err
 	}
-	return &model.Result{
+	return &Result{
 		ID:                   id,
 		Status:               item.SystemInfo.Status,
 		LastUpdatedTimestamp: item.SystemInfo.LastUpdatedTimestamp,
@@ -700,13 +699,13 @@ func (c *QueueSDKClient) Remove(ctx context.Context, id string) (*model.Result, 
 //
 // Returns:
 //
-//	*model.Result: A pointer to a Result object that contains
+//	*Result: A pointer to a Result object that contains
 //	information about the result of the restore operation, such as the version,
 //	status, and last updated timestamp.
 //
 //	error: An error that describes any issues that occurred during the
 //	restore operation. If the operation is successful, this will be nil.
-func (c *QueueSDKClient) Restore(ctx context.Context, id string) (*model.Result, error) {
+func (c *QueueSDKClient) Restore(ctx context.Context, id string) (*Result, error) {
 	shipment, err := c.Get(ctx, id)
 	if err != nil {
 		return nil, err
@@ -725,7 +724,7 @@ func (c *QueueSDKClient) Restore(ctx context.Context, id string) (*model.Result,
 			Set(expression.Name("last_updated_timestamp"), expression.Value(formattedUTCTime)).
 			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(formattedUTCTime)).
 			Set(expression.Name("system_info.queue_add_timestamp"), expression.Value(formattedUTCTime)).
-			Set(expression.Name("system_info.status"), expression.Value(model.StatusReadyToShip))).
+			Set(expression.Name("system_info.status"), expression.Value(StatusReadyToShip))).
 		WithCondition(expression.Name("system_info.version").Equal(expression.Value(shipment.SystemInfo.Version))).
 		Build()
 	if err != nil {
@@ -735,7 +734,7 @@ func (c *QueueSDKClient) Restore(ctx context.Context, id string) (*model.Result,
 	if err != nil {
 		return nil, err
 	}
-	return &model.Result{
+	return &Result{
 		ID:                   id,
 		Status:               item.SystemInfo.Status,
 		LastUpdatedTimestamp: item.SystemInfo.LastUpdatedTimestamp,
@@ -755,10 +754,10 @@ func (c *QueueSDKClient) Restore(ctx context.Context, id string) (*model.Result,
 //	id: The ID of the record that needs to be sent to the DLQ.
 //
 // Returns:
-//   - *model.Result: A pointer to the result structure which contains details like Version, Status, LastUpdatedTimestamp,
+//   - *Result: A pointer to the result structure which contains details like Version, Status, LastUpdatedTimestamp,
 //     and ReturnValue indicating the result of the operation (e.g., success, failed due to ID not found, etc.).
 //   - error: Non-nil if there was an error during the operation.
-func (c *QueueSDKClient) SendToDLQ(ctx context.Context, id string) (*model.Result, error) {
+func (c *QueueSDKClient) SendToDLQ(ctx context.Context, id string) (*Result, error) {
 	shipment, err := c.Get(ctx, id)
 	if err != nil {
 		return nil, err
@@ -777,7 +776,7 @@ func (c *QueueSDKClient) SendToDLQ(ctx context.Context, id string) (*model.Resul
 			Set(expression.Name("last_updated_timestamp"), expression.Value(formattedUTCTime)).
 			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(formattedUTCTime)).
 			Set(expression.Name("system_info.dlq_add_timestamp"), expression.Value(formattedUTCTime)).
-			Set(expression.Name("system_info.status"), expression.Value(model.StatusInDLQ))).
+			Set(expression.Name("system_info.status"), expression.Value(StatusInDLQ))).
 		WithCondition(expression.And(
 			expression.Name("system_info.version").Equal(expression.Value(shipment.SystemInfo.Version)),
 			expression.Name("system_info.queued").Equal(expression.Value(1)),
@@ -790,7 +789,7 @@ func (c *QueueSDKClient) SendToDLQ(ctx context.Context, id string) (*model.Resul
 	if err != nil {
 		return nil, err
 	}
-	return &model.Result{
+	return &Result{
 		ID:                   id,
 		Status:               item.SystemInfo.Status,
 		LastUpdatedTimestamp: item.SystemInfo.LastUpdatedTimestamp,
@@ -808,7 +807,7 @@ func (c *QueueSDKClient) SendToDLQ(ctx context.Context, id string) (*model.Resul
 // id: The identifier of the item to update.
 //
 // Returns:
-// *model.Result: A result object that contains updated values and status of the operation.
+// *Result: A result object that contains updated values and status of the operation.
 // - If the given 'id' does not exist, the 'ReturnValue' of the result will be set to 'ReturnStatusFailedIDNotFound'.
 // - If the operation succeeds in updating the item, the 'ReturnValue' will be set to 'ReturnStatusSUCCESS'.
 // - If there is an error while updating in DynamoDB, the 'ReturnValue' will be set to 'ReturnStatusFailedDynamoError'.
@@ -816,7 +815,7 @@ func (c *QueueSDKClient) SendToDLQ(ctx context.Context, id string) (*model.Resul
 // - If there's an error while building the DynamoDB expression, this error is returned.
 // - If there's an error unmarshalling the DynamoDB response, this error is returned.
 // Otherwise, if the operation succeeds, the error will be 'nil'.
-func (c *QueueSDKClient) Touch(ctx context.Context, id string) (*model.Result, error) {
+func (c *QueueSDKClient) Touch(ctx context.Context, id string) (*Result, error) {
 	shipment, err := c.Get(ctx, id)
 	if err != nil {
 		return nil, err
@@ -839,7 +838,7 @@ func (c *QueueSDKClient) Touch(ctx context.Context, id string) (*model.Result, e
 	if err != nil {
 		return nil, err
 	}
-	return &model.Result{
+	return &Result{
 		ID:                   id,
 		Status:               item.SystemInfo.Status,
 		LastUpdatedTimestamp: item.SystemInfo.LastUpdatedTimestamp,
@@ -856,9 +855,9 @@ func (c *QueueSDKClient) Touch(ctx context.Context, id string) (*model.Result, e
 //   - size: The maximum number of items to retrieve.
 //
 // Returns:
-//   - A slice of pointers to model.Shipment if found.
+//   - A slice of pointers to Shipment if found.
 //   - error if there's any issue in the operation.
-func (c *QueueSDKClient) List(ctx context.Context, size int32) ([]*model.Shipment, error) {
+func (c *QueueSDKClient) List(ctx context.Context, size int32) ([]*Shipment, error) {
 	expr, err := expression.NewBuilder().
 		WithProjection(expression.NamesList(expression.Name("id"), expression.Name("system_info"))).
 		Build()
@@ -874,7 +873,7 @@ func (c *QueueSDKClient) List(ctx context.Context, size int32) ([]*model.Shipmen
 	if err != nil {
 		return nil, handleDynamoDBError(err)
 	}
-	var shipments []*model.Shipment
+	var shipments []*Shipment
 	err = attributevalue.UnmarshalListOfMaps(output.Items, &shipments)
 	if err != nil {
 		return nil, &UnmarshalingAttributeError{Cause: err}
@@ -970,9 +969,9 @@ func (c *QueueSDKClient) Delete(ctx context.Context, id string) error {
 //   - id: The unique identifier for the shipment record to be created.
 //
 // Returns:
-//   - *model.Shipment: The created shipment record.
+//   - *Shipment: The created shipment record.
 //   - error: Non-nil if there was an error during the creation process.
-func (c *QueueSDKClient) CreateTestData(ctx context.Context, id string) (*model.Shipment, error) {
+func (c *QueueSDKClient) CreateTestData(ctx context.Context, id string) (*Shipment, error) {
 	if id == "" {
 		return nil, &IDNotProvidedError{}
 	}
@@ -980,18 +979,18 @@ func (c *QueueSDKClient) CreateTestData(ctx context.Context, id string) (*model.
 	if err != nil {
 		return nil, err
 	}
-	data := &model.ShipmentData{
+	data := &ShipmentData{
 		ID:    id,
 		Data1: "Data 1",
 		Data2: "Data 2",
 		Data3: "Data 3",
-		Items: []model.ShipmentItem{
+		Items: []ShipmentItem{
 			{SKU: "Item-1", Packed: true},
 			{SKU: "Item-2", Packed: true},
 			{SKU: "Item-3", Packed: true},
 		},
 	}
-	shipment := model.NewShipmentWithIDAndData(id, data)
+	shipment := NewShipmentWithIDAndData(id, data)
 	err = c.Put(ctx, shipment)
 	if err != nil {
 		return nil, err
@@ -1000,7 +999,7 @@ func (c *QueueSDKClient) CreateTestData(ctx context.Context, id string) (*model.
 }
 
 func (c *QueueSDKClient) updateDynamoDBItem(ctx context.Context,
-	id string, expr *expression.Expression) (*model.Shipment, error) {
+	id string, expr *expression.Expression) (*Shipment, error) {
 	outcome, err := c.dynamoDB.UpdateItem(ctx, &dynamodb.UpdateItemInput{
 		Key: map[string]types.AttributeValue{
 			"id": &types.AttributeValueMemberS{
@@ -1017,7 +1016,7 @@ func (c *QueueSDKClient) updateDynamoDBItem(ctx context.Context,
 	if err != nil {
 		return nil, handleDynamoDBError(err)
 	}
-	shipment := model.Shipment{}
+	shipment := Shipment{}
 	err = attributevalue.UnmarshalMap(outcome.Attributes, &shipment)
 	if err != nil {
 		return nil, &UnmarshalingAttributeError{Cause: err}

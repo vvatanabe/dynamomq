@@ -1,4 +1,4 @@
-package model
+package sdk
 
 func NewShipmentWithIDAndData(id string, data *ShipmentData) *Shipment {
 	return &Shipment{

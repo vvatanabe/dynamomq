@@ -1,4 +1,4 @@
-package model
+package sdk
 
 type Status string
 

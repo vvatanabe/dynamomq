@@ -1,4 +1,4 @@
-package model
+package sdk
 
 // QueueStats represents the structure to store Queue depth statistics.
 type QueueStats struct {

@@ -1,8 +1,4 @@
-package model
-
-import (
-	"time"
-)
+package sdk
 
 type SystemInfo struct {
 	ID                       string `json:"id" dynamodbav:"id"`
@@ -21,7 +17,7 @@ type SystemInfo struct {
 }
 
 func NewSystemInfoWithID(id string) *SystemInfo {
-	odt := time.Now().UTC().Format(time.RFC3339)
+	odt := formattedCurrentTime()
 	return &SystemInfo{
 		ID:                   id,
 		CreationTimestamp:    odt,
