@@ -26,7 +26,29 @@ const (
 	visibilityTimeoutInMinutes = 1
 )
 
-type QueueSDKClient struct {
+type QueueSDKClient interface {
+	GetQueueStats(ctx context.Context) (*QueueStats, error)
+	GetDLQStats(ctx context.Context) (*DLQStats, error)
+	Get(ctx context.Context, id string) (*Shipment, error)
+	Put(ctx context.Context, shipment *Shipment) error
+	Upsert(ctx context.Context, shipment *Shipment) error
+	PutImpl(ctx context.Context, shipment *Shipment, useUpsert bool) error
+	UpdateStatus(ctx context.Context, id string, newStatus Status) (*Result, error)
+	Enqueue(ctx context.Context, id string) (*EnqueueResult, error)
+	Peek(ctx context.Context) (*PeekResult, error)
+	Dequeue(ctx context.Context) (*DequeueResult, error)
+	Remove(ctx context.Context, id string) (*Result, error)
+	Restore(ctx context.Context, id string) (*Result, error)
+	SendToDLQ(ctx context.Context, id string) (*Result, error)
+	Touch(ctx context.Context, id string) (*Result, error)
+	List(ctx context.Context, size int32) ([]*Shipment, error)
+	ListIDs(ctx context.Context, size int32) ([]string, error)
+	ListExtendedIDs(ctx context.Context, size int32) ([]string, error)
+	Delete(ctx context.Context, id string) error
+	CreateTestData(ctx context.Context, id string) (*Shipment, error)
+}
+
+type queueSDKClient struct {
 	dynamoDB *dynamodb.Client
 
 	tableName                 string
@@ -35,8 +57,8 @@ type QueueSDKClient struct {
 	credentialsProvider       aws.CredentialsProvider
 }
 
-func initialize(ctx context.Context, builder *Builder) (*QueueSDKClient, error) {
-	c := &QueueSDKClient{
+func initialize(ctx context.Context, builder *Builder) (QueueSDKClient, error) {
+	c := &queueSDKClient{
 		tableName:                 builder.tableName,
 		awsRegion:                 builder.awsRegion,
 		credentialsProvider:       builder.credentialsProvider,
@@ -82,7 +104,7 @@ func initialize(ctx context.Context, builder *Builder) (*QueueSDKClient, error) 
 //
 // Note: The function uses pagination to query the DynamoDB table and will continue querying
 // until all records have been fetched or an error occurs.
-func (c *QueueSDKClient) GetQueueStats(ctx context.Context) (*QueueStats, error) {
+func (c *queueSDKClient) GetQueueStats(ctx context.Context) (*QueueStats, error) {
 	expr, err := expression.NewBuilder().
 		WithProjection(expression.NamesList(expression.Name("id"), expression.Name("system_info"))).
 		WithKeyCondition(expression.KeyEqual(expression.Key("queued"), expression.Value(1))).
@@ -156,7 +178,7 @@ func (c *QueueSDKClient) GetQueueStats(ctx context.Context) (*QueueStats, error)
 //
 // Note: The function uses pagination to query the DynamoDB table and will continue querying
 // until all records have been fetched or an error occurs.
-func (c *QueueSDKClient) GetDLQStats(ctx context.Context) (*DLQStats, error) {
+func (c *queueSDKClient) GetDLQStats(ctx context.Context) (*DLQStats, error) {
 	expr, err := expression.NewBuilder().
 		WithProjection(expression.NamesList(
 			expression.Name("id"),
@@ -220,7 +242,7 @@ func (c *QueueSDKClient) GetDLQStats(ctx context.Context) (*DLQStats, error) {
 //   - (error): An error if any occurred during the retrieval process, including
 //     if the 'id' is empty, the database query fails, or unmarshaling the response
 //     fails.
-func (c *QueueSDKClient) Get(ctx context.Context, id string) (*Shipment, error) {
+func (c *queueSDKClient) Get(ctx context.Context, id string) (*Shipment, error) {
 	if id == "" {
 		return nil, &IDNotProvidedError{}
 	}
@@ -255,7 +277,7 @@ func (c *QueueSDKClient) Get(ctx context.Context, id string) (*Shipment, error) 
 //
 // Returns:
 //   - error: Returns an error if one occurs, otherwise, it returns nil on successful storage.
-func (c *QueueSDKClient) Put(ctx context.Context, shipment *Shipment) error {
+func (c *queueSDKClient) Put(ctx context.Context, shipment *Shipment) error {
 	return c.PutImpl(ctx, shipment, false)
 }
 
@@ -269,7 +291,7 @@ func (c *QueueSDKClient) Put(ctx context.Context, shipment *Shipment) error {
 //
 // Returns:
 //   - error: Returns an error if one occurs, otherwise, it returns nil on successful upsert.
-func (c *QueueSDKClient) Upsert(ctx context.Context, shipment *Shipment) error {
+func (c *queueSDKClient) Upsert(ctx context.Context, shipment *Shipment) error {
 	return c.PutImpl(ctx, shipment, true)
 }
 
@@ -286,7 +308,7 @@ func (c *QueueSDKClient) Upsert(ctx context.Context, shipment *Shipment) error {
 //
 // Returns:
 //   - (error): An error if one occurs, otherwise, it returns nil on success.
-func (c *QueueSDKClient) PutImpl(ctx context.Context, shipment *Shipment, useUpsert bool) error {
+func (c *queueSDKClient) PutImpl(ctx context.Context, shipment *Shipment, useUpsert bool) error {
 	// Check if already present
 	retrievedShipment, err := c.Get(ctx, shipment.ID)
 	if err != nil {
@@ -354,7 +376,7 @@ func (c *QueueSDKClient) PutImpl(ctx context.Context, shipment *Shipment, useUps
 // Returns:
 //   - A pointer to a Result object containing the result of the update operation.
 //   - An error if one occurs during the process. A nil error indicates successful completion.
-func (c *QueueSDKClient) UpdateStatus(ctx context.Context, id string, newStatus Status) (*Result, error) {
+func (c *queueSDKClient) UpdateStatus(ctx context.Context, id string, newStatus Status) (*Result, error) {
 	if id == "" {
 		return nil, &IDNotProvidedError{}
 	}
@@ -419,7 +441,7 @@ func (c *QueueSDKClient) UpdateStatus(ctx context.Context, id string, newStatus 
 //
 //	*EnqueueResult: A pointer to the EnqueueResult structure which contains information about the enqueued shipment.
 //	error: An error that can occur during the execution, or nil if no errors occurred.
-func (c *QueueSDKClient) Enqueue(ctx context.Context, id string) (*EnqueueResult, error) {
+func (c *queueSDKClient) Enqueue(ctx context.Context, id string) (*EnqueueResult, error) {
 	if id == "" {
 		return nil, &IDNotProvidedError{}
 	}
@@ -506,7 +528,7 @@ func (c *QueueSDKClient) Enqueue(ctx context.Context, id string) (*EnqueueResult
 // Note:
 // The function does not update the top-level attribute `last_updated_timestamp` to
 // avoid re-indexing the order.
-func (c *QueueSDKClient) Peek(ctx context.Context) (*PeekResult, error) {
+func (c *queueSDKClient) Peek(ctx context.Context) (*PeekResult, error) {
 	var exclusiveStartKey map[string]types.AttributeValue
 	var selectedID string
 	var selectedVersion int
@@ -625,7 +647,7 @@ func (c *QueueSDKClient) Peek(ctx context.Context) (*PeekResult, error) {
 // Returns:
 //   - *DequeueResult: the result of the dequeue operation, containing information about the dequeued item.
 //   - error: any error encountered during the operation. If successful, this is nil.
-func (c *QueueSDKClient) Dequeue(ctx context.Context) (*DequeueResult, error) {
+func (c *queueSDKClient) Dequeue(ctx context.Context) (*DequeueResult, error) {
 	peekResult, err := c.Peek(ctx)
 	if err != nil {
 		return nil, err
@@ -652,7 +674,7 @@ func (c *QueueSDKClient) Dequeue(ctx context.Context) (*DequeueResult, error) {
 //   - *Result: the result of the remove operation, containing information about the removed item's status.
 //   - error: any error encountered during the operation, especially related to data marshaling and database interactions.
 //     If successful and the item is just not found, the error is nil but the Result reflects the status.
-func (c *QueueSDKClient) Remove(ctx context.Context, id string) (*Result, error) {
+func (c *queueSDKClient) Remove(ctx context.Context, id string) (*Result, error) {
 	shipment, err := c.Get(ctx, id)
 	if err != nil {
 		return nil, err
@@ -705,7 +727,7 @@ func (c *QueueSDKClient) Remove(ctx context.Context, id string) (*Result, error)
 //
 //	error: An error that describes any issues that occurred during the
 //	restore operation. If the operation is successful, this will be nil.
-func (c *QueueSDKClient) Restore(ctx context.Context, id string) (*Result, error) {
+func (c *queueSDKClient) Restore(ctx context.Context, id string) (*Result, error) {
 	shipment, err := c.Get(ctx, id)
 	if err != nil {
 		return nil, err
@@ -757,7 +779,7 @@ func (c *QueueSDKClient) Restore(ctx context.Context, id string) (*Result, error
 //   - *Result: A pointer to the result structure which contains details like Version, Status, LastUpdatedTimestamp,
 //     and ReturnValue indicating the result of the operation (e.g., success, failed due to ID not found, etc.).
 //   - error: Non-nil if there was an error during the operation.
-func (c *QueueSDKClient) SendToDLQ(ctx context.Context, id string) (*Result, error) {
+func (c *queueSDKClient) SendToDLQ(ctx context.Context, id string) (*Result, error) {
 	shipment, err := c.Get(ctx, id)
 	if err != nil {
 		return nil, err
@@ -815,7 +837,7 @@ func (c *QueueSDKClient) SendToDLQ(ctx context.Context, id string) (*Result, err
 // - If there's an error while building the DynamoDB expression, this error is returned.
 // - If there's an error unmarshalling the DynamoDB response, this error is returned.
 // Otherwise, if the operation succeeds, the error will be 'nil'.
-func (c *QueueSDKClient) Touch(ctx context.Context, id string) (*Result, error) {
+func (c *queueSDKClient) Touch(ctx context.Context, id string) (*Result, error) {
 	shipment, err := c.Get(ctx, id)
 	if err != nil {
 		return nil, err
@@ -857,7 +879,7 @@ func (c *QueueSDKClient) Touch(ctx context.Context, id string) (*Result, error) 
 // Returns:
 //   - A slice of pointers to Shipment if found.
 //   - error if there's any issue in the operation.
-func (c *QueueSDKClient) List(ctx context.Context, size int32) ([]*Shipment, error) {
+func (c *queueSDKClient) List(ctx context.Context, size int32) ([]*Shipment, error) {
 	expr, err := expression.NewBuilder().
 		WithProjection(expression.NamesList(expression.Name("id"), expression.Name("system_info"))).
 		Build()
@@ -892,7 +914,7 @@ func (c *QueueSDKClient) List(ctx context.Context, size int32) ([]*Shipment, err
 // Returns:
 //   - A slice of string IDs if found.
 //   - error if there's any issue in the operation.
-func (c *QueueSDKClient) ListIDs(ctx context.Context, size int32) ([]string, error) {
+func (c *queueSDKClient) ListIDs(ctx context.Context, size int32) ([]string, error) {
 	shipments, err := c.List(ctx, size)
 	if err != nil {
 		return nil, err
@@ -918,7 +940,7 @@ func (c *QueueSDKClient) ListIDs(ctx context.Context, size int32) ([]string, err
 // Returns:
 //   - A slice of extended ID strings if found.
 //   - error if there's any issue in the operation.
-func (c *QueueSDKClient) ListExtendedIDs(ctx context.Context, size int32) ([]string, error) {
+func (c *queueSDKClient) ListExtendedIDs(ctx context.Context, size int32) ([]string, error) {
 	shipments, err := c.List(ctx, size)
 	if err != nil {
 		return nil, err
@@ -941,7 +963,7 @@ func (c *QueueSDKClient) ListExtendedIDs(ctx context.Context, size int32) ([]str
 //
 // Returns:
 //   - error: Non-nil if there was an error during the delete operation.
-func (c *QueueSDKClient) Delete(ctx context.Context, id string) error {
+func (c *queueSDKClient) Delete(ctx context.Context, id string) error {
 	if id == "" {
 		return &IDNotProvidedError{}
 	}
@@ -971,7 +993,7 @@ func (c *QueueSDKClient) Delete(ctx context.Context, id string) error {
 // Returns:
 //   - *Shipment: The created shipment record.
 //   - error: Non-nil if there was an error during the creation process.
-func (c *QueueSDKClient) CreateTestData(ctx context.Context, id string) (*Shipment, error) {
+func (c *queueSDKClient) CreateTestData(ctx context.Context, id string) (*Shipment, error) {
 	if id == "" {
 		return nil, &IDNotProvidedError{}
 	}
@@ -998,7 +1020,7 @@ func (c *QueueSDKClient) CreateTestData(ctx context.Context, id string) (*Shipme
 	return shipment, nil
 }
 
-func (c *QueueSDKClient) updateDynamoDBItem(ctx context.Context,
+func (c *queueSDKClient) updateDynamoDBItem(ctx context.Context,
 	id string, expr *expression.Expression) (*Shipment, error) {
 	outcome, err := c.dynamoDB.UpdateItem(ctx, &dynamodb.UpdateItemInput{
 		Key: map[string]types.AttributeValue{

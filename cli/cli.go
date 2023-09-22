@@ -18,7 +18,7 @@ type CLI struct {
 	CredentialsProfile *string
 	TableName          *string
 
-	Client   *sdk.QueueSDKClient
+	Client   sdk.QueueSDKClient
 	Shipment *sdk.Shipment
 }
 

@@ -17,7 +17,7 @@ func NewBuilder() *Builder {
 	return &Builder{}
 }
 
-func (b *Builder) Build(ctx context.Context) (*QueueSDKClient, error) {
+func (b *Builder) Build(ctx context.Context) (QueueSDKClient, error) {
 	if b.awsRegion == "" {
 		b.awsRegion = AwsRegionDefault
 	}
