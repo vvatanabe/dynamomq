@@ -36,11 +36,10 @@ func main() {
 	fmt.Printf("table is: [%s]\n", *tableName)
 	fmt.Println("")
 
-	client, err := sdk.NewBuilder().
-		WithRegion(*region).
-		WithCredentialsProfileName(*credentialsProfile).
-		WithTableName(*tableName).
-		Build(context.Background())
+	client, err := sdk.NewQueueSDKClient(context.Background(),
+		sdk.WithAWSRegion(*region),
+		sdk.WithAWSCredentialsProfileName(*credentialsProfile),
+		sdk.WithTableName(*tableName))
 	if err != nil {
 		fmt.Printf("... AWS session could not be established!: %v\n", err)
 	} else {

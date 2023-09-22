@@ -111,11 +111,10 @@ func (c *CLI) aws(ctx context.Context, params []string) {
 	} else {
 		awsCredentialsProfile = "default"
 	}
-	client, err := sdk.NewBuilder().
-		WithRegion(*c.Region).
-		WithCredentialsProfileName(awsCredentialsProfile).
-		WithTableName(*c.TableName).
-		Build(ctx)
+	client, err := sdk.NewQueueSDKClient(ctx,
+		sdk.WithAWSRegion(*c.Region),
+		sdk.WithAWSCredentialsProfileName(awsCredentialsProfile),
+		sdk.WithTableName(*c.TableName))
 	if err != nil {
 		fmt.Printf(" ... AWS session could not be established!: %v\n", err)
 	} else {

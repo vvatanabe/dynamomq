@@ -57,12 +57,40 @@ type queueSDKClient struct {
 	credentialsProvider       aws.CredentialsProvider
 }
 
-func initialize(ctx context.Context, builder *Builder) (QueueSDKClient, error) {
+type Option func(*queueSDKClient)
+
+func WithTableName(tableName string) Option {
+	return func(s *queueSDKClient) {
+		s.tableName = tableName
+	}
+}
+
+func WithAWSRegion(awsRegion string) Option {
+	return func(s *queueSDKClient) {
+		s.awsRegion = awsRegion
+	}
+}
+
+func WithAWSCredentialsProfileName(awsCredentialsProfileName string) Option {
+	return func(s *queueSDKClient) {
+		s.awsCredentialsProfileName = awsCredentialsProfileName
+	}
+}
+
+func WithAWSCredentialsProvider(credentialsProvider aws.CredentialsProvider) Option {
+	return func(s *queueSDKClient) {
+		s.credentialsProvider = credentialsProvider
+	}
+}
+
+func NewQueueSDKClient(ctx context.Context, opts ...Option) (QueueSDKClient, error) {
 	c := &queueSDKClient{
-		tableName:                 builder.tableName,
-		awsRegion:                 builder.awsRegion,
-		credentialsProvider:       builder.credentialsProvider,
-		awsCredentialsProfileName: builder.awsCredentialsProfileName,
+		tableName:                 DefaultTableName,
+		awsRegion:                 AwsRegionDefault,
+		awsCredentialsProfileName: AwsProfileDefault,
+	}
+	for _, opt := range opts {
+		opt(c)
 	}
 	if c.credentialsProvider == nil {
 		accessKey := os.Getenv("AWS_ACCESS_KEY_ID")
