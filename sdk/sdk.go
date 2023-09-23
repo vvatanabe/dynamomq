@@ -17,13 +17,13 @@ import (
 )
 
 const (
-	AwsRegionDefault     = "us-east-1"
-	AwsProfileDefault    = "default"
-	DefaultTableName     = "Shipment"
-	QueueingIndexName    = "queueud-last_updated_timestamp-index"
-	DlqQueueingIndexName = "dlq-last_updated_timestamp-index"
-
-	visibilityTimeoutInMinutes = 1
+	AwsRegionDefault                  = "us-east-1"
+	AwsProfileDefault                 = "default"
+	DefaultTableName                  = "Shipment"
+	QueueingIndexName                 = "queueud-last_updated_timestamp-index"
+	DlqQueueingIndexName              = "dlq-last_updated_timestamp-index"
+	DefaultRetryMaxAttempts           = 10
+	DefaultVisibilityTimeoutInMinutes = 1
 )
 
 type QueueSDKClient interface {
@@ -54,7 +54,11 @@ type queueSDKClient struct {
 	tableName                 string
 	awsRegion                 string
 	awsCredentialsProfileName string
+	baseEndpoint              string
 	credentialsProvider       aws.CredentialsProvider
+
+	retryMaxAttempts           int
+	visibilityTimeoutInMinutes int
 }
 
 type Option func(*queueSDKClient)
@@ -83,14 +87,45 @@ func WithAWSCredentialsProvider(credentialsProvider aws.CredentialsProvider) Opt
 	}
 }
 
+func WithAWSBaseEndpoint(baseEndpoint string) Option {
+	return func(s *queueSDKClient) {
+		s.baseEndpoint = baseEndpoint
+	}
+}
+
+func WithAWSRetryMaxAttempts(retryMaxAttempts int) Option {
+	return func(s *queueSDKClient) {
+		s.retryMaxAttempts = retryMaxAttempts
+	}
+}
+
+func WithAWSVisibilityTimeout(minutes int) Option {
+	return func(s *queueSDKClient) {
+		s.visibilityTimeoutInMinutes = minutes
+	}
+}
+
+func WithAWSDynamoDBClient(client *dynamodb.Client) Option {
+	return func(s *queueSDKClient) {
+		s.dynamoDB = client
+	}
+}
+
+// DefaultVisibilityTimeoutInMinutes
+
 func NewQueueSDKClient(ctx context.Context, opts ...Option) (QueueSDKClient, error) {
 	c := &queueSDKClient{
-		tableName:                 DefaultTableName,
-		awsRegion:                 AwsRegionDefault,
-		awsCredentialsProfileName: AwsProfileDefault,
+		tableName:                  DefaultTableName,
+		awsRegion:                  AwsRegionDefault,
+		awsCredentialsProfileName:  AwsProfileDefault,
+		retryMaxAttempts:           DefaultRetryMaxAttempts,
+		visibilityTimeoutInMinutes: DefaultVisibilityTimeoutInMinutes,
 	}
 	for _, opt := range opts {
 		opt(c)
+	}
+	if c.dynamoDB != nil {
+		return c, nil
 	}
 	if c.credentialsProvider == nil {
 		accessKey := os.Getenv("AWS_ACCESS_KEY_ID")
@@ -109,7 +144,10 @@ func NewQueueSDKClient(ctx context.Context, opts ...Option) (QueueSDKClient, err
 		return nil, fmt.Errorf("failed to load aws config: %w", err)
 	}
 	c.dynamoDB = dynamodb.NewFromConfig(cfg, func(options *dynamodb.Options) {
-		options.RetryMaxAttempts = 10
+		options.RetryMaxAttempts = c.retryMaxAttempts
+		if c.baseEndpoint != "" {
+			options.BaseEndpoint = aws.String(c.baseEndpoint)
+		}
 	})
 	return c, nil
 }
@@ -599,7 +637,7 @@ func (c *queueSDKClient) Peek(ctx context.Context) (*PeekResult, error) {
 			if lastPeekTimeUTC := item.SystemInfo.PeekUTCTimestamp; lastPeekTimeUTC > 0 && isQueueSelected {
 				currentTS := now().UnixMilli()
 				timeDifference := currentTS - lastPeekTimeUTC
-				visibilityTimeoutMillis := int64(visibilityTimeoutInMinutes) * 60 * 1000
+				visibilityTimeoutMillis := int64(c.visibilityTimeoutInMinutes) * 60 * 1000
 				isPastVisibilityTimeout := timeDifference > visibilityTimeoutMillis
 				// if more than VISIBILITY_TIMEOUT_IN_MINUTES
 				if isPastVisibilityTimeout {
