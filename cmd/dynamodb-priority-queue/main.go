@@ -28,18 +28,21 @@ func main() {
 	region := flag.String("region", sdk.AwsRegionDefault, "AWS region")
 	credentialsProfile := flag.String("profile", sdk.AwsProfileDefault, "AWS credentials profile")
 	tableName := flag.String("table", sdk.DefaultTableName, "AWS DynamoDB table name")
+	endpoint := flag.String("endpoint-url", "", "AWS DynamoDB base endpoint url")
 
 	flag.Parse()
 
 	fmt.Printf("profile is: [%s]\n", *credentialsProfile)
 	fmt.Printf("region is: [%s]\n", *region)
 	fmt.Printf("table is: [%s]\n", *tableName)
+	fmt.Printf("endpoint is: [%s]\n", *endpoint)
 	fmt.Println("")
 
 	client, err := sdk.NewQueueSDKClient(context.Background(),
 		sdk.WithAWSRegion(*region),
 		sdk.WithAWSCredentialsProfileName(*credentialsProfile),
-		sdk.WithTableName(*tableName))
+		sdk.WithTableName(*tableName),
+		sdk.WithAWSBaseEndpoint(*endpoint))
 	if err != nil {
 		fmt.Printf("... AWS session could not be established!: %v\n", err)
 	} else {
@@ -92,7 +95,7 @@ func main() {
 
 func parseInput(input string) (command string, params []string) {
 	input = strings.TrimSpace(input)
-	arr := strings.Split(input, " ")
+	arr := strings.Fields(input)
 
 	if len(arr) == 0 {
 		return "", nil

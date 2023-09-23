@@ -15,6 +15,7 @@ const (
 
 type CLI struct {
 	Region             *string
+	BaseEndpoint       *string
 	CredentialsProfile *string
 	TableName          *string
 
@@ -114,7 +115,8 @@ func (c *CLI) aws(ctx context.Context, params []string) {
 	client, err := sdk.NewQueueSDKClient(ctx,
 		sdk.WithAWSRegion(*c.Region),
 		sdk.WithAWSCredentialsProfileName(awsCredentialsProfile),
-		sdk.WithTableName(*c.TableName))
+		sdk.WithTableName(*c.TableName),
+		sdk.WithAWSBaseEndpoint(*c.BaseEndpoint))
 	if err != nil {
 		fmt.Printf(" ... AWS session could not be established!: %v\n", err)
 	} else {
@@ -124,7 +126,7 @@ func (c *CLI) aws(ctx context.Context, params []string) {
 }
 
 func (c *CLI) id(ctx context.Context, params []string) {
-	if params == nil || len(params) == 0 {
+	if len(params) == 0 {
 		c.Shipment = nil
 		fmt.Println("Going back to standard CLI mode!")
 		return
