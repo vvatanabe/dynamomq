@@ -9,7 +9,7 @@ type SystemInfo struct {
 	InQueue                  int    `json:"queued" dynamodbav:"queued"`
 	SelectedFromQueue        bool   `json:"queue_selected" dynamodbav:"queue_selected"`
 	AddToQueueTimestamp      string `json:"queue_add_timestamp" dynamodbav:"queue_add_timestamp"`
-	AddToDlqTimestamp        string `json:"dlq_add_timestamp" dynamodbav:"dlq_add_timestamp"`
+	AddToDLQTimestamp        string `json:"dlq_add_timestamp" dynamodbav:"dlq_add_timestamp"`
 	PeekFromQueueTimestamp   string `json:"queue_peek_timestamp" dynamodbav:"queue_peek_timestamp"`
 	RemoveFromQueueTimestamp string `json:"queue_remove_timestamp" dynamodbav:"queue_remove_timestamp"`
 
@@ -17,12 +17,19 @@ type SystemInfo struct {
 }
 
 func NewSystemInfoWithID(id string) *SystemInfo {
-	odt := formattedCurrentTime()
+	now := formattedCurrentTime()
 	return &SystemInfo{
-		ID:                   id,
-		CreationTimestamp:    odt,
-		LastUpdatedTimestamp: odt,
-		Status:               StatusUnderConstruction,
-		Version:              1,
+		ID:                       id,
+		CreationTimestamp:        now,
+		LastUpdatedTimestamp:     now,
+		Status:                   StatusUnderConstruction,
+		Version:                  1,
+		InQueue:                  0,
+		SelectedFromQueue:        false,
+		AddToQueueTimestamp:      "",
+		AddToDLQTimestamp:        "",
+		PeekFromQueueTimestamp:   "",
+		RemoveFromQueueTimestamp: "",
+		PeekUTCTimestamp:         0,
 	}
 }
