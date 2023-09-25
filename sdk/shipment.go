@@ -27,6 +27,31 @@ func (s *Shipment) MarkAsReadyForShipment() {
 	s.SystemInfo.Status = StatusReadyToShip
 }
 
+func (s *Shipment) MarkAsEnqueued() {
+	now := formattedCurrentTime()
+	s.Queued = 1
+	s.LastUpdatedTimestamp = now
+	s.SystemInfo.InQueue = 1
+	s.SystemInfo.SelectedFromQueue = false
+	s.SystemInfo.LastUpdatedTimestamp = now
+	s.SystemInfo.AddToQueueTimestamp = now
+	s.SystemInfo.Status = StatusReadyToShip
+}
+
+func (s *Shipment) MarkAsPeeked() {
+	now := now()
+	unixTime := now.UnixMilli()
+	formattedTime := formattedTime(now)
+	s.Queued = 1
+	s.LastUpdatedTimestamp = formattedTime
+	s.SystemInfo.InQueue = 1
+	s.SystemInfo.SelectedFromQueue = true
+	s.SystemInfo.LastUpdatedTimestamp = formattedTime
+	s.SystemInfo.AddToQueueTimestamp = formattedTime
+	s.SystemInfo.PeekUTCTimestamp = unixTime
+	s.SystemInfo.Status = StatusProcessingShipment
+}
+
 func (s *Shipment) ResetSystemInfo() {
 	s.SystemInfo = NewSystemInfoWithID(s.ID)
 }

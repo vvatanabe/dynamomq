@@ -82,36 +82,122 @@ func setupDynamoDB(t *testing.T, initialData ...*types.PutRequest) (client *dyna
 	return
 }
 
+func newTestShipmentItem(id string) *Shipment {
+	return NewShipmentWithIDAndData(id, newTestShipmentData(id))
+}
+
+func newTestShipmentItemAsEnqueued(id string) *Shipment {
+	shipment := NewShipmentWithIDAndData(id, newTestShipmentData(id))
+	shipment.MarkAsEnqueued()
+	return shipment
+}
+
+func newTestShipmentItemAsPeeked(id string) *Shipment {
+	shipment := NewShipmentWithIDAndData(id, newTestShipmentData(id))
+	shipment.MarkAsPeeked()
+	return shipment
+}
+
 func TestQueueSDKClientGetQueueStats(t *testing.T) {
-	raw, clean := setupDynamoDB(t, &types.PutRequest{
-		Item: NewShipmentWithIDAndData("A-101", newTestData("A-101")).MarshalMapUnsafe(),
-	}, &types.PutRequest{
-		Item: NewShipmentWithIDAndData("B-202", newTestData("B-202")).MarshalMapUnsafe(),
-	}, &types.PutRequest{
-		Item: NewShipmentWithIDAndData("C-303", newTestData("C-303")).MarshalMapUnsafe(),
-	}, &types.PutRequest{
-		Item: NewShipmentWithIDAndData("D-404", newTestData("D-404")).MarshalMapUnsafe(),
-	})
-	defer clean()
-	ctx := context.Background()
-	client, err := NewQueueSDKClient(ctx, WithAWSDynamoDBClient(raw))
-	if err != nil {
-		t.Errorf("failed to new QueueSDKClient: %v", err)
-		return
+	tests := []struct {
+		name  string
+		setup func(*testing.T) (*dynamodb.Client, func())
+		want  *QueueStats
+	}{
+		{
+			name: "under construction",
+			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+				return setupDynamoDB(t,
+					&types.PutRequest{
+						Item: newTestShipmentItem("A-101").MarshalMapUnsafe(),
+					},
+				)
+			},
+			want: &QueueStats{
+				First100IDsInQueue:         []string{},
+				First100SelectedIDsInQueue: []string{},
+				TotalRecordsInQueue:        0,
+				TotalRecordsInProcessing:   0,
+				TotalRecordsNotStarted:     0,
+			},
+		},
+		{
+			name: "enqueued",
+			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+				return setupDynamoDB(t,
+					&types.PutRequest{
+						Item: newTestShipmentItemAsEnqueued("A-101").MarshalMapUnsafe(),
+					},
+				)
+			},
+			want: &QueueStats{
+				First100IDsInQueue:         []string{"A-101"},
+				First100SelectedIDsInQueue: []string{},
+				TotalRecordsInQueue:        1,
+				TotalRecordsInProcessing:   0,
+				TotalRecordsNotStarted:     1,
+			},
+		},
+		{
+			name: "peeked",
+			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+				return setupDynamoDB(t,
+					&types.PutRequest{
+						Item: newTestShipmentItemAsPeeked("A-101").MarshalMapUnsafe(),
+					},
+				)
+			},
+			want: &QueueStats{
+				First100IDsInQueue:         []string{"A-101"},
+				First100SelectedIDsInQueue: []string{"A-101"},
+				TotalRecordsInQueue:        1,
+				TotalRecordsInProcessing:   1,
+				TotalRecordsNotStarted:     0,
+			},
+		},
+		{
+			name: "under construction and enqueued and peeked",
+			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+				return setupDynamoDB(t,
+					&types.PutRequest{
+						Item: newTestShipmentItem("A-101").MarshalMapUnsafe(),
+					},
+					&types.PutRequest{
+						Item: newTestShipmentItemAsEnqueued("B-202").MarshalMapUnsafe(),
+					},
+					&types.PutRequest{
+						Item: newTestShipmentItemAsPeeked("C-303").MarshalMapUnsafe(),
+					},
+				)
+			},
+			want: &QueueStats{
+				First100IDsInQueue:         []string{"B-202", "C-303"},
+				First100SelectedIDsInQueue: []string{"C-303"},
+				TotalRecordsInQueue:        2,
+				TotalRecordsInProcessing:   1,
+				TotalRecordsNotStarted:     1,
+			},
+		},
 	}
-	want := &QueueStats{
-		First100IDsInQueue:         []string{},
-		First100SelectedIDsInQueue: []string{},
-		TotalRecordsInQueue:        0,
-		TotalRecordsInProcessing:   0,
-		TotalRecordsNotStarted:     0,
-	}
-	got, err := client.GetQueueStats(ctx)
-	if err != nil {
-		t.Errorf("GetQueueStats() error = %v", err)
-		return
-	}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("GetQueueStats() got = %v, want %v", got, want)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			raw, clean := tt.setup(t)
+			defer clean()
+			ctx := context.Background()
+			client, err := NewQueueSDKClient(ctx, WithAWSDynamoDBClient(raw))
+			if err != nil {
+				t.Fatalf("failed to new QueueSDKClient: %v", err)
+				return
+			}
+			got, err := client.GetQueueStats(ctx)
+			if err != nil {
+				t.Errorf("GetQueueStats() error = %v", err)
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("GetQueueStats() got = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }

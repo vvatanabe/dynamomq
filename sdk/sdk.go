@@ -484,49 +484,49 @@ func (c *queueSDKClient) Enqueue(ctx context.Context, id string) (*EnqueueResult
 	if id == "" {
 		return nil, &IDNotProvidedError{}
 	}
-	retrievedShipment, err := c.Get(ctx, id)
+	retrieved, err := c.Get(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-	if retrievedShipment == nil {
+	if retrieved == nil {
 		return nil, &IDNotFoundError{}
 	}
-	version := retrievedShipment.SystemInfo.Version
-	status := retrievedShipment.SystemInfo.Status
-	if status == StatusUnderConstruction {
+	preStatus := retrieved.SystemInfo.Status
+	if preStatus == StatusUnderConstruction {
 		return nil, &RecordNotConstructedError{}
 	}
-	if status != StatusReadyToShip {
+	if preStatus != StatusReadyToShip {
 		return nil, &IllegalStateError{}
 	}
-	formattedUTCTime := formattedCurrentTime()
+	retrieved.MarkAsEnqueued()
 	expr, err := expression.NewBuilder().
 		WithUpdate(expression.Add(
 			expression.Name("system_info.version"),
 			expression.Value(1),
 		).Set(
 			expression.Name("queued"),
-			expression.Value(1),
+			expression.Value(retrieved.Queued),
 		).Set(
 			expression.Name("system_info.queued"),
-			expression.Value(1),
+			expression.Value(retrieved.SystemInfo.InQueue),
 		).Set(
 			expression.Name("system_info.queue_selected"),
-			expression.Value(false),
+			expression.Value(retrieved.SystemInfo.SelectedFromQueue),
 		).Set(
 			expression.Name("last_updated_timestamp"),
-			expression.Value(formattedUTCTime),
+			expression.Value(retrieved.LastUpdatedTimestamp),
 		).Set(
 			expression.Name("system_info.last_updated_timestamp"),
-			expression.Value(formattedUTCTime),
+			expression.Value(retrieved.SystemInfo.LastUpdatedTimestamp),
 		).Set(
 			expression.Name("system_info.queue_added_timestamp"),
-			expression.Value(formattedUTCTime),
+			expression.Value(retrieved.SystemInfo.AddToQueueTimestamp),
 		).Set(
 			expression.Name("system_info.status"),
-			expression.Value(StatusReadyToShip),
+			expression.Value(retrieved.SystemInfo.Status),
 		)).
-		WithCondition(expression.Name("system_info.version").Equal(expression.Value(version))).
+		WithCondition(expression.Name("system_info.version").
+			Equal(expression.Value(retrieved.SystemInfo.Version))).
 		Build()
 	if err != nil {
 		return nil, &BuildingExpressionError{Cause: err}
@@ -639,19 +639,17 @@ func (c *queueSDKClient) Peek(ctx context.Context) (*PeekResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	now := now()
-	tsUTC := now.UnixMilli()
-	formattedCurrentTime := formattedTime(now)
+	shipment.MarkAsPeeked()
 	// IMPORTANT
 	// please note, we are not updating top-level attribute `last_updated_timestamp` in order to avoid re-indexing the order
 	expr, err = expression.NewBuilder().
 		WithUpdate(expression.
 			Add(expression.Name("system_info.version"), expression.Value(1)).
-			Set(expression.Name("system_info.queue_selected"), expression.Value(true)).
-			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(formattedCurrentTime)).
-			Set(expression.Name("system_info.queue_peek_timestamp"), expression.Value(formattedCurrentTime)).
-			Set(expression.Name("system_info.peek_utc_timestamp"), expression.Value(tsUTC)).
-			Set(expression.Name("system_info.status"), expression.Value(StatusProcessingShipment))).
+			Set(expression.Name("system_info.queue_selected"), expression.Value(shipment.SystemInfo.SelectedFromQueue)).
+			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(shipment.SystemInfo.LastUpdatedTimestamp)).
+			Set(expression.Name("system_info.queue_peek_timestamp"), expression.Value(shipment.SystemInfo.PeekFromQueueTimestamp)).
+			Set(expression.Name("system_info.peek_utc_timestamp"), expression.Value(shipment.SystemInfo.PeekUTCTimestamp)).
+			Set(expression.Name("system_info.status"), expression.Value(shipment.SystemInfo.Status))).
 		WithCondition(expression.Name("system_info.version").Equal(expression.Value(selectedVersion))).
 		Build()
 	if err != nil {
@@ -1040,7 +1038,7 @@ func (c *queueSDKClient) CreateTestData(ctx context.Context, id string) (*Shipme
 	if err != nil {
 		return nil, err
 	}
-	data := newTestData(id)
+	data := newTestShipmentData(id)
 	shipment := NewShipmentWithIDAndData(id, data)
 	err = c.Put(ctx, shipment)
 	if err != nil {
@@ -1049,7 +1047,7 @@ func (c *queueSDKClient) CreateTestData(ctx context.Context, id string) (*Shipme
 	return shipment, nil
 }
 
-func newTestData(id string) *ShipmentData {
+func newTestShipmentData(id string) *ShipmentData {
 	return &ShipmentData{
 		ID:    id,
 		Data1: "Data 1",
