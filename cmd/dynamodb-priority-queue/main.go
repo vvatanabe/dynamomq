@@ -50,9 +50,9 @@ func main() {
 	}
 
 	c := cli.CLI{
-		Region:             region,
-		CredentialsProfile: credentialsProfile,
-		TableName:          tableName,
+		Region:             *region,
+		CredentialsProfile: *credentialsProfile,
+		TableName:          *tableName,
 		Client:             client,
 		Shipment:           nil,
 	}
