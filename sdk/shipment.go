@@ -1,5 +1,10 @@
 package sdk
 
+import (
+	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+)
+
 func NewShipmentWithIDAndData(id string, data *ShipmentData) *Shipment {
 	return &Shipment{
 		ID:         id,
@@ -24,6 +29,39 @@ func (s *Shipment) MarkAsReadyForShipment() {
 
 func (s *Shipment) ResetSystemInfo() {
 	s.SystemInfo = NewSystemInfoWithID(s.ID)
+}
+
+func WithData(data *ShipmentData) func(s *Shipment) {
+	return func(s *Shipment) {
+		s.Data = data
+	}
+}
+
+func WithStatus(status Status) func(s *Shipment) {
+	return func(s *Shipment) {
+		s.SystemInfo.Status = status
+	}
+}
+
+func (s *Shipment) Update(opts ...func(s *Shipment)) {
+	for _, opt := range opts {
+		opt(s)
+	}
+	s.SystemInfo.LastUpdatedTimestamp = formattedCurrentTime()
+	s.SystemInfo.Version = s.SystemInfo.Version + 1
+}
+
+func (s *Shipment) MarshalMap() (map[string]types.AttributeValue, error) {
+	item, err := attributevalue.MarshalMap(s)
+	if err != nil {
+		return nil, &MarshalingAttributeError{Cause: err}
+	}
+	return item, nil
+}
+
+func (s *Shipment) MarshalMapUnsafe() map[string]types.AttributeValue {
+	item, _ := attributevalue.MarshalMap(s)
+	return item
 }
 
 type ShipmentData struct {
