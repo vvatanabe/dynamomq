@@ -14,10 +14,10 @@ const (
 )
 
 type CLI struct {
-	Region             *string
-	BaseEndpoint       *string
-	CredentialsProfile *string
-	TableName          *string
+	Region             string
+	BaseEndpoint       string
+	CredentialsProfile string
+	TableName          string
 
 	Client   sdk.QueueSDKClient
 	Shipment *sdk.Shipment
@@ -70,7 +70,7 @@ func (c *CLI) Run(ctx context.Context, command string, params []string) {
 
 func (c *CLI) help(_ context.Context, _ []string) {
 	fmt.Println(`... this is CLI HELP!
-  > aws <profile> [<region>]                      [Establish connection with AWS; Default profile name: 'default' and region: 'us-east-1']
+  > aws --profile --region --table --endpoint-url [Establish connection with AWS; Default profile name: 'default' and region: 'us-east-1']
   > qstat | qstats                                [Retrieves the Queue statistics (no need to be in App mode)]
   > dlq                                           [Retrieves the Dead Letter Queue (DLQ) statistics]
   > create-test | ct                              [Create test Shipment records in DynamoDB: A-101, A-202, A-303 and A-404; if already exists, it will overwrite it]
@@ -92,37 +92,51 @@ func (c *CLI) help(_ context.Context, _ []string) {
 }
 
 func (c *CLI) aws(ctx context.Context, params []string) {
-	if params == nil {
-		fmt.Println("ERROR: 'aws <profile> [<region>] [<table>]' command requires parameter(s) to be specified!")
+	if len(params) == 0 {
+		printError("aws --profile --region --table --endpoint-url [Establish connection with AWS; Default profile: 'default' and region: 'us-east-1']")
 		return
 	}
-	awsCredentialsProfile := strings.TrimSpace(params[0])
-	// specify AWS Region
-	if len(params) > 1 {
-		temp := strings.TrimSpace(params[1])
-		c.Region = &temp
+	profile, region, table, endpoint := parseParams(params)
+	if region != "" {
+		c.Region = region
 	}
-	// specify DynamoDB table name
-	if len(params) > 2 {
-		temp := strings.TrimSpace(params[2])
-		c.TableName = &temp
+	if table != "" {
+		c.TableName = table
 	}
-	if awsCredentialsProfile == "" && (c.CredentialsProfile != nil || *c.CredentialsProfile != "") {
-		awsCredentialsProfile = *c.CredentialsProfile
-	} else {
-		awsCredentialsProfile = "default"
+	if profile != "" {
+		c.CredentialsProfile = profile
+	}
+	if endpoint != "" {
+		c.BaseEndpoint = endpoint
 	}
 	client, err := sdk.NewQueueSDKClient(ctx,
-		sdk.WithAWSRegion(*c.Region),
-		sdk.WithAWSCredentialsProfileName(awsCredentialsProfile),
-		sdk.WithTableName(*c.TableName),
-		sdk.WithAWSBaseEndpoint(*c.BaseEndpoint))
+		sdk.WithAWSRegion(c.Region),
+		sdk.WithAWSCredentialsProfileName(profile),
+		sdk.WithTableName(c.TableName),
+		sdk.WithAWSBaseEndpoint(c.BaseEndpoint))
 	if err != nil {
 		fmt.Printf(" ... AWS session could not be established!: %v\n", err)
 	} else {
 		c.Client = client
 		fmt.Println(" ... AWS session is properly established!")
 	}
+}
+
+func parseParams(params []string) (profile, region, table, endpoint string) {
+	// Map to store parsed values
+	for i := 0; i < len(params)-1; i++ {
+		switch params[i] {
+		case "--profile", "-profile":
+			profile = params[i+1]
+		case "--region", "-region":
+			region = params[i+1]
+		case "--table", "-table":
+			table = params[i+1]
+		case "--endpoint-url", "-endpoint-url":
+			endpoint = params[i+1]
+		}
+	}
+	return
 }
 
 func (c *CLI) id(ctx context.Context, params []string) {
@@ -277,7 +291,7 @@ func (c *CLI) ready(ctx context.Context, _ []string) {
 		return
 	}
 	c.Shipment.ResetSystemInfo()
-	c.Shipment.SystemInfo.Status = sdk.StatusReadyToShip
+	c.Shipment.MarkAsReadyForShipment()
 	err := c.Client.Put(ctx, c.Shipment)
 	if err != nil {
 		printError(err)
