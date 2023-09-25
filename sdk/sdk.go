@@ -32,7 +32,6 @@ type QueueSDKClient interface {
 	Get(ctx context.Context, id string) (*Shipment, error)
 	Put(ctx context.Context, shipment *Shipment) error
 	Upsert(ctx context.Context, shipment *Shipment) error
-	PutImpl(ctx context.Context, shipment *Shipment, useUpsert bool) error
 	UpdateStatus(ctx context.Context, id string, newStatus Status) (*Result, error)
 	Enqueue(ctx context.Context, id string) (*EnqueueResult, error)
 	Peek(ctx context.Context) (*PeekResult, error)
@@ -110,8 +109,6 @@ func WithAWSDynamoDBClient(client *dynamodb.Client) Option {
 		s.dynamoDB = client
 	}
 }
-
-// DefaultVisibilityTimeoutInMinutes
 
 func NewQueueSDKClient(ctx context.Context, opts ...Option) (QueueSDKClient, error) {
 	c := &queueSDKClient{
@@ -344,7 +341,22 @@ func (c *queueSDKClient) Get(ctx context.Context, id string) (*Shipment, error) 
 // Returns:
 //   - error: Returns an error if one occurs, otherwise, it returns nil on successful storage.
 func (c *queueSDKClient) Put(ctx context.Context, shipment *Shipment) error {
-	return c.PutImpl(ctx, shipment, false)
+	retrieved, err := c.Get(ctx, shipment.ID)
+	if err != nil {
+		return err
+	}
+	if retrieved != nil {
+		_, err := c.dynamoDB.DeleteItem(ctx, &dynamodb.DeleteItemInput{
+			TableName: aws.String(c.tableName),
+			Key: map[string]types.AttributeValue{
+				"id": &types.AttributeValueMemberS{Value: shipment.ID},
+			},
+		})
+		if err != nil {
+			return handleDynamoDBError(err)
+		}
+	}
+	return c.put(ctx, shipment)
 }
 
 // Upsert attempts to update an existing Shipment object in a DynamoDB table or inserts it
@@ -358,60 +370,21 @@ func (c *queueSDKClient) Put(ctx context.Context, shipment *Shipment) error {
 // Returns:
 //   - error: Returns an error if one occurs, otherwise, it returns nil on successful upsert.
 func (c *queueSDKClient) Upsert(ctx context.Context, shipment *Shipment) error {
-	return c.PutImpl(ctx, shipment, true)
-}
-
-// PutImpl is a method provided by QueueSDKClient that adds or updates a Shipment object
-// in a DynamoDB table. The Shipment object is stored in the table with the specified ID,
-// creating a new entry if it doesn't exist. If the useUpsert parameter is true, it attempts
-// to update an existing Shipment if one is present, incrementing the version.
-// If false, it deletes the Shipment.
-//
-// Parameters:
-//   - ctx: The context object is used for timeout, cancellation, and value sharing for the operation.
-//   - shipment: The Shipment object to add or update.
-//   - useUpsert: A boolean indicating whether to attempt an update if an existing Shipment is present.
-//
-// Returns:
-//   - (error): An error if one occurs, otherwise, it returns nil on success.
-func (c *queueSDKClient) PutImpl(ctx context.Context, shipment *Shipment, useUpsert bool) error {
-	// Check if already present
-	retrievedShipment, err := c.Get(ctx, shipment.ID)
+	retrieved, err := c.Get(ctx, shipment.ID)
 	if err != nil {
 		return err
 	}
-	var version int
-	// Upsert or delete
-	if retrievedShipment != nil {
-		if useUpsert {
-			version = retrievedShipment.SystemInfo.Version
-		} else {
-			_, err := c.dynamoDB.DeleteItem(ctx, &dynamodb.DeleteItemInput{
-				TableName: aws.String(c.tableName),
-				Key: map[string]types.AttributeValue{
-					"id": &types.AttributeValueMemberS{Value: shipment.ID},
-				},
-			})
-			if err != nil {
-				return handleDynamoDBError(err)
-			}
-		}
+	if retrieved != nil {
+		retrieved.Update(WithData(shipment.Data), WithStatus(shipment.SystemInfo.Status))
+		shipment = retrieved
 	}
-	formattedUTCTime := formattedCurrentTime()
-	item, err := attributevalue.MarshalMap(&Shipment{
-		ID: shipment.ID,
-		SystemInfo: &SystemInfo{
-			ID:                   shipment.ID,
-			CreationTimestamp:    formattedUTCTime,
-			LastUpdatedTimestamp: formattedUTCTime,
-			Status:               shipment.SystemInfo.Status,
-			Version:              version + 1,
-			InQueue:              0,
-			SelectedFromQueue:    false,
-		},
-	})
+	return c.put(ctx, shipment)
+}
+
+func (c *queueSDKClient) put(ctx context.Context, shipment *Shipment) error {
+	item, err := shipment.MarshalMap()
 	if err != nil {
-		return &MarshalingAttributeError{Cause: err}
+		return err
 	}
 	_, err = c.dynamoDB.PutItem(ctx, &dynamodb.PutItemInput{
 		TableName: aws.String(c.tableName),
@@ -1067,7 +1040,17 @@ func (c *queueSDKClient) CreateTestData(ctx context.Context, id string) (*Shipme
 	if err != nil {
 		return nil, err
 	}
-	data := &ShipmentData{
+	data := newTestData(id)
+	shipment := NewShipmentWithIDAndData(id, data)
+	err = c.Put(ctx, shipment)
+	if err != nil {
+		return nil, err
+	}
+	return shipment, nil
+}
+
+func newTestData(id string) *ShipmentData {
+	return &ShipmentData{
 		ID:    id,
 		Data1: "Data 1",
 		Data2: "Data 2",
@@ -1078,12 +1061,6 @@ func (c *queueSDKClient) CreateTestData(ctx context.Context, id string) (*Shipme
 			{SKU: "Item-3", Packed: true},
 		},
 	}
-	shipment := NewShipmentWithIDAndData(id, data)
-	err = c.Put(ctx, shipment)
-	if err != nil {
-		return nil, err
-	}
-	return shipment, nil
 }
 
 func (c *queueSDKClient) updateDynamoDBItem(ctx context.Context,
