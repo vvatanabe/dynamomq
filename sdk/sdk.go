@@ -264,6 +264,7 @@ func (c *queueSDKClient) GetDLQStats(ctx context.Context) (*DLQStats, error) {
 			ExpressionAttributeValues: expr.Values(),
 			KeyConditionExpression:    expr.KeyCondition(),
 			Limit:                     aws.Int32(250),
+			ScanIndexForward:          aws.Bool(false),
 			ExclusiveStartKey:         lastEvaluatedKey,
 		})
 		if err != nil {
@@ -824,18 +825,18 @@ func (c *queueSDKClient) SendToDLQ(ctx context.Context, id string) (*Result, err
 	if shipment == nil {
 		return nil, &IDNotProvidedError{}
 	}
-	formattedUTCTime := formattedCurrentTime()
+	shipment.MarkAsDLQ()
 	expr, err := expression.NewBuilder().
 		WithUpdate(expression.
 			Add(expression.Name("system_info.version"), expression.Value(1)).
 			Remove(expression.Name("queued")).
-			Set(expression.Name("DLQ"), expression.Value(1)).
-			Set(expression.Name("system_info.queued"), expression.Value(0)).
-			Set(expression.Name("system_info.queue_selected"), expression.Value(false)).
-			Set(expression.Name("last_updated_timestamp"), expression.Value(formattedUTCTime)).
-			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(formattedUTCTime)).
-			Set(expression.Name("system_info.dlq_add_timestamp"), expression.Value(formattedUTCTime)).
-			Set(expression.Name("system_info.status"), expression.Value(StatusInDLQ))).
+			Set(expression.Name("DLQ"), expression.Value(shipment.DLQ)).
+			Set(expression.Name("system_info.queued"), expression.Value(shipment.SystemInfo.InQueue)).
+			Set(expression.Name("system_info.queue_selected"), expression.Value(shipment.SystemInfo.SelectedFromQueue)).
+			Set(expression.Name("last_updated_timestamp"), expression.Value(shipment.LastUpdatedTimestamp)).
+			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(shipment.SystemInfo.LastUpdatedTimestamp)).
+			Set(expression.Name("system_info.dlq_add_timestamp"), expression.Value(shipment.SystemInfo.AddToDLQTimestamp)).
+			Set(expression.Name("system_info.status"), expression.Value(shipment.SystemInfo.Status))).
 		WithCondition(expression.And(
 			expression.Name("system_info.version").Equal(expression.Value(shipment.SystemInfo.Version)),
 			expression.Name("system_info.queued").Equal(expression.Value(1)),

@@ -47,9 +47,23 @@ func (s *Shipment) MarkAsPeeked() {
 	s.SystemInfo.InQueue = 1
 	s.SystemInfo.SelectedFromQueue = true
 	s.SystemInfo.LastUpdatedTimestamp = formattedTime
-	s.SystemInfo.AddToQueueTimestamp = formattedTime
+	// s.SystemInfo.AddToQueueTimestamp = 0
 	s.SystemInfo.PeekUTCTimestamp = unixTime
 	s.SystemInfo.Status = StatusProcessingShipment
+}
+
+func (s *Shipment) MarkAsDLQ() {
+	formattedTime := formattedCurrentTime()
+	s.Queued = 0
+	s.DLQ = 1
+	s.LastUpdatedTimestamp = formattedTime
+	s.SystemInfo.InQueue = 0
+	s.SystemInfo.SelectedFromQueue = false
+	s.SystemInfo.LastUpdatedTimestamp = formattedTime
+	s.SystemInfo.AddToDLQTimestamp = formattedTime
+	// s.SystemInfo.AddToQueueTimestamp = formattedTime
+	// s.SystemInfo.PeekUTCTimestamp = 0
+	s.SystemInfo.Status = StatusInDLQ
 }
 
 func (s *Shipment) ResetSystemInfo() {

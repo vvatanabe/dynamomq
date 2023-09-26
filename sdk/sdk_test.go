@@ -98,6 +98,12 @@ func newTestShipmentItemAsPeeked(id string) *Shipment {
 	return shipment
 }
 
+func newTestShipmentItemAsDLQ(id string) *Shipment {
+	shipment := NewShipmentWithIDAndData(id, newTestShipmentData(id))
+	shipment.MarkAsDLQ()
+	return shipment
+}
+
 func TestQueueSDKClientGetQueueStats(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -105,7 +111,7 @@ func TestQueueSDKClientGetQueueStats(t *testing.T) {
 		want  *QueueStats
 	}{
 		{
-			name: "under construction",
+			name: "empty items",
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
@@ -122,7 +128,7 @@ func TestQueueSDKClientGetQueueStats(t *testing.T) {
 			},
 		},
 		{
-			name: "enqueued",
+			name: "has one item in enqueued",
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
@@ -139,7 +145,7 @@ func TestQueueSDKClientGetQueueStats(t *testing.T) {
 			},
 		},
 		{
-			name: "peeked",
+			name: "has one item in peeked",
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
@@ -156,7 +162,7 @@ func TestQueueSDKClientGetQueueStats(t *testing.T) {
 			},
 		},
 		{
-			name: "under construction and enqueued and peeked",
+			name: "has two item in enqueued or peeked",
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
@@ -187,7 +193,7 @@ func TestQueueSDKClientGetQueueStats(t *testing.T) {
 			ctx := context.Background()
 			client, err := NewQueueSDKClient(ctx, WithAWSDynamoDBClient(raw))
 			if err != nil {
-				t.Fatalf("failed to new QueueSDKClient: %v", err)
+				t.Fatalf("NewQueueSDKClient() error = %v", err)
 				return
 			}
 			got, err := client.GetQueueStats(ctx)
@@ -197,6 +203,82 @@ func TestQueueSDKClientGetQueueStats(t *testing.T) {
 			}
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("GetQueueStats() got = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestQueueSDKClientGetDLQStats(t *testing.T) {
+	tests := []struct {
+		name  string
+		setup func(*testing.T) (*dynamodb.Client, func())
+		want  *DLQStats
+	}{
+		{
+			name: "empty items",
+			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+				return setupDynamoDB(t,
+					&types.PutRequest{
+						Item: newTestShipmentItem("A-101").MarshalMapUnsafe(),
+					},
+					&types.PutRequest{
+						Item: newTestShipmentItemAsEnqueued("B-202").MarshalMapUnsafe(),
+					},
+					&types.PutRequest{
+						Item: newTestShipmentItemAsPeeked("C-303").MarshalMapUnsafe(),
+					},
+				)
+			},
+			want: &DLQStats{
+				First100IDsInQueue: []string{},
+				TotalRecordsInDLQ:  0,
+			},
+		},
+		{
+			name: "has two items in DLQ",
+			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+				return setupDynamoDB(t,
+					&types.PutRequest{
+						Item: newTestShipmentItem("A-101").MarshalMapUnsafe(),
+					},
+					&types.PutRequest{
+						Item: newTestShipmentItemAsEnqueued("B-202").MarshalMapUnsafe(),
+					},
+					&types.PutRequest{
+						Item: newTestShipmentItemAsPeeked("C-303").MarshalMapUnsafe(),
+					},
+					&types.PutRequest{
+						Item: newTestShipmentItemAsDLQ("D-404").MarshalMapUnsafe(),
+					},
+					&types.PutRequest{
+						Item: newTestShipmentItemAsDLQ("E-505").MarshalMapUnsafe(),
+					},
+				)
+			},
+			want: &DLQStats{
+				First100IDsInQueue: []string{"D-404", "E-505"},
+				TotalRecordsInDLQ:  2,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			raw, clean := tt.setup(t)
+			defer clean()
+			ctx := context.Background()
+			client, err := NewQueueSDKClient(ctx, WithAWSDynamoDBClient(raw))
+			if err != nil {
+				t.Fatalf("NewQueueSDKClient() error = %v", err)
+				return
+			}
+			got, err := client.GetDLQStats(ctx)
+			if err != nil {
+				t.Errorf("GetDLQStats() error = %v", err)
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("GetDLQStats() got = %v, want %v", got, tt.want)
 			}
 		})
 	}
