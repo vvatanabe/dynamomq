@@ -1,15 +1,18 @@
 package sdk
 
 import (
+	"time"
+
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+	"github.com/vvatanabe/go82f46979/internal/clock"
 )
 
-func NewShipmentWithIDAndData(id string, data *ShipmentData) *Shipment {
+func NewDefaultShipment(id string, data *ShipmentData, now time.Time) *Shipment {
 	return &Shipment{
 		ID:         id,
 		Data:       data,
-		SystemInfo: NewSystemInfoWithID(id),
+		SystemInfo: NewDefaultSystemInfo(id, now),
 	}
 }
 
@@ -23,71 +26,72 @@ type Shipment struct {
 	DLQ                  int    `json:"DLQ" dynamodbav:"DLQ,omitempty"`
 }
 
-func (s *Shipment) MarkAsReadyForShipment() {
+func (s *Shipment) MarkAsReadyForShipment(now time.Time) {
+	ts := clock.FormatRFC3339(now)
+	s.LastUpdatedTimestamp = ts
+	s.SystemInfo.LastUpdatedTimestamp = ts
 	s.SystemInfo.Status = StatusReadyToShip
 }
 
-func (s *Shipment) MarkAsEnqueued() {
-	now := formattedCurrentTime()
+func (s *Shipment) MarkAsEnqueued(now time.Time) {
+	ts := clock.FormatRFC3339(now)
 	s.Queued = 1
-	s.LastUpdatedTimestamp = now
+	s.LastUpdatedTimestamp = ts
 	s.SystemInfo.InQueue = 1
 	s.SystemInfo.SelectedFromQueue = false
-	s.SystemInfo.LastUpdatedTimestamp = now
-	s.SystemInfo.AddToQueueTimestamp = now
+	s.SystemInfo.LastUpdatedTimestamp = ts
+	s.SystemInfo.AddToQueueTimestamp = ts
 	s.SystemInfo.Status = StatusReadyToShip
 }
 
-func (s *Shipment) MarkAsPeeked() {
-	now := now()
+func (s *Shipment) MarkAsPeeked(now time.Time) {
+	ts := clock.FormatRFC3339(now)
 	unixTime := now.UnixMilli()
-	formattedTime := formattedTime(now)
 	s.Queued = 1
-	s.LastUpdatedTimestamp = formattedTime
+	s.LastUpdatedTimestamp = ts
 	s.SystemInfo.InQueue = 1
 	s.SystemInfo.SelectedFromQueue = true
-	s.SystemInfo.LastUpdatedTimestamp = formattedTime
-	// s.SystemInfo.AddToQueueTimestamp = 0
+	s.SystemInfo.LastUpdatedTimestamp = ts
 	s.SystemInfo.PeekUTCTimestamp = unixTime
 	s.SystemInfo.Status = StatusProcessingShipment
 }
 
-func (s *Shipment) MarkAsDLQ() {
-	formattedTime := formattedCurrentTime()
+func (s *Shipment) MarkAsDLQ(now time.Time) {
+	ts := clock.FormatRFC3339(now)
 	s.Queued = 0
 	s.DLQ = 1
-	s.LastUpdatedTimestamp = formattedTime
+	s.LastUpdatedTimestamp = ts
 	s.SystemInfo.InQueue = 0
 	s.SystemInfo.SelectedFromQueue = false
-	s.SystemInfo.LastUpdatedTimestamp = formattedTime
-	s.SystemInfo.AddToDLQTimestamp = formattedTime
-	// s.SystemInfo.AddToQueueTimestamp = formattedTime
-	// s.SystemInfo.PeekUTCTimestamp = 0
+	s.SystemInfo.LastUpdatedTimestamp = ts
+	s.SystemInfo.AddToDLQTimestamp = ts
 	s.SystemInfo.Status = StatusInDLQ
 }
 
-func (s *Shipment) ResetSystemInfo() {
-	s.SystemInfo = NewSystemInfoWithID(s.ID)
+func (s *Shipment) ResetSystemInfo(now time.Time) {
+	s.SystemInfo = NewDefaultSystemInfo(s.ID, now)
 }
 
-func WithData(data *ShipmentData) func(s *Shipment) {
-	return func(s *Shipment) {
-		s.Data = data
-	}
+func (s *Shipment) Update(shipment *Shipment, now time.Time) {
+	formatted := clock.FormatRFC3339(now)
+	nextVersion := s.SystemInfo.Version + 1
+
+	s.Data = shipment.Data
+	s.SystemInfo = shipment.SystemInfo
+	s.SystemInfo.Version = nextVersion
+	s.SystemInfo.LastUpdatedTimestamp = formatted
+
+	s.Queued = shipment.Queued
+	s.LastUpdatedTimestamp = formatted
+	s.DLQ = shipment.DLQ
 }
 
-func WithStatus(status Status) func(s *Shipment) {
-	return func(s *Shipment) {
-		s.SystemInfo.Status = status
-	}
-}
+func (s *Shipment) ChangeStatus(status Status, now time.Time) {
+	formatted := clock.FormatRFC3339(now)
 
-func (s *Shipment) Update(opts ...func(s *Shipment)) {
-	for _, opt := range opts {
-		opt(s)
-	}
-	s.SystemInfo.LastUpdatedTimestamp = formattedCurrentTime()
-	s.SystemInfo.Version = s.SystemInfo.Version + 1
+	s.SystemInfo.Status = status
+	s.SystemInfo.LastUpdatedTimestamp = formatted
+	s.LastUpdatedTimestamp = formatted
 }
 
 func (s *Shipment) MarshalMap() (map[string]types.AttributeValue, error) {

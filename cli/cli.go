@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/vvatanabe/go82f46979/internal/clock"
 	"github.com/vvatanabe/go82f46979/sdk"
 )
 
@@ -272,7 +273,7 @@ func (c *CLI) reset(ctx context.Context, _ []string) {
 		printCLIModeRestriction("`reset`")
 		return
 	}
-	c.Shipment.ResetSystemInfo()
+	c.Shipment.ResetSystemInfo(clock.Now())
 	err := c.Client.Put(ctx, c.Shipment)
 	if err != nil {
 		printError(err)
@@ -290,8 +291,9 @@ func (c *CLI) ready(ctx context.Context, _ []string) {
 		printCLIModeRestriction("`ready`")
 		return
 	}
-	c.Shipment.ResetSystemInfo()
-	c.Shipment.MarkAsReadyForShipment()
+	now := clock.Now()
+	c.Shipment.ResetSystemInfo(now)
+	c.Shipment.MarkAsReadyForShipment(now)
 	err := c.Client.Put(ctx, c.Shipment)
 	if err != nil {
 		printError(err)
@@ -436,7 +438,7 @@ func (c *CLI) enqueue(ctx context.Context, _ []string) {
 	}
 	// convert under_construction to ready to ship
 	if shipment.SystemInfo.Status == sdk.StatusUnderConstruction {
-		shipment.ResetSystemInfo()
+		shipment.ResetSystemInfo(clock.Now())
 		shipment.SystemInfo.Status = sdk.StatusReadyToShip
 		err = c.Client.Put(ctx, shipment)
 		if err != nil {
@@ -499,7 +501,7 @@ func (c *CLI) update(ctx context.Context, params []string) {
 	}
 	statusStr := strings.TrimSpace(strings.ToUpper(params[0]))
 	if statusStr == string(sdk.StatusReadyToShip) {
-		c.Shipment.MarkAsReadyForShipment()
+		c.Shipment.MarkAsReadyForShipment(clock.Now())
 		rr, err := c.Client.UpdateStatus(ctx, c.Shipment.ID, sdk.StatusReadyToShip)
 		if err != nil {
 			printError(err)

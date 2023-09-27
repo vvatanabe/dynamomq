@@ -4,12 +4,30 @@ import (
 	"context"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/upsidr/dynamotest"
+	"github.com/vvatanabe/go82f46979/internal/clock"
 )
+
+type mockClock struct {
+	t time.Time
+}
+
+func (m mockClock) Now() time.Time {
+	return m.t
+}
+
+func withClock(clock clock.Clock) Option {
+	return func(s *queueSDKClient) {
+		if clock != nil {
+			s.clock = clock
+		}
+	}
+}
 
 func setupDynamoDB(t *testing.T, initialData ...*types.PutRequest) (client *dynamodb.Client, clean func()) {
 	client, clean = dynamotest.NewDynamoDB(t)
@@ -82,25 +100,25 @@ func setupDynamoDB(t *testing.T, initialData ...*types.PutRequest) (client *dyna
 	return
 }
 
-func newTestShipmentItem(id string) *Shipment {
-	return NewShipmentWithIDAndData(id, newTestShipmentData(id))
+func newTestShipmentItem(id string, now time.Time) *Shipment {
+	return NewDefaultShipment(id, newTestShipmentData(id), now)
 }
 
-func newTestShipmentItemAsEnqueued(id string) *Shipment {
-	shipment := NewShipmentWithIDAndData(id, newTestShipmentData(id))
-	shipment.MarkAsEnqueued()
+func newTestShipmentItemAsEnqueued(id string, now time.Time) *Shipment {
+	shipment := NewDefaultShipment(id, newTestShipmentData(id), now)
+	shipment.MarkAsEnqueued(now)
 	return shipment
 }
 
-func newTestShipmentItemAsPeeked(id string) *Shipment {
-	shipment := NewShipmentWithIDAndData(id, newTestShipmentData(id))
-	shipment.MarkAsPeeked()
+func newTestShipmentItemAsPeeked(id string, now time.Time) *Shipment {
+	shipment := NewDefaultShipment(id, newTestShipmentData(id), now)
+	shipment.MarkAsPeeked(now)
 	return shipment
 }
 
-func newTestShipmentItemAsDLQ(id string) *Shipment {
-	shipment := NewShipmentWithIDAndData(id, newTestShipmentData(id))
-	shipment.MarkAsDLQ()
+func newTestShipmentItemAsDLQ(id string, now time.Time) *Shipment {
+	shipment := NewDefaultShipment(id, newTestShipmentData(id), now)
+	shipment.MarkAsDLQ(now)
 	return shipment
 }
 
@@ -115,7 +133,7 @@ func TestQueueSDKClientGetQueueStats(t *testing.T) {
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
-						Item: newTestShipmentItem("A-101").MarshalMapUnsafe(),
+						Item: newTestShipmentItem("A-101", clock.Now()).MarshalMapUnsafe(),
 					},
 				)
 			},
@@ -132,7 +150,7 @@ func TestQueueSDKClientGetQueueStats(t *testing.T) {
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
-						Item: newTestShipmentItemAsEnqueued("A-101").MarshalMapUnsafe(),
+						Item: newTestShipmentItemAsEnqueued("A-101", clock.Now()).MarshalMapUnsafe(),
 					},
 				)
 			},
@@ -149,7 +167,7 @@ func TestQueueSDKClientGetQueueStats(t *testing.T) {
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
-						Item: newTestShipmentItemAsPeeked("A-101").MarshalMapUnsafe(),
+						Item: newTestShipmentItemAsPeeked("A-101", clock.Now()).MarshalMapUnsafe(),
 					},
 				)
 			},
@@ -166,21 +184,24 @@ func TestQueueSDKClientGetQueueStats(t *testing.T) {
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
-						Item: newTestShipmentItem("A-101").MarshalMapUnsafe(),
+						Item: newTestShipmentItem("A-101", clock.Now()).MarshalMapUnsafe(),
 					},
 					&types.PutRequest{
-						Item: newTestShipmentItemAsEnqueued("B-202").MarshalMapUnsafe(),
+						Item: newTestShipmentItemAsEnqueued("B-202", clock.Now().Add(1*time.Second)).MarshalMapUnsafe(),
 					},
 					&types.PutRequest{
-						Item: newTestShipmentItemAsPeeked("C-303").MarshalMapUnsafe(),
+						Item: newTestShipmentItemAsPeeked("C-303", clock.Now().Add(2*time.Second)).MarshalMapUnsafe(),
+					},
+					&types.PutRequest{
+						Item: newTestShipmentItemAsPeeked("D-404", clock.Now().Add(3*time.Second)).MarshalMapUnsafe(),
 					},
 				)
 			},
 			want: &QueueStats{
-				First100IDsInQueue:         []string{"B-202", "C-303"},
-				First100SelectedIDsInQueue: []string{"C-303"},
-				TotalRecordsInQueue:        2,
-				TotalRecordsInProcessing:   1,
+				First100IDsInQueue:         []string{"B-202", "C-303", "D-404"},
+				First100SelectedIDsInQueue: []string{"C-303", "D-404"},
+				TotalRecordsInQueue:        3,
+				TotalRecordsInProcessing:   2,
 				TotalRecordsNotStarted:     1,
 			},
 		},
@@ -219,13 +240,13 @@ func TestQueueSDKClientGetDLQStats(t *testing.T) {
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
-						Item: newTestShipmentItem("A-101").MarshalMapUnsafe(),
+						Item: newTestShipmentItem("A-101", clock.Now().Add(time.Second)).MarshalMapUnsafe(),
 					},
 					&types.PutRequest{
-						Item: newTestShipmentItemAsEnqueued("B-202").MarshalMapUnsafe(),
+						Item: newTestShipmentItemAsEnqueued("B-202", clock.Now().Add(1*time.Second)).MarshalMapUnsafe(),
 					},
 					&types.PutRequest{
-						Item: newTestShipmentItemAsPeeked("C-303").MarshalMapUnsafe(),
+						Item: newTestShipmentItemAsPeeked("C-303", clock.Now().Add(2*time.Second)).MarshalMapUnsafe(),
 					},
 				)
 			},
@@ -239,25 +260,28 @@ func TestQueueSDKClientGetDLQStats(t *testing.T) {
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
-						Item: newTestShipmentItem("A-101").MarshalMapUnsafe(),
+						Item: newTestShipmentItem("A-101", clock.Now()).MarshalMapUnsafe(),
 					},
 					&types.PutRequest{
-						Item: newTestShipmentItemAsEnqueued("B-202").MarshalMapUnsafe(),
+						Item: newTestShipmentItemAsEnqueued("B-202", clock.Now().Add(1*time.Second)).MarshalMapUnsafe(),
 					},
 					&types.PutRequest{
-						Item: newTestShipmentItemAsPeeked("C-303").MarshalMapUnsafe(),
+						Item: newTestShipmentItemAsPeeked("C-303", clock.Now().Add(2*time.Second)).MarshalMapUnsafe(),
 					},
 					&types.PutRequest{
-						Item: newTestShipmentItemAsDLQ("D-404").MarshalMapUnsafe(),
+						Item: newTestShipmentItemAsDLQ("D-404", clock.Now().Add(3*time.Second)).MarshalMapUnsafe(),
 					},
 					&types.PutRequest{
-						Item: newTestShipmentItemAsDLQ("E-505").MarshalMapUnsafe(),
+						Item: newTestShipmentItemAsDLQ("E-505", clock.Now().Add(4*time.Second)).MarshalMapUnsafe(),
+					},
+					&types.PutRequest{
+						Item: newTestShipmentItemAsDLQ("F-606", clock.Now().Add(5*time.Second)).MarshalMapUnsafe(),
 					},
 				)
 			},
 			want: &DLQStats{
-				First100IDsInQueue: []string{"D-404", "E-505"},
-				TotalRecordsInDLQ:  2,
+				First100IDsInQueue: []string{"D-404", "E-505", "F-606"},
+				TotalRecordsInDLQ:  3,
 			},
 		},
 	}
@@ -286,8 +310,6 @@ func TestQueueSDKClientGetDLQStats(t *testing.T) {
 
 func TestQueueSDKClientGet(t *testing.T) {
 
-	shipmentA101 := newTestShipmentItem("A-101")
-
 	type args struct {
 		id string
 	}
@@ -303,7 +325,7 @@ func TestQueueSDKClientGet(t *testing.T) {
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
-						Item: newTestShipmentItem("A-101").MarshalMapUnsafe(),
+						Item: newTestShipmentItem("A-101", clock.Now()).MarshalMapUnsafe(),
 					},
 				)
 			},
@@ -318,7 +340,7 @@ func TestQueueSDKClientGet(t *testing.T) {
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
-						Item: newTestShipmentItem("A-101").MarshalMapUnsafe(),
+						Item: newTestShipmentItem("A-101", clock.Now()).MarshalMapUnsafe(),
 					},
 				)
 			},
@@ -333,17 +355,17 @@ func TestQueueSDKClientGet(t *testing.T) {
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
-						Item: shipmentA101.MarshalMapUnsafe(),
+						Item: newTestShipmentItem("A-101", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)).MarshalMapUnsafe(),
 					},
 					&types.PutRequest{
-						Item: newTestShipmentItem("B-202").MarshalMapUnsafe(),
+						Item: newTestShipmentItem("B-202", clock.Now()).MarshalMapUnsafe(),
 					},
 				)
 			},
 			args: args{
 				id: "A-101",
 			},
-			want:    shipmentA101,
+			want:    newTestShipmentItem("A-101", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)),
 			wantErr: nil,
 		},
 	}

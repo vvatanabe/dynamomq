@@ -1,5 +1,11 @@
 package sdk
 
+import (
+	"time"
+
+	"github.com/vvatanabe/go82f46979/internal/clock"
+)
+
 type SystemInfo struct {
 	ID                       string `json:"id" dynamodbav:"id"`
 	CreationTimestamp        string `json:"creation_timestamp" dynamodbav:"creation_timestamp"`
@@ -16,12 +22,12 @@ type SystemInfo struct {
 	PeekUTCTimestamp int64 `json:"peek_utc_timestamp" dynamodbav:"peek_utc_timestamp,omitempty"`
 }
 
-func NewSystemInfoWithID(id string) *SystemInfo {
-	now := formattedCurrentTime()
+func NewDefaultSystemInfo(id string, now time.Time) *SystemInfo {
+	ts := clock.FormatRFC3339(now)
 	return &SystemInfo{
 		ID:                       id,
-		CreationTimestamp:        now,
-		LastUpdatedTimestamp:     now,
+		CreationTimestamp:        ts,
+		LastUpdatedTimestamp:     ts,
 		Status:                   StatusUnderConstruction,
 		Version:                  1,
 		InQueue:                  0,

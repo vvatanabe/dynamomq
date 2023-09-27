@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -14,6 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/expression"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+	"github.com/vvatanabe/go82f46979/internal/clock"
 )
 
 const (
@@ -58,6 +58,8 @@ type queueSDKClient struct {
 
 	retryMaxAttempts           int
 	visibilityTimeoutInMinutes int
+
+	clock clock.Clock
 }
 
 type Option func(*queueSDKClient)
@@ -117,6 +119,7 @@ func NewQueueSDKClient(ctx context.Context, opts ...Option) (QueueSDKClient, err
 		awsCredentialsProfileName:  AwsProfileDefault,
 		retryMaxAttempts:           DefaultRetryMaxAttempts,
 		visibilityTimeoutInMinutes: DefaultVisibilityTimeoutInMinutes,
+		clock:                      &clock.RealClock{},
 	}
 	for _, opt := range opts {
 		opt(c)
@@ -264,7 +267,7 @@ func (c *queueSDKClient) GetDLQStats(ctx context.Context) (*DLQStats, error) {
 			ExpressionAttributeValues: expr.Values(),
 			KeyConditionExpression:    expr.KeyCondition(),
 			Limit:                     aws.Int32(250),
-			ScanIndexForward:          aws.Bool(false),
+			ScanIndexForward:          aws.Bool(true),
 			ExclusiveStartKey:         lastEvaluatedKey,
 		})
 		if err != nil {
@@ -376,7 +379,7 @@ func (c *queueSDKClient) Upsert(ctx context.Context, shipment *Shipment) error {
 		return err
 	}
 	if retrieved != nil {
-		retrieved.Update(WithData(shipment.Data), WithStatus(shipment.SystemInfo.Status))
+		retrieved.Update(shipment, c.clock.Now())
 		shipment = retrieved
 	}
 	return c.put(ctx, shipment)
@@ -437,12 +440,12 @@ func (c *queueSDKClient) UpdateStatus(ctx context.Context, id string, newStatus 
 			Version:              version,
 		}, nil
 	}
-	formattedUTCTime := formattedCurrentTime()
+	ts := clock.FormatRFC3339(c.clock.Now())
 	expr, err := expression.NewBuilder().
 		WithUpdate(expression.Add(expression.Name("system_info.version"), expression.Value(1)).
 			Set(expression.Name("system_info.status"), expression.Value(newStatus)).
-			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(formattedUTCTime)).
-			Set(expression.Name("last_updated_timestamp"), expression.Value(formattedUTCTime))).
+			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(ts)).
+			Set(expression.Name("last_updated_timestamp"), expression.Value(ts))).
 		WithCondition(expression.Name("system_info.version").Equal(expression.Value(version))).
 		Build()
 	if err != nil {
@@ -499,7 +502,7 @@ func (c *queueSDKClient) Enqueue(ctx context.Context, id string) (*EnqueueResult
 	if preStatus != StatusReadyToShip {
 		return nil, &IllegalStateError{}
 	}
-	retrieved.MarkAsEnqueued()
+	retrieved.MarkAsEnqueued(c.clock.Now())
 	expr, err := expression.NewBuilder().
 		WithUpdate(expression.Add(
 			expression.Name("system_info.version"),
@@ -609,7 +612,7 @@ func (c *queueSDKClient) Peek(ctx context.Context) (*PeekResult, error) {
 			isQueueSelected := item.SystemInfo.SelectedFromQueue
 			// check if there are no stragglers (marked to be in processing but actually orphan)
 			if lastPeekTimeUTC := item.SystemInfo.PeekUTCTimestamp; lastPeekTimeUTC > 0 && isQueueSelected {
-				currentTS := now().UnixMilli()
+				currentTS := c.clock.Now().UnixMilli()
 				timeDifference := currentTS - lastPeekTimeUTC
 				visibilityTimeoutMillis := int64(c.visibilityTimeoutInMinutes) * 60 * 1000
 				isPastVisibilityTimeout := timeDifference > visibilityTimeoutMillis
@@ -640,7 +643,7 @@ func (c *queueSDKClient) Peek(ctx context.Context) (*PeekResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	shipment.MarkAsPeeked()
+	shipment.MarkAsPeeked(c.clock.Now())
 	// IMPORTANT
 	// please note, we are not updating top-level attribute `last_updated_timestamp` in order to avoid re-indexing the order
 	expr, err = expression.NewBuilder().
@@ -720,7 +723,7 @@ func (c *queueSDKClient) Remove(ctx context.Context, id string) (*Result, error)
 	if shipment == nil {
 		return nil, &IDNotProvidedError{}
 	}
-	formattedUTCTime := formattedCurrentTime()
+	ts := clock.FormatRFC3339(c.clock.Now())
 	expr, err := expression.NewBuilder().
 		WithUpdate(expression.
 			Add(expression.Name("system_info.version"), expression.Value(1)).
@@ -729,9 +732,9 @@ func (c *queueSDKClient) Remove(ctx context.Context, id string) (*Result, error)
 			Remove(expression.Name("DLQ")).
 			Set(expression.Name("system_info.queued"), expression.Value(0)).
 			Set(expression.Name("system_info.queue_selected"), expression.Value(false)).
-			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(formattedUTCTime)).
-			Set(expression.Name("last_updated_timestamp"), expression.Value(formattedUTCTime)).
-			Set(expression.Name("system_info.queue_remove_timestamp"), expression.Value(formattedUTCTime))).
+			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(ts)).
+			Set(expression.Name("last_updated_timestamp"), expression.Value(ts)).
+			Set(expression.Name("system_info.queue_remove_timestamp"), expression.Value(ts))).
 		WithCondition(expression.Name("system_info.version").Equal(expression.Value(shipment.SystemInfo.Version))).
 		Build()
 	if err != nil {
@@ -773,7 +776,7 @@ func (c *queueSDKClient) Restore(ctx context.Context, id string) (*Result, error
 	if shipment == nil {
 		return nil, &IDNotFoundError{}
 	}
-	formattedUTCTime := formattedCurrentTime()
+	ts := clock.FormatRFC3339(c.clock.Now())
 	expr, err := expression.NewBuilder().
 		WithUpdate(expression.
 			Add(expression.Name("system_info.version"), expression.Value(1)).
@@ -781,9 +784,9 @@ func (c *queueSDKClient) Restore(ctx context.Context, id string) (*Result, error
 			Set(expression.Name("system_info.queued"), expression.Value(1)).
 			Set(expression.Name("queued"), expression.Value(1)).
 			Set(expression.Name("system_info.queue_selected"), expression.Value(false)).
-			Set(expression.Name("last_updated_timestamp"), expression.Value(formattedUTCTime)).
-			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(formattedUTCTime)).
-			Set(expression.Name("system_info.queue_add_timestamp"), expression.Value(formattedUTCTime)).
+			Set(expression.Name("last_updated_timestamp"), expression.Value(ts)).
+			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(ts)).
+			Set(expression.Name("system_info.queue_add_timestamp"), expression.Value(ts)).
 			Set(expression.Name("system_info.status"), expression.Value(StatusReadyToShip))).
 		WithCondition(expression.Name("system_info.version").Equal(expression.Value(shipment.SystemInfo.Version))).
 		Build()
@@ -825,7 +828,7 @@ func (c *queueSDKClient) SendToDLQ(ctx context.Context, id string) (*Result, err
 	if shipment == nil {
 		return nil, &IDNotProvidedError{}
 	}
-	shipment.MarkAsDLQ()
+	shipment.MarkAsDLQ(c.clock.Now())
 	expr, err := expression.NewBuilder().
 		WithUpdate(expression.
 			Add(expression.Name("system_info.version"), expression.Value(1)).
@@ -883,12 +886,12 @@ func (c *queueSDKClient) Touch(ctx context.Context, id string) (*Result, error) 
 	if shipment == nil {
 		return nil, &IDNotFoundError{}
 	}
-	formattedUTCTime := formattedCurrentTime()
+	ts := clock.FormatRFC3339(c.clock.Now())
 	expr, err := expression.NewBuilder().
 		WithUpdate(expression.
 			Add(expression.Name("system_info.version"), expression.Value(1)).
-			Set(expression.Name("last_updated_timestamp"), expression.Value(formattedUTCTime)).
-			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(formattedUTCTime))).
+			Set(expression.Name("last_updated_timestamp"), expression.Value(ts)).
+			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(ts))).
 		WithCondition(expression.Name("system_info.version").Equal(expression.Value(shipment.SystemInfo.Version))).
 		Build()
 	if err != nil {
@@ -1040,7 +1043,7 @@ func (c *queueSDKClient) CreateTestData(ctx context.Context, id string) (*Shipme
 		return nil, err
 	}
 	data := newTestShipmentData(id)
-	shipment := NewShipmentWithIDAndData(id, data)
+	shipment := NewDefaultShipment(id, data, c.clock.Now())
 	err = c.Put(ctx, shipment)
 	if err != nil {
 		return nil, err
@@ -1086,18 +1089,6 @@ func (c *queueSDKClient) updateDynamoDBItem(ctx context.Context,
 		return nil, &UnmarshalingAttributeError{Cause: err}
 	}
 	return &shipment, nil
-}
-
-func now() time.Time {
-	return time.Now().UTC()
-}
-
-func formattedCurrentTime() string {
-	return formattedTime(now())
-}
-
-func formattedTime(now time.Time) string {
-	return now.UTC().Format(time.RFC3339)
 }
 
 func handleDynamoDBError(err error) error {
