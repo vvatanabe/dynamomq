@@ -489,3 +489,105 @@ func TestQueueSDKClientPut(t *testing.T) {
 		})
 	}
 }
+
+func TestQueueSDKClientUpsert(t *testing.T) {
+	type args struct {
+		shipment *Shipment
+	}
+	tests := []struct {
+		name     string
+		setup    func(*testing.T) (*dynamodb.Client, func())
+		sdkClock clock.Clock
+		args     args
+		want     *Shipment
+		wantErr  error
+	}{
+		{
+			name: "IDNotProvidedError",
+			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+				return setupDynamoDB(t,
+					&types.PutRequest{
+						Item: newTestShipmentItem("A-101", clock.Now()).MarshalMapUnsafe(),
+					},
+				)
+			},
+			args: args{
+				shipment: &Shipment{
+					ID: "",
+				},
+			},
+			want:    nil,
+			wantErr: &IDNotProvidedError{},
+		},
+		{
+			name: "duplicated id",
+			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+				return setupDynamoDB(t,
+					&types.PutRequest{
+						Item: newTestShipmentItem("A-101", clock.Now()).MarshalMapUnsafe(),
+					},
+				)
+			},
+			sdkClock: mockClock{
+				t: time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC),
+			},
+			args: args{
+				shipment: newTestShipmentItemAsPeeked("A-101", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)),
+			},
+			want: func() *Shipment {
+				s := newTestShipmentItemAsPeeked("A-101", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
+				s.Update(s, time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC))
+				return s
+			}(),
+			wantErr: nil,
+		},
+		{
+			name: "unique id",
+			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+				return setupDynamoDB(t,
+					&types.PutRequest{
+						Item: newTestShipmentItem("A-101", clock.Now()).MarshalMapUnsafe(),
+					},
+				)
+			},
+			args: args{
+				shipment: newTestShipmentItem("B-202", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)),
+			},
+			want:    newTestShipmentItem("B-202", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)),
+			wantErr: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			raw, clean := tt.setup(t)
+			defer clean()
+			ctx := context.Background()
+			client, err := NewQueueSDKClient(ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock))
+			if err != nil {
+				t.Fatalf("NewQueueSDKClient() error = %v", err)
+				return
+			}
+			err = client.Upsert(ctx, tt.args.shipment)
+			if tt.wantErr != nil {
+				if err != tt.wantErr {
+					t.Errorf("Upsert() error = %v, wantErr %v", err, tt.wantErr)
+					return
+				}
+				return
+			}
+			if err != nil {
+				t.Errorf("Upsert() error = %v", err)
+				return
+			}
+			shipment, err := client.Get(ctx, tt.args.shipment.ID)
+			if err != nil {
+				t.Errorf("Get() error = %v", err)
+				return
+			}
+			if !reflect.DeepEqual(shipment, tt.want) {
+				t.Errorf("Get() got = %v, want %v", shipment, tt.want)
+			}
+		})
+	}
+}
