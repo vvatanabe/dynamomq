@@ -104,6 +104,12 @@ func newTestShipmentItem(id string, now time.Time) *Shipment {
 	return NewDefaultShipment(id, newTestShipmentData(id), now)
 }
 
+func newTestShipmentItemAsReady(id string, now time.Time) *Shipment {
+	shipment := NewDefaultShipment(id, newTestShipmentData(id), now)
+	shipment.MarkAsReadyForShipment(now)
+	return shipment
+}
+
 func newTestShipmentItemAsEnqueued(id string, now time.Time) *Shipment {
 	shipment := NewDefaultShipment(id, newTestShipmentData(id), now)
 	shipment.MarkAsEnqueued(now)
@@ -587,6 +593,127 @@ func TestQueueSDKClientUpsert(t *testing.T) {
 			}
 			if !reflect.DeepEqual(shipment, tt.want) {
 				t.Errorf("Get() got = %v, want %v", shipment, tt.want)
+			}
+		})
+	}
+}
+
+func TestQueueSDKClientUpdateStatus(t *testing.T) {
+	type args struct {
+		id        string
+		newStatus Status
+	}
+	tests := []struct {
+		name     string
+		setup    func(*testing.T) (*dynamodb.Client, func())
+		sdkClock clock.Clock
+		args     args
+		want     *Result
+		wantErr  error
+	}{
+		{
+			name: "IDNotProvidedError",
+			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+				return setupDynamoDB(t,
+					&types.PutRequest{
+						Item: newTestShipmentItem("A-101", clock.Now()).MarshalMapUnsafe(),
+					},
+				)
+			},
+			args: args{
+				id:        "",
+				newStatus: "",
+			},
+			want:    nil,
+			wantErr: &IDNotProvidedError{},
+		},
+		{
+			name: "IDNotFoundError",
+			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+				return setupDynamoDB(t,
+					&types.PutRequest{
+						Item: newTestShipmentItem("A-101", clock.Now()).MarshalMapUnsafe(),
+					},
+				)
+			},
+			args: args{
+				id:        "B-202",
+				newStatus: StatusReadyToShip,
+			},
+			want:    nil,
+			wantErr: &IDNotFoundError{},
+		},
+		{
+			name: "same status",
+			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+				return setupDynamoDB(t,
+					&types.PutRequest{
+						Item: newTestShipmentItem("A-101", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)).MarshalMapUnsafe(),
+					},
+				)
+			},
+			args: args{
+				id:        "A-101",
+				newStatus: StatusUnderConstruction,
+			},
+			want: &Result{
+				ID:                   "A-101",
+				Status:               StatusUnderConstruction,
+				LastUpdatedTimestamp: clock.FormatRFC3339(time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)),
+				Version:              1,
+			},
+			wantErr: nil,
+		},
+		{
+			name: "under construction to ready to ship",
+			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+				return setupDynamoDB(t,
+					&types.PutRequest{
+						Item: newTestShipmentItem("A-101", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)).MarshalMapUnsafe(),
+					},
+				)
+			},
+			sdkClock: mockClock{
+				t: time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC),
+			},
+			args: args{
+				id:        "A-101",
+				newStatus: StatusReadyToShip,
+			},
+			want: &Result{
+				ID:                   "A-101",
+				Status:               StatusReadyToShip,
+				LastUpdatedTimestamp: clock.FormatRFC3339(time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC)),
+				Version:              2,
+			},
+			wantErr: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			raw, clean := tt.setup(t)
+			defer clean()
+			ctx := context.Background()
+			client, err := NewQueueSDKClient(ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock))
+			if err != nil {
+				t.Fatalf("NewQueueSDKClient() error = %v", err)
+				return
+			}
+			result, err := client.UpdateStatus(ctx, tt.args.id, tt.args.newStatus)
+			if tt.wantErr != nil {
+				if err != tt.wantErr {
+					t.Errorf("UpdateStatus() error = %v, wantErr %v", err, tt.wantErr)
+					return
+				}
+				return
+			}
+			if err != nil {
+				t.Errorf("UpdateStatus() error = %v", err)
+				return
+			}
+			if !reflect.DeepEqual(result, tt.want) {
+				t.Errorf("UpdateStatus() got = %v, want %v", result, tt.want)
 			}
 		})
 	}

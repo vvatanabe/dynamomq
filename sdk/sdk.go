@@ -431,22 +431,21 @@ func (c *queueSDKClient) UpdateStatus(ctx context.Context, id string, newStatus 
 		return nil, &IDNotFoundError{}
 	}
 	prevStatus := shipment.SystemInfo.Status
-	version := shipment.SystemInfo.Version
 	if prevStatus == newStatus {
 		return &Result{
 			ID:                   shipment.ID,
 			Status:               newStatus,
 			LastUpdatedTimestamp: shipment.SystemInfo.LastUpdatedTimestamp,
-			Version:              version,
+			Version:              shipment.SystemInfo.Version,
 		}, nil
 	}
-	ts := clock.FormatRFC3339(c.clock.Now())
+	shipment.ChangeStatus(newStatus, c.clock.Now())
 	expr, err := expression.NewBuilder().
 		WithUpdate(expression.Add(expression.Name("system_info.version"), expression.Value(1)).
-			Set(expression.Name("system_info.status"), expression.Value(newStatus)).
-			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(ts)).
-			Set(expression.Name("last_updated_timestamp"), expression.Value(ts))).
-		WithCondition(expression.Name("system_info.version").Equal(expression.Value(version))).
+			Set(expression.Name("system_info.status"), expression.Value(shipment.SystemInfo.Status)).
+			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(shipment.SystemInfo.LastUpdatedTimestamp)).
+			Set(expression.Name("last_updated_timestamp"), expression.Value(shipment.LastUpdatedTimestamp))).
+		WithCondition(expression.Name("system_info.version").Equal(expression.Value(shipment.SystemInfo.Version))).
 		Build()
 	if err != nil {
 		return nil, BuildingExpressionError{Cause: err}
@@ -523,7 +522,7 @@ func (c *queueSDKClient) Enqueue(ctx context.Context, id string) (*EnqueueResult
 			expression.Name("system_info.last_updated_timestamp"),
 			expression.Value(retrieved.SystemInfo.LastUpdatedTimestamp),
 		).Set(
-			expression.Name("system_info.queue_added_timestamp"),
+			expression.Name("system_info.queue_add_timestamp"),
 			expression.Value(retrieved.SystemInfo.AddToQueueTimestamp),
 		).Set(
 			expression.Name("system_info.status"),
