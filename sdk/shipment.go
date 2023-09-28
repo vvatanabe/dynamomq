@@ -26,6 +26,14 @@ type Shipment struct {
 	DLQ                  int    `json:"DLQ" dynamodbav:"DLQ,omitempty"`
 }
 
+func (s *Shipment) IsQueueSelected(now time.Time, visibilityTimeout time.Duration) bool {
+	if !s.SystemInfo.SelectedFromQueue {
+		return false
+	}
+	timeDifference := now.UnixMilli() - s.SystemInfo.PeekUTCTimestamp
+	return timeDifference <= visibilityTimeout.Milliseconds()
+}
+
 func (s *Shipment) MarkAsReadyForShipment(now time.Time) {
 	ts := clock.FormatRFC3339(now)
 	s.LastUpdatedTimestamp = ts
@@ -52,6 +60,7 @@ func (s *Shipment) MarkAsPeeked(now time.Time) {
 	s.SystemInfo.InQueue = 1
 	s.SystemInfo.SelectedFromQueue = true
 	s.SystemInfo.LastUpdatedTimestamp = ts
+	s.SystemInfo.PeekFromQueueTimestamp = ts
 	s.SystemInfo.PeekUTCTimestamp = unixTime
 	s.SystemInfo.Status = StatusProcessingShipment
 }

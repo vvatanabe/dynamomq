@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -571,21 +572,22 @@ func (c *queueSDKClient) Enqueue(ctx context.Context, id string) (*EnqueueResult
 // The function does not update the top-level attribute `last_updated_timestamp` to
 // avoid re-indexing the order.
 func (c *queueSDKClient) Peek(ctx context.Context) (*PeekResult, error) {
-	var exclusiveStartKey map[string]types.AttributeValue
-	var selectedID string
-	var selectedVersion int
-	recordForPeekIsFound := false
-	names := expression.NamesList(
-		expression.Name("id"),
-		expression.Name("queued"),
-		expression.Name("system_info"))
 	expr, err := expression.NewBuilder().
-		WithProjection(names).
+		WithProjection(expression.NamesList(
+			expression.Name("id"),
+			expression.Name("queued"),
+			expression.Name("system_info"))).
 		WithKeyCondition(expression.Key("queued").Equal(expression.Value(1))).
 		Build()
 	if err != nil {
 		return nil, &BuildingExpressionError{Cause: err}
 	}
+	var (
+		exclusiveStartKey    map[string]types.AttributeValue
+		selectedID           string
+		selectedVersion      int
+		recordForPeekIsFound bool
+	)
 	for {
 		queryResult, err := c.dynamoDB.Query(ctx, &dynamodb.QueryInput{
 			ProjectionExpression:      expr.Projection(),
@@ -604,30 +606,14 @@ func (c *queueSDKClient) Peek(ctx context.Context) (*PeekResult, error) {
 		exclusiveStartKey = queryResult.LastEvaluatedKey
 		for _, itemMap := range queryResult.Items {
 			item := Shipment{}
-			err = attributevalue.UnmarshalMap(itemMap, &item)
-			if err != nil {
+			if err = attributevalue.UnmarshalMap(itemMap, &item); err != nil {
 				return nil, &UnmarshalingAttributeError{Cause: err}
 			}
-			isQueueSelected := item.SystemInfo.SelectedFromQueue
-			// check if there are no stragglers (marked to be in processing but actually orphan)
-			if lastPeekTimeUTC := item.SystemInfo.PeekUTCTimestamp; lastPeekTimeUTC > 0 && isQueueSelected {
-				currentTS := c.clock.Now().UnixMilli()
-				timeDifference := currentTS - lastPeekTimeUTC
-				visibilityTimeoutMillis := int64(c.visibilityTimeoutInMinutes) * 60 * 1000
-				isPastVisibilityTimeout := timeDifference > visibilityTimeoutMillis
-				// if more than VISIBILITY_TIMEOUT_IN_MINUTES
-				if isPastVisibilityTimeout {
-					selectedID = item.ID
-					selectedVersion = item.SystemInfo.Version
-					recordForPeekIsFound = true
-				}
-			} else { // otherwise, peek first record that satisfy basic condition (queued = :one)
+			visibilityTimeout := time.Duration(c.visibilityTimeoutInMinutes) * time.Minute
+			if !item.IsQueueSelected(c.clock.Now(), visibilityTimeout) {
 				selectedID = item.ID
 				selectedVersion = item.SystemInfo.Version
 				recordForPeekIsFound = true
-			}
-			// no need to go further
-			if recordForPeekIsFound {
 				break
 			}
 		}
