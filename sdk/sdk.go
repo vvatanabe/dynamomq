@@ -635,6 +635,7 @@ func (c *queueSDKClient) Peek(ctx context.Context) (*PeekResult, error) {
 		WithUpdate(expression.
 			Add(expression.Name("system_info.version"), expression.Value(1)).
 			Set(expression.Name("system_info.queue_selected"), expression.Value(shipment.SystemInfo.SelectedFromQueue)).
+			Set(expression.Name("last_updated_timestamp"), expression.Value(shipment.LastUpdatedTimestamp)).
 			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(shipment.SystemInfo.LastUpdatedTimestamp)).
 			Set(expression.Name("system_info.queue_peek_timestamp"), expression.Value(shipment.SystemInfo.PeekFromQueueTimestamp)).
 			Set(expression.Name("system_info.peek_utc_timestamp"), expression.Value(shipment.SystemInfo.PeekUTCTimestamp)).

@@ -852,3 +852,150 @@ func TestQueueSDKClientEnqueue(t *testing.T) {
 		})
 	}
 }
+
+func TestQueueSDKClientPeek(t *testing.T) {
+	tests := []struct {
+		name     string
+		setup    func(*testing.T) (*dynamodb.Client, func())
+		sdkClock clock.Clock
+		want     *PeekResult
+		wantErr  error
+	}{
+		{
+			name: "EmptyQueueError",
+			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+				return setupDynamoDB(t,
+					&types.PutRequest{
+						Item: newTestShipmentItem("A-101", clock.Now()).MarshalMapUnsafe(),
+					},
+					&types.PutRequest{
+						Item: newTestShipmentItemAsPeeked("A-202", clock.Now()).MarshalMapUnsafe(),
+					},
+					&types.PutRequest{
+						Item: newTestShipmentItemAsDLQ("A-303", clock.Now()).MarshalMapUnsafe(),
+					},
+				)
+			},
+			want:    nil,
+			wantErr: &EmptyQueueError{},
+		},
+		{
+			name: "can peek when not selected",
+			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+				return setupDynamoDB(t,
+					&types.PutRequest{
+						Item: newTestShipmentItem("A-101", clock.Now()).MarshalMapUnsafe(),
+					},
+					&types.PutRequest{
+						Item: newTestShipmentItemAsEnqueued("B-202",
+							time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)).
+							MarshalMapUnsafe(),
+					},
+				)
+			},
+			sdkClock: mockClock{
+				t: time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC),
+			},
+			want: func() *PeekResult {
+				s := newTestShipmentItemAsEnqueued("B-202", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
+				s.MarkAsPeeked(time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC))
+				s.SystemInfo.Version = 2
+				r := &PeekResult{
+					Result: &Result{
+						ID:                   s.ID,
+						Status:               s.SystemInfo.Status,
+						LastUpdatedTimestamp: s.LastUpdatedTimestamp,
+						Version:              s.SystemInfo.Version,
+					},
+					TimestampMillisUTC:   s.SystemInfo.PeekUTCTimestamp,
+					PeekedShipmentObject: s,
+				}
+				return r
+			}(),
+			wantErr: nil,
+		},
+		{
+			name: "can peek when visibility timeout has expired",
+			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+				return setupDynamoDB(t,
+					&types.PutRequest{
+						Item: newTestShipmentItem("A-101", clock.Now()).MarshalMapUnsafe(),
+					},
+					&types.PutRequest{
+						Item: newTestShipmentItemAsPeeked("B-202",
+							time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)).
+							MarshalMapUnsafe(),
+					},
+				)
+			},
+			sdkClock: mockClock{
+				t: time.Date(2023, 12, 1, 0, 1, 1, 0, time.UTC),
+			},
+			want: func() *PeekResult {
+				s := newTestShipmentItemAsPeeked("B-202", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
+				s.MarkAsPeeked(time.Date(2023, 12, 1, 0, 1, 1, 0, time.UTC))
+				s.SystemInfo.Version = 2
+				r := &PeekResult{
+					Result: &Result{
+						ID:                   s.ID,
+						Status:               s.SystemInfo.Status,
+						LastUpdatedTimestamp: s.LastUpdatedTimestamp,
+						Version:              s.SystemInfo.Version,
+					},
+					TimestampMillisUTC:   s.SystemInfo.PeekUTCTimestamp,
+					PeekedShipmentObject: s,
+				}
+				return r
+			}(),
+			wantErr: nil,
+		},
+		{
+			name: "can not peek when visibility timeout",
+			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+				return setupDynamoDB(t,
+					&types.PutRequest{
+						Item: newTestShipmentItem("A-101", clock.Now()).MarshalMapUnsafe(),
+					},
+					&types.PutRequest{
+						Item: newTestShipmentItemAsPeeked("B-202",
+							time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)).
+							MarshalMapUnsafe(),
+					},
+				)
+			},
+			sdkClock: mockClock{
+				t: time.Date(2023, 12, 1, 0, 0, 59, 0, time.UTC),
+			},
+			want:    nil,
+			wantErr: &EmptyQueueError{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			raw, clean := tt.setup(t)
+			defer clean()
+			ctx := context.Background()
+			client, err := NewQueueSDKClient(ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
+			if err != nil {
+				t.Fatalf("NewQueueSDKClient() error = %v", err)
+				return
+			}
+			result, err := client.Peek(ctx)
+			if tt.wantErr != nil {
+				if err != tt.wantErr {
+					t.Errorf("Peek() error = %v, wantErr %v", err, tt.wantErr)
+					return
+				}
+				return
+			}
+			if err != nil {
+				t.Errorf("Peek() error = %v", err)
+				return
+			}
+			if !reflect.DeepEqual(result, tt.want) {
+				t.Errorf("Peek() got = %v, want %v", result, tt.want)
+			}
+		})
+	}
+}
