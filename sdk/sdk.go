@@ -684,9 +684,13 @@ func (c *queueSDKClient) Dequeue(ctx context.Context) (*DequeueResult, error) {
 	if err != nil {
 		return nil, err
 	}
+	shipment, err := c.Get(ctx, id)
+	if err != nil {
+		return nil, err
+	}
 	return &DequeueResult{
 		Result:                 removeResult,
-		DequeuedShipmentObject: peekResult.PeekedShipmentObject,
+		DequeuedShipmentObject: shipment,
 	}, nil
 }
 
@@ -713,7 +717,6 @@ func (c *queueSDKClient) Remove(ctx context.Context, id string) (*Result, error)
 	expr, err := expression.NewBuilder().
 		WithUpdate(expression.
 			Add(expression.Name("system_info.version"), expression.Value(1)).
-			Remove(expression.Name("system_info.peek_utc_timestamp")).
 			Remove(expression.Name("queued")).
 			Remove(expression.Name("DLQ")).
 			Set(expression.Name("system_info.queued"), expression.Value(0)).

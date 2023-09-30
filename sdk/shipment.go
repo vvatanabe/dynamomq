@@ -65,6 +65,17 @@ func (s *Shipment) MarkAsPeeked(now time.Time) {
 	s.SystemInfo.Status = StatusProcessingShipment
 }
 
+func (s *Shipment) MarkAsRemoved(now time.Time) {
+	ts := clock.FormatRFC3339(now)
+	s.Queued = 0
+	s.DLQ = 0
+	s.LastUpdatedTimestamp = ts
+	s.SystemInfo.InQueue = 0
+	s.SystemInfo.SelectedFromQueue = false
+	s.SystemInfo.LastUpdatedTimestamp = ts
+	s.SystemInfo.RemoveFromQueueTimestamp = ts
+}
+
 func (s *Shipment) MarkAsDLQ(now time.Time) {
 	ts := clock.FormatRFC3339(now)
 	s.Queued = 0
