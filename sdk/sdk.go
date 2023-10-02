@@ -713,6 +713,14 @@ func (c *queueSDKClient) Remove(ctx context.Context, id string) (*Result, error)
 	if shipment == nil {
 		return nil, &IDNotProvidedError{}
 	}
+	if shipment.IsRemoved() {
+		return &Result{
+			ID:                   id,
+			Status:               shipment.SystemInfo.Status,
+			LastUpdatedTimestamp: shipment.SystemInfo.LastUpdatedTimestamp,
+			Version:              shipment.SystemInfo.Version,
+		}, nil
+	}
 	ts := clock.FormatRFC3339(c.clock.Now())
 	expr, err := expression.NewBuilder().
 		WithUpdate(expression.

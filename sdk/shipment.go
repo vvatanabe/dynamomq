@@ -34,6 +34,14 @@ func (s *Shipment) IsQueueSelected(now time.Time, visibilityTimeout time.Duratio
 	return timeDifference <= visibilityTimeout.Milliseconds()
 }
 
+func (s *Shipment) IsRemoved() bool {
+	return s.Queued == 0 &&
+		s.DLQ == 0 &&
+		s.SystemInfo.InQueue == 0 &&
+		s.SystemInfo.SelectedFromQueue == false &&
+		s.SystemInfo.RemoveFromQueueTimestamp != ""
+}
+
 func (s *Shipment) MarkAsReadyForShipment(now time.Time) {
 	ts := clock.FormatRFC3339(now)
 	s.LastUpdatedTimestamp = ts
