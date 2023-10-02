@@ -711,7 +711,7 @@ func (c *queueSDKClient) Remove(ctx context.Context, id string) (*Result, error)
 		return nil, err
 	}
 	if shipment == nil {
-		return nil, &IDNotProvidedError{}
+		return nil, &IDNotFoundError{}
 	}
 	if shipment.IsRemoved() {
 		return &Result{
@@ -773,18 +773,26 @@ func (c *queueSDKClient) Restore(ctx context.Context, id string) (*Result, error
 	if shipment == nil {
 		return nil, &IDNotFoundError{}
 	}
-	ts := clock.FormatRFC3339(c.clock.Now())
+	if shipment.IsEnqueued() {
+		return &Result{
+			ID:                   id,
+			Status:               shipment.SystemInfo.Status,
+			LastUpdatedTimestamp: shipment.SystemInfo.LastUpdatedTimestamp,
+			Version:              shipment.SystemInfo.Version,
+		}, nil
+	}
+	shipment.MarkAsEnqueued(c.clock.Now())
 	expr, err := expression.NewBuilder().
 		WithUpdate(expression.
 			Add(expression.Name("system_info.version"), expression.Value(1)).
 			Remove(expression.Name("DLQ")).
-			Set(expression.Name("system_info.queued"), expression.Value(1)).
-			Set(expression.Name("queued"), expression.Value(1)).
-			Set(expression.Name("system_info.queue_selected"), expression.Value(false)).
-			Set(expression.Name("last_updated_timestamp"), expression.Value(ts)).
-			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(ts)).
-			Set(expression.Name("system_info.queue_add_timestamp"), expression.Value(ts)).
-			Set(expression.Name("system_info.status"), expression.Value(StatusReadyToShip))).
+			Set(expression.Name("queued"), expression.Value(shipment.Queued)).
+			Set(expression.Name("last_updated_timestamp"), expression.Value(shipment.LastUpdatedTimestamp)).
+			Set(expression.Name("system_info.queued"), expression.Value(shipment.SystemInfo.InQueue)).
+			Set(expression.Name("system_info.queue_selected"), expression.Value(shipment.SystemInfo.SelectedFromQueue)).
+			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(shipment.SystemInfo.LastUpdatedTimestamp)).
+			Set(expression.Name("system_info.queue_add_timestamp"), expression.Value(shipment.SystemInfo.AddToQueueTimestamp)).
+			Set(expression.Name("system_info.status"), expression.Value(shipment.SystemInfo.Status))).
 		WithCondition(expression.Name("system_info.version").Equal(expression.Value(shipment.SystemInfo.Version))).
 		Build()
 	if err != nil {

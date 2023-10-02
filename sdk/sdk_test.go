@@ -1181,7 +1181,7 @@ func TestQueueSDKClientRemove(t *testing.T) {
 			wantErr: &IDNotProvidedError{},
 		},
 		{
-			name: "IDNotProvidedError",
+			name: "IDNotFoundError",
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
@@ -1193,7 +1193,7 @@ func TestQueueSDKClientRemove(t *testing.T) {
 				id: "B-202",
 			},
 			want:    nil,
-			wantErr: &IDNotProvidedError{},
+			wantErr: &IDNotFoundError{},
 		},
 		{
 			name: "already removed",
@@ -1280,6 +1280,138 @@ func TestQueueSDKClientRemove(t *testing.T) {
 			}
 			if !reflect.DeepEqual(result, tt.want) {
 				t.Errorf("Remove() got = %v, want %v", result, tt.want)
+			}
+		})
+	}
+}
+
+func TestQueueSDKClientRestore(t *testing.T) {
+	type args struct {
+		id string
+	}
+	tests := []struct {
+		name     string
+		setup    func(*testing.T) (*dynamodb.Client, func())
+		sdkClock clock.Clock
+		args     args
+		want     *Result
+		wantErr  error
+	}{
+		{
+			name: "IDNotProvidedError",
+			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+				return setupDynamoDB(t,
+					&types.PutRequest{
+						Item: newTestShipmentItemAsPeeked("A-101", clock.Now()).MarshalMapUnsafe(),
+					},
+				)
+			},
+			args: args{
+				id: "",
+			},
+			want:    nil,
+			wantErr: &IDNotProvidedError{},
+		},
+		{
+			name: "IDNotFoundError",
+			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+				return setupDynamoDB(t,
+					&types.PutRequest{
+						Item: newTestShipmentItemAsPeeked("A-101", clock.Now()).MarshalMapUnsafe(),
+					},
+				)
+			},
+			args: args{
+				id: "B-202",
+			},
+			want:    nil,
+			wantErr: &IDNotFoundError{},
+		},
+		{
+			name: "already restored",
+			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+				return setupDynamoDB(t,
+					&types.PutRequest{
+						Item: newTestShipmentItemAsEnqueued("A-101",
+							time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)).
+							MarshalMapUnsafe(),
+					},
+				)
+			},
+			args: args{
+				id: "A-101",
+			},
+			want: func() *Result {
+				s := newTestShipmentItemAsEnqueued("A-101",
+					time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
+				r := &Result{
+					ID:                   s.ID,
+					Status:               s.SystemInfo.Status,
+					LastUpdatedTimestamp: s.LastUpdatedTimestamp,
+					Version:              s.SystemInfo.Version,
+				}
+				return r
+			}(),
+			wantErr: nil,
+		},
+		{
+			name: "can restore",
+			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+				return setupDynamoDB(t,
+					&types.PutRequest{
+						Item: newTestShipmentItemAsPeeked("A-101",
+							time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)).
+							MarshalMapUnsafe(),
+					},
+				)
+			},
+			sdkClock: mockClock{
+				t: time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC),
+			},
+			args: args{
+				id: "A-101",
+			},
+			want: func() *Result {
+				s := newTestShipmentItemAsPeeked("A-101",
+					time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
+				s.MarkAsEnqueued(time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC))
+				s.SystemInfo.Version = 2
+				r := &Result{
+					ID:                   s.ID,
+					Status:               s.SystemInfo.Status,
+					LastUpdatedTimestamp: s.LastUpdatedTimestamp,
+					Version:              s.SystemInfo.Version,
+				}
+				return r
+			}(),
+			wantErr: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			raw, clean := tt.setup(t)
+			defer clean()
+			ctx := context.Background()
+			client, err := NewQueueSDKClient(ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
+			if err != nil {
+				t.Fatalf("NewQueueSDKClient() error = %v", err)
+				return
+			}
+			result, err := client.Restore(ctx, tt.args.id)
+			if tt.wantErr != nil {
+				if err != tt.wantErr {
+					t.Errorf("Restore() error = %v, wantErr %v", err, tt.wantErr)
+					return
+				}
+				return
+			}
+			if err != nil {
+				t.Errorf("Restore() error = %v", err)
+				return
+			}
+			if !reflect.DeepEqual(result, tt.want) {
+				t.Errorf("Restore() got = %v, want %v", result, tt.want)
 			}
 		})
 	}

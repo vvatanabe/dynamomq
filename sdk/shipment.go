@@ -42,6 +42,16 @@ func (s *Shipment) IsRemoved() bool {
 		s.SystemInfo.RemoveFromQueueTimestamp != ""
 }
 
+func (s *Shipment) IsEnqueued() bool {
+	return s.Queued == 1 &&
+		s.DLQ == 0 &&
+		s.SystemInfo.InQueue == 1 &&
+		s.SystemInfo.SelectedFromQueue == false &&
+		s.SystemInfo.Status == StatusReadyToShip &&
+		s.SystemInfo.AddToQueueTimestamp != "" &&
+		s.SystemInfo.RemoveFromQueueTimestamp == ""
+}
+
 func (s *Shipment) MarkAsReadyForShipment(now time.Time) {
 	ts := clock.FormatRFC3339(now)
 	s.LastUpdatedTimestamp = ts
@@ -52,6 +62,7 @@ func (s *Shipment) MarkAsReadyForShipment(now time.Time) {
 func (s *Shipment) MarkAsEnqueued(now time.Time) {
 	ts := clock.FormatRFC3339(now)
 	s.Queued = 1
+	s.DLQ = 0
 	s.LastUpdatedTimestamp = ts
 	s.SystemInfo.InQueue = 1
 	s.SystemInfo.SelectedFromQueue = false
