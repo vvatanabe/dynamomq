@@ -1416,3 +1416,135 @@ func TestQueueSDKClientRestore(t *testing.T) {
 		})
 	}
 }
+
+func TestQueueSDKClientSendToDLQ(t *testing.T) {
+	type args struct {
+		id string
+	}
+	tests := []struct {
+		name     string
+		setup    func(*testing.T) (*dynamodb.Client, func())
+		sdkClock clock.Clock
+		args     args
+		want     *Result
+		wantErr  error
+	}{
+		{
+			name: "IDNotProvidedError",
+			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+				return setupDynamoDB(t,
+					&types.PutRequest{
+						Item: newTestShipmentItem("A-101", clock.Now()).MarshalMapUnsafe(),
+					},
+				)
+			},
+			args: args{
+				id: "",
+			},
+			want:    nil,
+			wantErr: &IDNotProvidedError{},
+		},
+		{
+			name: "IDNotFoundError",
+			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+				return setupDynamoDB(t,
+					&types.PutRequest{
+						Item: newTestShipmentItem("A-101", clock.Now()).MarshalMapUnsafe(),
+					},
+				)
+			},
+			args: args{
+				id: "B-202",
+			},
+			want:    nil,
+			wantErr: &IDNotFoundError{},
+		},
+		{
+			name: "already DLQ",
+			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+				return setupDynamoDB(t,
+					&types.PutRequest{
+						Item: newTestShipmentItemAsDLQ("A-101",
+							time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)).
+							MarshalMapUnsafe(),
+					},
+				)
+			},
+			args: args{
+				id: "A-101",
+			},
+			want: func() *Result {
+				s := newTestShipmentItemAsDLQ("A-101",
+					time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
+				r := &Result{
+					ID:                   s.ID,
+					Status:               s.SystemInfo.Status,
+					LastUpdatedTimestamp: s.LastUpdatedTimestamp,
+					Version:              s.SystemInfo.Version,
+				}
+				return r
+			}(),
+			wantErr: nil,
+		},
+		{
+			name: "can DLQ",
+			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+				return setupDynamoDB(t,
+					&types.PutRequest{
+						Item: newTestShipmentItemAsPeeked("A-101",
+							time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)).
+							MarshalMapUnsafe(),
+					},
+				)
+			},
+			sdkClock: mockClock{
+				t: time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC),
+			},
+			args: args{
+				id: "A-101",
+			},
+			want: func() *Result {
+				s := newTestShipmentItemAsDLQ("A-101",
+					time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
+				s.MarkAsDLQ(time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC))
+				s.SystemInfo.Version = 2
+				r := &Result{
+					ID:                   s.ID,
+					Status:               s.SystemInfo.Status,
+					LastUpdatedTimestamp: s.LastUpdatedTimestamp,
+					Version:              s.SystemInfo.Version,
+				}
+				return r
+			}(),
+			wantErr: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			raw, clean := tt.setup(t)
+			defer clean()
+			ctx := context.Background()
+			client, err := NewQueueSDKClient(ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
+			if err != nil {
+				t.Fatalf("NewQueueSDKClient() error = %v", err)
+				return
+			}
+			result, err := client.SendToDLQ(ctx, tt.args.id)
+			if tt.wantErr != nil {
+				if err != tt.wantErr {
+					t.Errorf("SendToDLQ() error = %v, wantErr %v", err, tt.wantErr)
+					return
+				}
+				return
+			}
+			if err != nil {
+				t.Errorf("SendToDLQ() error = %v", err)
+				return
+			}
+			if !reflect.DeepEqual(result, tt.want) {
+				t.Errorf("SendToDLQ() got = %v, want %v", result, tt.want)
+			}
+		})
+	}
+}

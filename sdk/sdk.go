@@ -831,7 +831,15 @@ func (c *queueSDKClient) SendToDLQ(ctx context.Context, id string) (*Result, err
 		return nil, err
 	}
 	if shipment == nil {
-		return nil, &IDNotProvidedError{}
+		return nil, &IDNotFoundError{}
+	}
+	if shipment.IsDLQ() {
+		return &Result{
+			ID:                   id,
+			Status:               shipment.SystemInfo.Status,
+			LastUpdatedTimestamp: shipment.SystemInfo.LastUpdatedTimestamp,
+			Version:              shipment.SystemInfo.Version,
+		}, nil
 	}
 	shipment.MarkAsDLQ(c.clock.Now())
 	expr, err := expression.NewBuilder().
