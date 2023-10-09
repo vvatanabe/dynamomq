@@ -899,12 +899,12 @@ func (c *queueSDKClient) Touch(ctx context.Context, id string) (*Result, error) 
 	if shipment == nil {
 		return nil, &IDNotFoundError{}
 	}
-	ts := clock.FormatRFC3339(c.clock.Now())
+	shipment.Touch(c.clock.Now())
 	expr, err := expression.NewBuilder().
 		WithUpdate(expression.
 			Add(expression.Name("system_info.version"), expression.Value(1)).
-			Set(expression.Name("last_updated_timestamp"), expression.Value(ts)).
-			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(ts))).
+			Set(expression.Name("last_updated_timestamp"), expression.Value(shipment.LastUpdatedTimestamp)).
+			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(shipment.SystemInfo.LastUpdatedTimestamp))).
 		WithCondition(expression.Name("system_info.version").Equal(expression.Value(shipment.SystemInfo.Version))).
 		Build()
 	if err != nil {

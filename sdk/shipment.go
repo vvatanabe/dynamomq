@@ -120,6 +120,12 @@ func (s *Shipment) ResetSystemInfo(now time.Time) {
 	s.SystemInfo = NewDefaultSystemInfo(s.ID, now)
 }
 
+func (s *Shipment) Touch(now time.Time) {
+	ts := clock.FormatRFC3339(now)
+	s.LastUpdatedTimestamp = ts
+	s.SystemInfo.LastUpdatedTimestamp = ts
+}
+
 func (s *Shipment) Update(shipment *Shipment, now time.Time) {
 	formatted := clock.FormatRFC3339(now)
 	nextVersion := s.SystemInfo.Version + 1
