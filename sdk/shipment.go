@@ -10,9 +10,12 @@ import (
 
 func NewDefaultShipment(id string, data *ShipmentData, now time.Time) *Shipment {
 	return &Shipment{
-		ID:         id,
-		Data:       data,
-		SystemInfo: NewDefaultSystemInfo(id, now),
+		ID:                   id,
+		Data:                 data,
+		SystemInfo:           NewDefaultSystemInfo(id, now),
+		Queued:               0,
+		LastUpdatedTimestamp: clock.FormatRFC3339(now),
+		DLQ:                  0,
 	}
 }
 

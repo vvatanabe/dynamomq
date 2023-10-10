@@ -934,17 +934,9 @@ func (c *queueSDKClient) Touch(ctx context.Context, id string) (*Result, error) 
 //   - A slice of pointers to Shipment if found.
 //   - error if there's any issue in the operation.
 func (c *queueSDKClient) List(ctx context.Context, size int32) ([]*Shipment, error) {
-	expr, err := expression.NewBuilder().
-		WithProjection(expression.NamesList(expression.Name("id"), expression.Name("system_info"))).
-		Build()
-	if err != nil {
-		return nil, &BuildingExpressionError{Cause: err}
-	}
 	output, err := c.dynamoDB.Scan(ctx, &dynamodb.ScanInput{
-		TableName:                &c.tableName,
-		ProjectionExpression:     expr.Projection(),
-		ExpressionAttributeNames: expr.Names(),
-		Limit:                    aws.Int32(size),
+		TableName: &c.tableName,
+		Limit:     aws.Int32(size),
 	})
 	if err != nil {
 		return nil, handleDynamoDBError(err)
