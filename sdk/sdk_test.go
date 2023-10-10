@@ -1733,10 +1733,89 @@ func TestQueueSDKClientList(t *testing.T) {
 				return result[i].SystemInfo.LastUpdatedTimestamp < result[j].SystemInfo.LastUpdatedTimestamp
 			})
 			if !reflect.DeepEqual(result, tt.want) {
-				for _, shipment := range result {
-					fmt.Println(shipment.ID)
-				}
 				t.Errorf("List() got = %v, want %v", result, tt.want)
+			}
+		})
+	}
+}
+
+func TestQueueSDKClientListIDs(t *testing.T) {
+	type args struct {
+		size int32
+	}
+	tests := []struct {
+		name     string
+		setup    func(*testing.T) (*dynamodb.Client, func())
+		sdkClock clock.Clock
+		args     args
+		want     []string
+		wantErr  error
+	}{
+		{
+			name: "empty",
+			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+				return setupDynamoDB(t)
+			},
+			args: args{
+				size: 10,
+			},
+			want:    []string{},
+			wantErr: nil,
+		},
+		{
+			name: "list",
+			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+				var puts []*types.PutRequest
+				for i := 0; i < 10; i++ {
+					puts = append(puts, &types.PutRequest{
+						Item: newTestShipmentItem(fmt.Sprintf("A-%d", i),
+							time.Date(2023, 12, 1, 0, 0, i, 0, time.UTC)).
+							MarshalMapUnsafe(),
+					})
+				}
+				return setupDynamoDB(t, puts...)
+			},
+			args: args{
+				size: 10,
+			},
+			want: func() []string {
+				var ids []string
+				for i := 0; i < 10; i++ {
+					ids = append(ids, fmt.Sprintf("A-%d", i))
+				}
+				return ids
+			}(),
+			wantErr: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			raw, clean := tt.setup(t)
+			defer clean()
+			ctx := context.Background()
+			client, err := NewQueueSDKClient(ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
+			if err != nil {
+				t.Fatalf("NewQueueSDKClient() error = %v", err)
+				return
+			}
+			result, err := client.ListIDs(ctx, tt.args.size)
+			if tt.wantErr != nil {
+				if err != tt.wantErr {
+					t.Errorf("ListIDs() error = %v, wantErr %v", err, tt.wantErr)
+					return
+				}
+				return
+			}
+			if err != nil {
+				t.Errorf("ListIDs() error = %v", err)
+				return
+			}
+			sort.Slice(result, func(i, j int) bool {
+				return result[i] < result[j]
+			})
+			if !reflect.DeepEqual(result, tt.want) {
+				t.Errorf("ListIDs() got = %v, want %v", result, tt.want)
 			}
 		})
 	}
