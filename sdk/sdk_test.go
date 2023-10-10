@@ -1904,3 +1904,86 @@ func TestQueueSDKClientListExtendedIDs(t *testing.T) {
 		})
 	}
 }
+
+func TestQueueSDKClientDelete(t *testing.T) {
+	type args struct {
+		id string
+	}
+	tests := []struct {
+		name     string
+		setup    func(*testing.T) (*dynamodb.Client, func())
+		sdkClock clock.Clock
+		args     args
+		want     []string
+		wantErr  error
+	}{
+		{
+			name: "IDNotProvidedError",
+			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+				return setupDynamoDB(t,
+					&types.PutRequest{
+						Item: newTestShipmentItem("A-101", clock.Now()).MarshalMapUnsafe(),
+					},
+				)
+			},
+			args: args{
+				id: "",
+			},
+			want:    nil,
+			wantErr: &IDNotProvidedError{},
+		},
+		{
+			name: "not exist id does not return error",
+			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+				return setupDynamoDB(t,
+					&types.PutRequest{
+						Item: newTestShipmentItem("A-101", clock.Now()).MarshalMapUnsafe(),
+					},
+				)
+			},
+			args: args{
+				id: "B-101",
+			},
+			wantErr: nil,
+		},
+		{
+			name: "existing id do not return error",
+			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+				return setupDynamoDB(t,
+					&types.PutRequest{
+						Item: newTestShipmentItem("A-101", clock.Now()).MarshalMapUnsafe(),
+					},
+				)
+			},
+			args: args{
+				id: "A-101",
+			},
+			wantErr: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			raw, clean := tt.setup(t)
+			defer clean()
+			ctx := context.Background()
+			client, err := NewQueueSDKClient(ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
+			if err != nil {
+				t.Fatalf("NewQueueSDKClient() error = %v", err)
+				return
+			}
+			err = client.Delete(ctx, tt.args.id)
+			if tt.wantErr != nil {
+				if err != tt.wantErr {
+					t.Errorf("Delete() error = %v, wantErr %v", err, tt.wantErr)
+					return
+				}
+				return
+			}
+			if err != nil {
+				t.Errorf("Delete() error = %v", err)
+				return
+			}
+		})
+	}
+}
