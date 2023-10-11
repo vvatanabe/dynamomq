@@ -421,9 +421,6 @@ func (c *queueSDKClient) put(ctx context.Context, shipment *Shipment) error {
 //   - A pointer to a Result object containing the result of the update operation.
 //   - An error if one occurs during the process. A nil error indicates successful completion.
 func (c *queueSDKClient) UpdateStatus(ctx context.Context, id string, newStatus Status) (*Result, error) {
-	if id == "" {
-		return nil, &IDNotProvidedError{}
-	}
 	shipment, err := c.Get(ctx, id)
 	if err != nil {
 		return nil, err
@@ -485,9 +482,6 @@ func (c *queueSDKClient) UpdateStatus(ctx context.Context, id string, newStatus 
 //	*EnqueueResult: A pointer to the EnqueueResult structure which contains information about the enqueued shipment.
 //	error: An error that can occur during the execution, or nil if no errors occurred.
 func (c *queueSDKClient) Enqueue(ctx context.Context, id string) (*EnqueueResult, error) {
-	if id == "" {
-		return nil, &IDNotProvidedError{}
-	}
 	retrieved, err := c.Get(ctx, id)
 	if err != nil {
 		return nil, err
@@ -1032,9 +1026,6 @@ func (c *queueSDKClient) Delete(ctx context.Context, id string) error {
 //   - *Shipment: The created shipment record.
 //   - error: Non-nil if there was an error during the creation process.
 func (c *queueSDKClient) CreateTestData(ctx context.Context, id string) (*Shipment, error) {
-	if id == "" {
-		return nil, &IDNotProvidedError{}
-	}
 	err := c.Delete(ctx, id)
 	if err != nil {
 		return nil, err
