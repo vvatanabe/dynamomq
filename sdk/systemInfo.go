@@ -3,7 +3,7 @@ package sdk
 import (
 	"time"
 
-	"github.com/vvatanabe/go82f46979/internal/clock"
+	"github.com/vvatanabe/dynamomq/internal/clock"
 )
 
 type SystemInfo struct {

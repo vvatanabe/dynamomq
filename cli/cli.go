@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/vvatanabe/go82f46979/internal/clock"
-	"github.com/vvatanabe/go82f46979/sdk"
+	"github.com/vvatanabe/dynamomq/internal/clock"
+	"github.com/vvatanabe/dynamomq/sdk"
 )
 
 const (

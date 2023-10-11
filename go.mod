@@ -1,4 +1,4 @@
-module github.com/vvatanabe/go82f46979
+module github.com/vvatanabe/dynamomq
 
 go 1.21.0
 

@@ -8,8 +8,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/vvatanabe/go82f46979/cli"
-	"github.com/vvatanabe/go82f46979/sdk"
+	"github.com/vvatanabe/dynamomq/cli"
+	"github.com/vvatanabe/dynamomq/sdk"
 )
 
 func main() {

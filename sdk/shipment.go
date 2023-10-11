@@ -5,7 +5,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
-	"github.com/vvatanabe/go82f46979/internal/clock"
+	"github.com/vvatanabe/dynamomq/internal/clock"
 )
 
 func NewDefaultShipment(id string, data *ShipmentData, now time.Time) *Shipment {

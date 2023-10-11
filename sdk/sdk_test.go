@@ -12,7 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/upsidr/dynamotest"
-	"github.com/vvatanabe/go82f46979/internal/clock"
+	"github.com/vvatanabe/dynamomq/internal/clock"
 )
 
 type mockClock struct {
