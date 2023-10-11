@@ -30,10 +30,6 @@ func (c *CLI) Run(ctx context.Context, command string, params []string) {
 		c.help(ctx, params)
 	case "aws":
 		c.aws(ctx, params)
-	case "id":
-		c.id(ctx, params)
-	case "sys", "system":
-		c.system(ctx, params)
 	case "ls":
 		c.ls(ctx, params)
 	case "purge":
@@ -44,6 +40,12 @@ func (c *CLI) Run(ctx context.Context, command string, params []string) {
 		c.qstat(ctx, params)
 	case "dlq":
 		c.dlq(ctx, params)
+	case "peek":
+		c.peek(ctx, params)
+	case "id":
+		c.id(ctx, params)
+	case "sys", "system":
+		c.system(ctx, params)
 	case "reset":
 		c.reset(ctx, params)
 	case "ready":
@@ -60,8 +62,6 @@ func (c *CLI) Run(ctx context.Context, command string, params []string) {
 		c.info(ctx, params)
 	case "enqueue", "en":
 		c.enqueue(ctx, params)
-	case "peek":
-		c.peek(ctx, params)
 	case "update":
 		c.update(ctx, params)
 	default:
@@ -77,6 +77,7 @@ func (c *CLI) help(_ context.Context, _ []string) {
   > create-test | ct                              [Create test Shipment records in DynamoDB: A-101, A-202, A-303 and A-404; if already exists, it will overwrite it]
   > purge                                         [It will remove all test data from DynamoDB]
   > ls                                            [List all shipment IDs ... max 10 elements]
+  > peek                                          [Peek the Shipment from the Queue .. it will replace the current ID with the peeked one]
   > id <id>                                       [Get the application object from DynamoDB by app domain ID; CLI is in the app mode, from that point on]
     > sys                                         [Show system info data in a JSON format]
     > data                                        [Print the data as JSON for the current shipment record]
@@ -85,7 +86,6 @@ func (c *CLI) help(_ context.Context, _ []string) {
     > reset                                       [Reset the system info of the current shipment record]
     > ready                                       [Make the record ready for the shipment]
     > enqueue | en                                [Enqueue current ID]
-    > peek                                        [Peek the Shipment from the Queue .. it will replace the current ID with the peeked one]
     > done                                        [Simulate successful record processing completion ... remove from the queue]
     > fail                                        [Simulate failed record's processing ... put back to the queue; needs to be peeked again]
     > invalid                                     [Remove record from the regular queue to dead letter queue (DLQ) for manual fix]
@@ -138,42 +138,6 @@ func parseParams(params []string) (profile, region, table, endpoint string) {
 		}
 	}
 	return
-}
-
-func (c *CLI) id(ctx context.Context, params []string) {
-	if len(params) == 0 {
-		c.Shipment = nil
-		fmt.Println("Going back to standard CLI mode!")
-		return
-	}
-	if c.Client == nil {
-		fmt.Println(needAWSMessage)
-		return
-	}
-	id := params[0]
-	var err error
-	c.Shipment, err = c.Client.Get(ctx, id)
-	if err != nil {
-		printError(err)
-		return
-	}
-	if c.Shipment == nil {
-		printError(fmt.Sprintf("Shipment's [%s] not found!", id))
-		return
-	}
-	printMessageWithData(fmt.Sprintf("Shipment's [%s] record dump:\n", id), c.Shipment)
-}
-
-func (c *CLI) system(_ context.Context, _ []string) {
-	if c.Client == nil {
-		fmt.Println(needAWSMessage)
-		return
-	}
-	if c.Shipment == nil {
-		printCLIModeRestriction("`system` or `sys`")
-		return
-	}
-	printMessageWithData("ID's system info:\n", c.Shipment.SystemInfo)
 }
 
 func (c *CLI) ls(ctx context.Context, _ []string) {
@@ -262,6 +226,64 @@ func (c *CLI) dlq(ctx context.Context, _ []string) {
 		return
 	}
 	printMessageWithData("DLQ status:\n", stats)
+}
+
+func (c *CLI) peek(ctx context.Context, _ []string) {
+	if c.Client == nil {
+		fmt.Println(needAWSMessage)
+		return
+	}
+	rr, err := c.Client.Peek(ctx)
+	if err != nil {
+		printError(fmt.Sprintf("Peek has failed! message: %s", err))
+		return
+	}
+	c.Shipment = rr.PeekedShipmentObject
+	printMessageWithData(
+		fmt.Sprintf("Peek was successful ... record peeked is: [%s]\n", c.Shipment.ID),
+		c.Shipment.SystemInfo)
+	stats, err := c.Client.GetQueueStats(ctx)
+	if err != nil {
+		printError(err)
+		return
+	}
+	printMessageWithData("Queue stats:\n", stats)
+}
+
+func (c *CLI) id(ctx context.Context, params []string) {
+	if len(params) == 0 {
+		c.Shipment = nil
+		fmt.Println("Going back to standard CLI mode!")
+		return
+	}
+	if c.Client == nil {
+		fmt.Println(needAWSMessage)
+		return
+	}
+	id := params[0]
+	var err error
+	c.Shipment, err = c.Client.Get(ctx, id)
+	if err != nil {
+		printError(err)
+		return
+	}
+	if c.Shipment == nil {
+		printError(fmt.Sprintf("Shipment's [%s] not found!", id))
+		return
+	}
+	printMessageWithData(fmt.Sprintf("Shipment's [%s] record dump:\n", id), c.Shipment)
+}
+
+func (c *CLI) system(_ context.Context, _ []string) {
+	if c.Client == nil {
+		fmt.Println(needAWSMessage)
+		return
+	}
+	if c.Shipment == nil {
+		printCLIModeRestriction("`system` or `sys`")
+		return
+	}
+	printMessageWithData("ID's system info:\n", c.Shipment.SystemInfo)
 }
 
 func (c *CLI) reset(ctx context.Context, _ []string) {
@@ -452,32 +474,6 @@ func (c *CLI) enqueue(ctx context.Context, _ []string) {
 		return
 	}
 	printMessageWithData("Record's system info:\n", rr.Shipment.SystemInfo)
-	stats, err := c.Client.GetQueueStats(ctx)
-	if err != nil {
-		printError(err)
-		return
-	}
-	printMessageWithData("Queue stats:\n", stats)
-}
-
-func (c *CLI) peek(ctx context.Context, _ []string) {
-	if c.Client == nil {
-		fmt.Println(needAWSMessage)
-		return
-	}
-	if c.Shipment == nil {
-		printCLIModeRestriction("`peek`")
-		return
-	}
-	rr, err := c.Client.Peek(ctx)
-	if err != nil {
-		printError(fmt.Sprintf("Peek has failed! message: %s", err))
-		return
-	}
-	c.Shipment = rr.PeekedShipmentObject
-	printMessageWithData(
-		fmt.Sprintf("Peek was successful ... record peeked is: [%s]\n", c.Shipment.ID),
-		c.Shipment.SystemInfo)
 	stats, err := c.Client.GetQueueStats(ctx)
 	if err != nil {
 		printError(err)
