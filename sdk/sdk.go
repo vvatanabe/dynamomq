@@ -535,22 +535,18 @@ func (c *queueSDKClient) Enqueue(ctx context.Context, id string) (*EnqueueResult
 	if err != nil {
 		return nil, &BuildingExpressionError{Cause: err}
 	}
-	item, err := c.updateDynamoDBItem(ctx, id, &expr)
-	if err != nil {
-		return nil, err
-	}
-	shipment, err := c.Get(ctx, id)
+	enqueued, err := c.updateDynamoDBItem(ctx, id, &expr)
 	if err != nil {
 		return nil, err
 	}
 	return &EnqueueResult{
 		Result: &Result{
-			ID:                   item.ID,
-			Status:               item.SystemInfo.Status,
-			LastUpdatedTimestamp: item.SystemInfo.LastUpdatedTimestamp,
-			Version:              item.SystemInfo.Version,
+			ID:                   enqueued.ID,
+			Status:               enqueued.SystemInfo.Status,
+			LastUpdatedTimestamp: enqueued.SystemInfo.LastUpdatedTimestamp,
+			Version:              enqueued.SystemInfo.Version,
 		},
-		Shipment: shipment,
+		Shipment: enqueued,
 	}, nil
 }
 
@@ -645,23 +641,19 @@ func (c *queueSDKClient) Peek(ctx context.Context) (*PeekResult, error) {
 	if err != nil {
 		return nil, &BuildingExpressionError{Cause: err}
 	}
-	item, err := c.updateDynamoDBItem(ctx, shipment.ID, &expr)
-	if err != nil {
-		return nil, err
-	}
-	peekedShipment, err := c.Get(ctx, selectedID)
+	peeked, err := c.updateDynamoDBItem(ctx, shipment.ID, &expr)
 	if err != nil {
 		return nil, err
 	}
 	return &PeekResult{
 		Result: &Result{
-			ID:                   item.ID,
-			Status:               item.SystemInfo.Status,
-			LastUpdatedTimestamp: item.SystemInfo.LastUpdatedTimestamp,
-			Version:              item.SystemInfo.Version,
+			ID:                   peeked.ID,
+			Status:               peeked.SystemInfo.Status,
+			LastUpdatedTimestamp: peeked.SystemInfo.LastUpdatedTimestamp,
+			Version:              peeked.SystemInfo.Version,
 		},
-		TimestampMillisUTC:   item.SystemInfo.PeekUTCTimestamp,
-		PeekedShipmentObject: peekedShipment,
+		TimestampMillisUTC:   peeked.SystemInfo.PeekUTCTimestamp,
+		PeekedShipmentObject: peeked,
 	}, nil
 }
 
