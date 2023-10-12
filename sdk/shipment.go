@@ -8,8 +8,8 @@ import (
 	"github.com/vvatanabe/dynamomq/internal/clock"
 )
 
-func NewDefaultShipment[T any](id string, data *T, now time.Time) *Shipment[T] {
-	return &Shipment[T]{
+func NewDefaultMessage[T any](id string, data *T, now time.Time) *Message[T] {
+	return &Message[T]{
 		ID:                   id,
 		Data:                 data,
 		SystemInfo:           NewDefaultSystemInfo(id, now),
@@ -19,7 +19,7 @@ func NewDefaultShipment[T any](id string, data *T, now time.Time) *Shipment[T] {
 	}
 }
 
-type Shipment[T any] struct {
+type Message[T any] struct {
 	ID         string      `json:"id" dynamodbav:"id"`
 	Data       *T          `json:"data" dynamodbav:"data"`
 	SystemInfo *SystemInfo `json:"system_info" dynamodbav:"system_info"`
@@ -29,137 +29,137 @@ type Shipment[T any] struct {
 	DLQ                  int    `json:"DLQ" dynamodbav:"DLQ,omitempty"`
 }
 
-func (s *Shipment[T]) IsQueueSelected(now time.Time, visibilityTimeout time.Duration) bool {
-	if !s.SystemInfo.SelectedFromQueue {
+func (m *Message[T]) IsQueueSelected(now time.Time, visibilityTimeout time.Duration) bool {
+	if !m.SystemInfo.SelectedFromQueue {
 		return false
 	}
-	timeDifference := now.UnixMilli() - s.SystemInfo.PeekUTCTimestamp
+	timeDifference := now.UnixMilli() - m.SystemInfo.PeekUTCTimestamp
 	return timeDifference <= visibilityTimeout.Milliseconds()
 }
 
-func (s *Shipment[T]) IsRemoved() bool {
-	return s.Queued == 0 &&
-		s.DLQ == 0 &&
-		s.SystemInfo.InQueue == 0 &&
-		s.SystemInfo.SelectedFromQueue == false &&
-		s.SystemInfo.RemoveFromQueueTimestamp != ""
+func (m *Message[T]) IsRemoved() bool {
+	return m.Queued == 0 &&
+		m.DLQ == 0 &&
+		m.SystemInfo.InQueue == 0 &&
+		m.SystemInfo.SelectedFromQueue == false &&
+		m.SystemInfo.RemoveFromQueueTimestamp != ""
 }
 
-func (s *Shipment[T]) IsEnqueued() bool {
-	return s.Queued == 1 &&
-		s.DLQ == 0 &&
-		s.SystemInfo.InQueue == 1 &&
-		s.SystemInfo.SelectedFromQueue == false &&
-		s.SystemInfo.Status == StatusReady &&
-		s.SystemInfo.AddToQueueTimestamp != "" &&
-		s.SystemInfo.RemoveFromQueueTimestamp == ""
+func (m *Message[T]) IsEnqueued() bool {
+	return m.Queued == 1 &&
+		m.DLQ == 0 &&
+		m.SystemInfo.InQueue == 1 &&
+		m.SystemInfo.SelectedFromQueue == false &&
+		m.SystemInfo.Status == StatusReady &&
+		m.SystemInfo.AddToQueueTimestamp != "" &&
+		m.SystemInfo.RemoveFromQueueTimestamp == ""
 }
 
-func (s *Shipment[T]) IsDLQ() bool {
-	return s.Queued == 0 &&
-		s.DLQ == 1 &&
-		s.SystemInfo.InQueue == 0 &&
-		s.SystemInfo.SelectedFromQueue == false &&
-		s.SystemInfo.AddToDLQTimestamp != "" &&
-		s.SystemInfo.Status == StatusInDLQ
+func (m *Message[T]) IsDLQ() bool {
+	return m.Queued == 0 &&
+		m.DLQ == 1 &&
+		m.SystemInfo.InQueue == 0 &&
+		m.SystemInfo.SelectedFromQueue == false &&
+		m.SystemInfo.AddToDLQTimestamp != "" &&
+		m.SystemInfo.Status == StatusInDLQ
 }
 
-func (s *Shipment[T]) MarkAsReadyForShipment(now time.Time) {
+func (m *Message[T]) MarkAsReadyForMessage(now time.Time) {
 	ts := clock.FormatRFC3339(now)
-	s.LastUpdatedTimestamp = ts
-	s.SystemInfo.LastUpdatedTimestamp = ts
-	s.SystemInfo.Status = StatusReady
+	m.LastUpdatedTimestamp = ts
+	m.SystemInfo.LastUpdatedTimestamp = ts
+	m.SystemInfo.Status = StatusReady
 }
 
-func (s *Shipment[T]) MarkAsEnqueued(now time.Time) {
+func (m *Message[T]) MarkAsEnqueued(now time.Time) {
 	ts := clock.FormatRFC3339(now)
-	s.Queued = 1
-	s.DLQ = 0
-	s.LastUpdatedTimestamp = ts
-	s.SystemInfo.InQueue = 1
-	s.SystemInfo.SelectedFromQueue = false
-	s.SystemInfo.LastUpdatedTimestamp = ts
-	s.SystemInfo.AddToQueueTimestamp = ts
-	s.SystemInfo.Status = StatusReady
+	m.Queued = 1
+	m.DLQ = 0
+	m.LastUpdatedTimestamp = ts
+	m.SystemInfo.InQueue = 1
+	m.SystemInfo.SelectedFromQueue = false
+	m.SystemInfo.LastUpdatedTimestamp = ts
+	m.SystemInfo.AddToQueueTimestamp = ts
+	m.SystemInfo.Status = StatusReady
 }
 
-func (s *Shipment[T]) MarkAsPeeked(now time.Time) {
+func (m *Message[T]) MarkAsPeeked(now time.Time) {
 	ts := clock.FormatRFC3339(now)
 	unixTime := now.UnixMilli()
-	s.Queued = 1
-	s.LastUpdatedTimestamp = ts
-	s.SystemInfo.InQueue = 1
-	s.SystemInfo.SelectedFromQueue = true
-	s.SystemInfo.LastUpdatedTimestamp = ts
-	s.SystemInfo.PeekFromQueueTimestamp = ts
-	s.SystemInfo.PeekUTCTimestamp = unixTime
-	s.SystemInfo.Status = StatusProcessing
+	m.Queued = 1
+	m.LastUpdatedTimestamp = ts
+	m.SystemInfo.InQueue = 1
+	m.SystemInfo.SelectedFromQueue = true
+	m.SystemInfo.LastUpdatedTimestamp = ts
+	m.SystemInfo.PeekFromQueueTimestamp = ts
+	m.SystemInfo.PeekUTCTimestamp = unixTime
+	m.SystemInfo.Status = StatusProcessing
 }
 
-func (s *Shipment[T]) MarkAsRemoved(now time.Time) {
+func (m *Message[T]) MarkAsRemoved(now time.Time) {
 	ts := clock.FormatRFC3339(now)
-	s.Queued = 0
-	s.DLQ = 0
-	s.LastUpdatedTimestamp = ts
-	s.SystemInfo.InQueue = 0
-	s.SystemInfo.SelectedFromQueue = false
-	s.SystemInfo.LastUpdatedTimestamp = ts
-	s.SystemInfo.RemoveFromQueueTimestamp = ts
+	m.Queued = 0
+	m.DLQ = 0
+	m.LastUpdatedTimestamp = ts
+	m.SystemInfo.InQueue = 0
+	m.SystemInfo.SelectedFromQueue = false
+	m.SystemInfo.LastUpdatedTimestamp = ts
+	m.SystemInfo.RemoveFromQueueTimestamp = ts
 }
 
-func (s *Shipment[T]) MarkAsDLQ(now time.Time) {
+func (m *Message[T]) MarkAsDLQ(now time.Time) {
 	ts := clock.FormatRFC3339(now)
-	s.Queued = 0
-	s.DLQ = 1
-	s.LastUpdatedTimestamp = ts
-	s.SystemInfo.InQueue = 0
-	s.SystemInfo.SelectedFromQueue = false
-	s.SystemInfo.LastUpdatedTimestamp = ts
-	s.SystemInfo.AddToDLQTimestamp = ts
-	s.SystemInfo.Status = StatusInDLQ
+	m.Queued = 0
+	m.DLQ = 1
+	m.LastUpdatedTimestamp = ts
+	m.SystemInfo.InQueue = 0
+	m.SystemInfo.SelectedFromQueue = false
+	m.SystemInfo.LastUpdatedTimestamp = ts
+	m.SystemInfo.AddToDLQTimestamp = ts
+	m.SystemInfo.Status = StatusInDLQ
 }
 
-func (s *Shipment[T]) ResetSystemInfo(now time.Time) {
-	s.SystemInfo = NewDefaultSystemInfo(s.ID, now)
+func (m *Message[T]) ResetSystemInfo(now time.Time) {
+	m.SystemInfo = NewDefaultSystemInfo(m.ID, now)
 }
 
-func (s *Shipment[T]) Touch(now time.Time) {
+func (m *Message[T]) Touch(now time.Time) {
 	ts := clock.FormatRFC3339(now)
-	s.LastUpdatedTimestamp = ts
-	s.SystemInfo.LastUpdatedTimestamp = ts
+	m.LastUpdatedTimestamp = ts
+	m.SystemInfo.LastUpdatedTimestamp = ts
 }
 
-func (s *Shipment[T]) Update(shipment *Shipment[T], now time.Time) {
+func (m *Message[T]) Update(message *Message[T], now time.Time) {
 	formatted := clock.FormatRFC3339(now)
-	nextVersion := s.SystemInfo.Version + 1
+	nextVersion := m.SystemInfo.Version + 1
 
-	s.Data = shipment.Data
-	s.SystemInfo = shipment.SystemInfo
-	s.SystemInfo.Version = nextVersion
-	s.SystemInfo.LastUpdatedTimestamp = formatted
+	m.Data = message.Data
+	m.SystemInfo = message.SystemInfo
+	m.SystemInfo.Version = nextVersion
+	m.SystemInfo.LastUpdatedTimestamp = formatted
 
-	s.Queued = shipment.Queued
-	s.LastUpdatedTimestamp = formatted
-	s.DLQ = shipment.DLQ
+	m.Queued = message.Queued
+	m.LastUpdatedTimestamp = formatted
+	m.DLQ = message.DLQ
 }
 
-func (s *Shipment[T]) ChangeStatus(status Status, now time.Time) {
+func (m *Message[T]) ChangeStatus(status Status, now time.Time) {
 	formatted := clock.FormatRFC3339(now)
 
-	s.SystemInfo.Status = status
-	s.SystemInfo.LastUpdatedTimestamp = formatted
-	s.LastUpdatedTimestamp = formatted
+	m.SystemInfo.Status = status
+	m.SystemInfo.LastUpdatedTimestamp = formatted
+	m.LastUpdatedTimestamp = formatted
 }
 
-func (s *Shipment[T]) MarshalMap() (map[string]types.AttributeValue, error) {
-	item, err := attributevalue.MarshalMap(s)
+func (m *Message[T]) MarshalMap() (map[string]types.AttributeValue, error) {
+	item, err := attributevalue.MarshalMap(m)
 	if err != nil {
 		return nil, &MarshalingAttributeError{Cause: err}
 	}
 	return item, nil
 }
 
-func (s *Shipment[T]) MarshalMapUnsafe() map[string]types.AttributeValue {
-	item, _ := attributevalue.MarshalMap(s)
+func (m *Message[T]) MarshalMapUnsafe() map[string]types.AttributeValue {
+	item, _ := attributevalue.MarshalMap(m)
 	return item
 }

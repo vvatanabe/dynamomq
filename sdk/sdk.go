@@ -20,7 +20,7 @@ import (
 const (
 	AwsRegionDefault                  = "us-east-1"
 	AwsProfileDefault                 = "default"
-	DefaultTableName                  = "Shipment"
+	DefaultTableName                  = "DynamoMQPriorityQueue"
 	QueueingIndexName                 = "queueud-last_updated_timestamp-index"
 	DlqQueueingIndexName              = "dlq-last_updated_timestamp-index"
 	DefaultRetryMaxAttempts           = 10
@@ -30,9 +30,9 @@ const (
 type QueueSDKClient[T any] interface {
 	GetQueueStats(ctx context.Context) (*QueueStats, error)
 	GetDLQStats(ctx context.Context) (*DLQStats, error)
-	Get(ctx context.Context, id string) (*Shipment[T], error)
-	Put(ctx context.Context, shipment *Shipment[T]) error
-	Upsert(ctx context.Context, shipment *Shipment[T]) error
+	Get(ctx context.Context, id string) (*Message[T], error)
+	Put(ctx context.Context, message *Message[T]) error
+	Upsert(ctx context.Context, message *Message[T]) error
 	UpdateStatus(ctx context.Context, id string, newStatus Status) (*Result, error)
 	Enqueue(ctx context.Context, id string) (*EnqueueResult[T], error)
 	Peek(ctx context.Context) (*PeekResult[T], error)
@@ -41,7 +41,7 @@ type QueueSDKClient[T any] interface {
 	Restore(ctx context.Context, id string) (*Result, error)
 	SendToDLQ(ctx context.Context, id string) (*Result, error)
 	Touch(ctx context.Context, id string) (*Result, error)
-	List(ctx context.Context, size int32) ([]*Shipment[T], error)
+	List(ctx context.Context, size int32) ([]*Message[T], error)
 	ListIDs(ctx context.Context, size int32) ([]string, error)
 	ListExtendedIDs(ctx context.Context, size int32) ([]string, error)
 	Delete(ctx context.Context, id string) error
@@ -225,7 +225,7 @@ func (c *queueSDKClient[T]) GetQueueStats(ctx context.Context) (*QueueStats, err
 		exclusiveStartKey = queryOutput.LastEvaluatedKey
 		for _, itemMap := range queryOutput.Items {
 			totalQueueSize++
-			item := Shipment[T]{}
+			item := Message[T]{}
 			err := attributevalue.UnmarshalMap(itemMap, &item)
 			if err != nil {
 				return nil, &UnmarshalingAttributeError{Cause: err}
@@ -301,7 +301,7 @@ func (c *queueSDKClient[T]) GetDLQStats(ctx context.Context) (*DLQStats, error) 
 		for _, itemMap := range resp.Items {
 			totalDLQSize++
 			if len(listBANs) < 100 {
-				item := Shipment[T]{}
+				item := Message[T]{}
 				err := attributevalue.UnmarshalMap(itemMap, &item)
 				if err != nil {
 					return nil, &UnmarshalingAttributeError{Cause: err}
@@ -319,21 +319,21 @@ func (c *queueSDKClient[T]) GetDLQStats(ctx context.Context) (*DLQStats, error) 
 	}, nil
 }
 
-// Get retrieves a shipment record from the database by its ID.
+// Get retrieves a message record from the database by its ID.
 //
 // If the provided 'id' is empty, it returns nil and an error indicating that
 // the ID is not provided.
 //
 // Parameters:
 //   - ctx (context.Context): The context for the request.
-//   - id (string): The unique identifier of the shipment record to retrieve.
+//   - id (string): The unique identifier of the message record to retrieve.
 //
 // Returns:
-//   - (*Shipment): A pointer to the retrieved shipment record.
+//   - (*Message): A pointer to the retrieved message record.
 //   - (error): An error if any occurred during the retrieval process, including
 //     if the 'id' is empty, the database query fails, or unmarshaling the response
 //     fails.
-func (c *queueSDKClient[T]) Get(ctx context.Context, id string) (*Shipment[T], error) {
+func (c *queueSDKClient[T]) Get(ctx context.Context, id string) (*Message[T], error) {
 	if id == "" {
 		return nil, &IDNotProvidedError{}
 	}
@@ -350,7 +350,7 @@ func (c *queueSDKClient[T]) Get(ctx context.Context, id string) (*Shipment[T], e
 	if resp.Item == nil {
 		return nil, nil
 	}
-	item := Shipment[T]{}
+	item := Message[T]{}
 	err = attributevalue.UnmarshalMap(resp.Item, &item)
 	if err != nil {
 		return nil, &UnmarshalingAttributeError{Cause: err}
@@ -358,18 +358,18 @@ func (c *queueSDKClient[T]) Get(ctx context.Context, id string) (*Shipment[T], e
 	return &item, nil
 }
 
-// Put stores a given Shipment object in a DynamoDB table using the PutImpl method.
+// Put stores a given Message object in a DynamoDB table using the PutImpl method.
 // The object is stored in the table with its specified ID, creating a new entry if it
 // doesn't exist. If an entry with the same ID exists, the method will delete it.
 //
 // Parameters:
 //   - ctx: Context used for timeout, cancellation, and value sharing for the operation.
-//   - shipment: The Shipment object to be stored.
+//   - message: The Message object to be stored.
 //
 // Returns:
 //   - error: Returns an error if one occurs, otherwise, it returns nil on successful storage.
-func (c *queueSDKClient[T]) Put(ctx context.Context, shipment *Shipment[T]) error {
-	retrieved, err := c.Get(ctx, shipment.ID)
+func (c *queueSDKClient[T]) Put(ctx context.Context, message *Message[T]) error {
+	retrieved, err := c.Get(ctx, message.ID)
 	if err != nil {
 		return err
 	}
@@ -377,40 +377,40 @@ func (c *queueSDKClient[T]) Put(ctx context.Context, shipment *Shipment[T]) erro
 		_, err := c.dynamoDB.DeleteItem(ctx, &dynamodb.DeleteItemInput{
 			TableName: aws.String(c.tableName),
 			Key: map[string]types.AttributeValue{
-				"id": &types.AttributeValueMemberS{Value: shipment.ID},
+				"id": &types.AttributeValueMemberS{Value: message.ID},
 			},
 		})
 		if err != nil {
 			return handleDynamoDBError(err)
 		}
 	}
-	return c.put(ctx, shipment)
+	return c.put(ctx, message)
 }
 
-// Upsert attempts to update an existing Shipment object in a DynamoDB table or inserts it
+// Upsert attempts to update an existing Message object in a DynamoDB table or inserts it
 // if it doesn't exist. It uses the PutImpl method to perform this upsert operation.
 // If an entry with the same ID exists, the method will update it.
 //
 // Parameters:
 //   - ctx: Context used for timeout, cancellation, and value sharing for the operation.
-//   - shipment: The Shipment object to be upserted.
+//   - message: The Message object to be upserted.
 //
 // Returns:
 //   - error: Returns an error if one occurs, otherwise, it returns nil on successful upsert.
-func (c *queueSDKClient[T]) Upsert(ctx context.Context, shipment *Shipment[T]) error {
-	retrieved, err := c.Get(ctx, shipment.ID)
+func (c *queueSDKClient[T]) Upsert(ctx context.Context, message *Message[T]) error {
+	retrieved, err := c.Get(ctx, message.ID)
 	if err != nil {
 		return err
 	}
 	if retrieved != nil {
-		retrieved.Update(shipment, c.clock.Now())
-		shipment = retrieved
+		retrieved.Update(message, c.clock.Now())
+		message = retrieved
 	}
-	return c.put(ctx, shipment)
+	return c.put(ctx, message)
 }
 
-func (c *queueSDKClient[T]) put(ctx context.Context, shipment *Shipment[T]) error {
-	item, err := shipment.MarshalMap()
+func (c *queueSDKClient[T]) put(ctx context.Context, message *Message[T]) error {
+	item, err := message.MarshalMap()
 	if err != nil {
 		return err
 	}
@@ -444,29 +444,29 @@ func (c *queueSDKClient[T]) put(ctx context.Context, shipment *Shipment[T]) erro
 //   - A pointer to a Result object containing the result of the update operation.
 //   - An error if one occurs during the process. A nil error indicates successful completion.
 func (c *queueSDKClient[T]) UpdateStatus(ctx context.Context, id string, newStatus Status) (*Result, error) {
-	shipment, err := c.Get(ctx, id)
+	message, err := c.Get(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-	if shipment == nil {
+	if message == nil {
 		return nil, &IDNotFoundError{}
 	}
-	prevStatus := shipment.SystemInfo.Status
+	prevStatus := message.SystemInfo.Status
 	if prevStatus == newStatus {
 		return &Result{
-			ID:                   shipment.ID,
+			ID:                   message.ID,
 			Status:               newStatus,
-			LastUpdatedTimestamp: shipment.SystemInfo.LastUpdatedTimestamp,
-			Version:              shipment.SystemInfo.Version,
+			LastUpdatedTimestamp: message.SystemInfo.LastUpdatedTimestamp,
+			Version:              message.SystemInfo.Version,
 		}, nil
 	}
-	shipment.ChangeStatus(newStatus, c.clock.Now())
+	message.ChangeStatus(newStatus, c.clock.Now())
 	expr, err := expression.NewBuilder().
 		WithUpdate(expression.Add(expression.Name("system_info.version"), expression.Value(1)).
-			Set(expression.Name("system_info.status"), expression.Value(shipment.SystemInfo.Status)).
-			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(shipment.SystemInfo.LastUpdatedTimestamp)).
-			Set(expression.Name("last_updated_timestamp"), expression.Value(shipment.LastUpdatedTimestamp))).
-		WithCondition(expression.Name("system_info.version").Equal(expression.Value(shipment.SystemInfo.Version))).
+			Set(expression.Name("system_info.status"), expression.Value(message.SystemInfo.Status)).
+			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(message.SystemInfo.LastUpdatedTimestamp)).
+			Set(expression.Name("last_updated_timestamp"), expression.Value(message.LastUpdatedTimestamp))).
+		WithCondition(expression.Name("system_info.version").Equal(expression.Value(message.SystemInfo.Version))).
 		Build()
 	if err != nil {
 		return nil, BuildingExpressionError{Cause: err}
@@ -483,26 +483,26 @@ func (c *queueSDKClient[T]) UpdateStatus(ctx context.Context, id string, newStat
 	}, nil
 }
 
-// Enqueue inserts the provided shipment ID into the queue. If the ID is not provided,
+// Enqueue inserts the provided message ID into the queue. If the ID is not provided,
 // it returns an error indicating the ID was not provided.
-// If the shipment with the given ID cannot be found, it returns an error indicating the ID was not found.
+// If the message with the given ID cannot be found, it returns an error indicating the ID was not found.
 //
-// The function performs several checks on the status of the shipment:
+// The function performs several checks on the status of the message:
 // - If the status is UNDER_CONSTRUCTION, it indicates the record is not yet constructed.
 // - If the status is not READY_TO_SHIP, it indicates an illegal state.
 //
-// If all checks pass, the function attempts to update several attributes of the shipment
-// in the DynamoDB table. If the update is successful, it retrieves the shipment from
+// If all checks pass, the function attempts to update several attributes of the message
+// in the DynamoDB table. If the update is successful, it retrieves the message from
 // DynamoDB and assigns it to the result.
 //
 // Parameters:
 //
 //	ctx: A context.Context for request. It can be used to cancel the request or to carry deadlines.
-//	id: The ID of the shipment to enqueue.
+//	id: The ID of the message to enqueue.
 //
 // Returns:
 //
-//	*EnqueueResult: A pointer to the EnqueueResult structure which contains information about the enqueued shipment.
+//	*EnqueueResult: A pointer to the EnqueueResult structure which contains information about the enqueued message.
 //	error: An error that can occur during the execution, or nil if no errors occurred.
 func (c *queueSDKClient[T]) Enqueue(ctx context.Context, id string) (*EnqueueResult[T], error) {
 	retrieved, err := c.Get(ctx, id)
@@ -563,7 +563,7 @@ func (c *queueSDKClient[T]) Enqueue(ctx context.Context, id string) (*EnqueueRes
 			LastUpdatedTimestamp: enqueued.SystemInfo.LastUpdatedTimestamp,
 			Version:              enqueued.SystemInfo.Version,
 		},
-		Shipment: enqueued,
+		Message: enqueued,
 	}, nil
 }
 
@@ -618,7 +618,7 @@ func (c *queueSDKClient[T]) Peek(ctx context.Context) (*PeekResult[T], error) {
 		}
 		exclusiveStartKey = queryResult.LastEvaluatedKey
 		for _, itemMap := range queryResult.Items {
-			item := Shipment[T]{}
+			item := Message[T]{}
 			if err = attributevalue.UnmarshalMap(itemMap, &item); err != nil {
 				return nil, &UnmarshalingAttributeError{Cause: err}
 			}
@@ -637,28 +637,28 @@ func (c *queueSDKClient[T]) Peek(ctx context.Context) (*PeekResult[T], error) {
 	if selectedID == "" {
 		return nil, &EmptyQueueError{}
 	}
-	shipment, err := c.Get(ctx, selectedID)
+	message, err := c.Get(ctx, selectedID)
 	if err != nil {
 		return nil, err
 	}
-	shipment.MarkAsPeeked(c.clock.Now())
+	message.MarkAsPeeked(c.clock.Now())
 	// IMPORTANT
 	// please note, we are not updating top-level attribute `last_updated_timestamp` in order to avoid re-indexing the order
 	expr, err = expression.NewBuilder().
 		WithUpdate(expression.
 			Add(expression.Name("system_info.version"), expression.Value(1)).
-			Set(expression.Name("system_info.queue_selected"), expression.Value(shipment.SystemInfo.SelectedFromQueue)).
-			Set(expression.Name("last_updated_timestamp"), expression.Value(shipment.LastUpdatedTimestamp)).
-			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(shipment.SystemInfo.LastUpdatedTimestamp)).
-			Set(expression.Name("system_info.queue_peek_timestamp"), expression.Value(shipment.SystemInfo.PeekFromQueueTimestamp)).
-			Set(expression.Name("system_info.peek_utc_timestamp"), expression.Value(shipment.SystemInfo.PeekUTCTimestamp)).
-			Set(expression.Name("system_info.status"), expression.Value(shipment.SystemInfo.Status))).
+			Set(expression.Name("system_info.queue_selected"), expression.Value(message.SystemInfo.SelectedFromQueue)).
+			Set(expression.Name("last_updated_timestamp"), expression.Value(message.LastUpdatedTimestamp)).
+			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(message.SystemInfo.LastUpdatedTimestamp)).
+			Set(expression.Name("system_info.queue_peek_timestamp"), expression.Value(message.SystemInfo.PeekFromQueueTimestamp)).
+			Set(expression.Name("system_info.peek_utc_timestamp"), expression.Value(message.SystemInfo.PeekUTCTimestamp)).
+			Set(expression.Name("system_info.status"), expression.Value(message.SystemInfo.Status))).
 		WithCondition(expression.Name("system_info.version").Equal(expression.Value(selectedVersion))).
 		Build()
 	if err != nil {
 		return nil, &BuildingExpressionError{Cause: err}
 	}
-	peeked, err := c.updateDynamoDBItem(ctx, shipment.ID, &expr)
+	peeked, err := c.updateDynamoDBItem(ctx, message.ID, &expr)
 	if err != nil {
 		return nil, err
 	}
@@ -669,8 +669,8 @@ func (c *queueSDKClient[T]) Peek(ctx context.Context) (*PeekResult[T], error) {
 			LastUpdatedTimestamp: peeked.SystemInfo.LastUpdatedTimestamp,
 			Version:              peeked.SystemInfo.Version,
 		},
-		TimestampMillisUTC:   peeked.SystemInfo.PeekUTCTimestamp,
-		PeekedShipmentObject: peeked,
+		TimestampMillisUTC:  peeked.SystemInfo.PeekUTCTimestamp,
+		PeekedMessageObject: peeked,
 	}, nil
 }
 
@@ -693,13 +693,13 @@ func (c *queueSDKClient[T]) Dequeue(ctx context.Context) (*DequeueResult[T], err
 	if err != nil {
 		return nil, err
 	}
-	shipment, err := c.Get(ctx, id)
+	message, err := c.Get(ctx, id)
 	if err != nil {
 		return nil, err
 	}
 	return &DequeueResult[T]{
-		Result:                 removeResult,
-		DequeuedShipmentObject: shipment,
+		Result:                removeResult,
+		DequeuedMessageObject: message,
 	}, nil
 }
 
@@ -715,19 +715,19 @@ func (c *queueSDKClient[T]) Dequeue(ctx context.Context) (*DequeueResult[T], err
 //   - error: any error encountered during the operation, especially related to data marshaling and database interactions.
 //     If successful and the item is just not found, the error is nil but the Result reflects the status.
 func (c *queueSDKClient[T]) Remove(ctx context.Context, id string) (*Result, error) {
-	shipment, err := c.Get(ctx, id)
+	message, err := c.Get(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-	if shipment == nil {
+	if message == nil {
 		return nil, &IDNotFoundError{}
 	}
-	if shipment.IsRemoved() {
+	if message.IsRemoved() {
 		return &Result{
 			ID:                   id,
-			Status:               shipment.SystemInfo.Status,
-			LastUpdatedTimestamp: shipment.SystemInfo.LastUpdatedTimestamp,
-			Version:              shipment.SystemInfo.Version,
+			Status:               message.SystemInfo.Status,
+			LastUpdatedTimestamp: message.SystemInfo.LastUpdatedTimestamp,
+			Version:              message.SystemInfo.Version,
 		}, nil
 	}
 	ts := clock.FormatRFC3339(c.clock.Now())
@@ -741,7 +741,7 @@ func (c *queueSDKClient[T]) Remove(ctx context.Context, id string) (*Result, err
 			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(ts)).
 			Set(expression.Name("last_updated_timestamp"), expression.Value(ts)).
 			Set(expression.Name("system_info.queue_remove_timestamp"), expression.Value(ts))).
-		WithCondition(expression.Name("system_info.version").Equal(expression.Value(shipment.SystemInfo.Version))).
+		WithCondition(expression.Name("system_info.version").Equal(expression.Value(message.SystemInfo.Version))).
 		Build()
 	if err != nil {
 		return nil, &BuildingExpressionError{Cause: err}
@@ -775,34 +775,34 @@ func (c *queueSDKClient[T]) Remove(ctx context.Context, id string) (*Result, err
 //	error: An error that describes any issues that occurred during the
 //	restore operation. If the operation is successful, this will be nil.
 func (c *queueSDKClient[T]) Restore(ctx context.Context, id string) (*Result, error) {
-	shipment, err := c.Get(ctx, id)
+	message, err := c.Get(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-	if shipment == nil {
+	if message == nil {
 		return nil, &IDNotFoundError{}
 	}
-	if shipment.IsEnqueued() {
+	if message.IsEnqueued() {
 		return &Result{
 			ID:                   id,
-			Status:               shipment.SystemInfo.Status,
-			LastUpdatedTimestamp: shipment.SystemInfo.LastUpdatedTimestamp,
-			Version:              shipment.SystemInfo.Version,
+			Status:               message.SystemInfo.Status,
+			LastUpdatedTimestamp: message.SystemInfo.LastUpdatedTimestamp,
+			Version:              message.SystemInfo.Version,
 		}, nil
 	}
-	shipment.MarkAsEnqueued(c.clock.Now())
+	message.MarkAsEnqueued(c.clock.Now())
 	expr, err := expression.NewBuilder().
 		WithUpdate(expression.
 			Add(expression.Name("system_info.version"), expression.Value(1)).
 			Remove(expression.Name("DLQ")).
-			Set(expression.Name("queued"), expression.Value(shipment.Queued)).
-			Set(expression.Name("last_updated_timestamp"), expression.Value(shipment.LastUpdatedTimestamp)).
-			Set(expression.Name("system_info.queued"), expression.Value(shipment.SystemInfo.InQueue)).
-			Set(expression.Name("system_info.queue_selected"), expression.Value(shipment.SystemInfo.SelectedFromQueue)).
-			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(shipment.SystemInfo.LastUpdatedTimestamp)).
-			Set(expression.Name("system_info.queue_add_timestamp"), expression.Value(shipment.SystemInfo.AddToQueueTimestamp)).
-			Set(expression.Name("system_info.status"), expression.Value(shipment.SystemInfo.Status))).
-		WithCondition(expression.Name("system_info.version").Equal(expression.Value(shipment.SystemInfo.Version))).
+			Set(expression.Name("queued"), expression.Value(message.Queued)).
+			Set(expression.Name("last_updated_timestamp"), expression.Value(message.LastUpdatedTimestamp)).
+			Set(expression.Name("system_info.queued"), expression.Value(message.SystemInfo.InQueue)).
+			Set(expression.Name("system_info.queue_selected"), expression.Value(message.SystemInfo.SelectedFromQueue)).
+			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(message.SystemInfo.LastUpdatedTimestamp)).
+			Set(expression.Name("system_info.queue_add_timestamp"), expression.Value(message.SystemInfo.AddToQueueTimestamp)).
+			Set(expression.Name("system_info.status"), expression.Value(message.SystemInfo.Status))).
+		WithCondition(expression.Name("system_info.version").Equal(expression.Value(message.SystemInfo.Version))).
 		Build()
 	if err != nil {
 		return nil, &BuildingExpressionError{Cause: err}
@@ -821,7 +821,7 @@ func (c *queueSDKClient[T]) Restore(ctx context.Context, id string) (*Result, er
 
 // SendToDLQ sends a specified record with the given ID to the Dead Letter Queue (DLQ).
 // The method performs various operations:
-// 1. Fetches the shipment details associated with the provided ID.
+// 1. Fetches the message details associated with the provided ID.
 // 2. Constructs a DynamoDB update expression to mark the record for DLQ and updates timestamps.
 // 3. Updates the specified record in the DynamoDB table.
 //
@@ -835,35 +835,35 @@ func (c *queueSDKClient[T]) Restore(ctx context.Context, id string) (*Result, er
 //     and ReturnValue indicating the result of the operation (e.g., success, failed due to ID not found, etc.).
 //   - error: Non-nil if there was an error during the operation.
 func (c *queueSDKClient[T]) SendToDLQ(ctx context.Context, id string) (*Result, error) {
-	shipment, err := c.Get(ctx, id)
+	message, err := c.Get(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-	if shipment == nil {
+	if message == nil {
 		return nil, &IDNotFoundError{}
 	}
-	if shipment.IsDLQ() {
+	if message.IsDLQ() {
 		return &Result{
 			ID:                   id,
-			Status:               shipment.SystemInfo.Status,
-			LastUpdatedTimestamp: shipment.SystemInfo.LastUpdatedTimestamp,
-			Version:              shipment.SystemInfo.Version,
+			Status:               message.SystemInfo.Status,
+			LastUpdatedTimestamp: message.SystemInfo.LastUpdatedTimestamp,
+			Version:              message.SystemInfo.Version,
 		}, nil
 	}
-	shipment.MarkAsDLQ(c.clock.Now())
+	message.MarkAsDLQ(c.clock.Now())
 	expr, err := expression.NewBuilder().
 		WithUpdate(expression.
 			Add(expression.Name("system_info.version"), expression.Value(1)).
 			Remove(expression.Name("queued")).
-			Set(expression.Name("DLQ"), expression.Value(shipment.DLQ)).
-			Set(expression.Name("system_info.queued"), expression.Value(shipment.SystemInfo.InQueue)).
-			Set(expression.Name("system_info.queue_selected"), expression.Value(shipment.SystemInfo.SelectedFromQueue)).
-			Set(expression.Name("last_updated_timestamp"), expression.Value(shipment.LastUpdatedTimestamp)).
-			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(shipment.SystemInfo.LastUpdatedTimestamp)).
-			Set(expression.Name("system_info.dlq_add_timestamp"), expression.Value(shipment.SystemInfo.AddToDLQTimestamp)).
-			Set(expression.Name("system_info.status"), expression.Value(shipment.SystemInfo.Status))).
+			Set(expression.Name("DLQ"), expression.Value(message.DLQ)).
+			Set(expression.Name("system_info.queued"), expression.Value(message.SystemInfo.InQueue)).
+			Set(expression.Name("system_info.queue_selected"), expression.Value(message.SystemInfo.SelectedFromQueue)).
+			Set(expression.Name("last_updated_timestamp"), expression.Value(message.LastUpdatedTimestamp)).
+			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(message.SystemInfo.LastUpdatedTimestamp)).
+			Set(expression.Name("system_info.dlq_add_timestamp"), expression.Value(message.SystemInfo.AddToDLQTimestamp)).
+			Set(expression.Name("system_info.status"), expression.Value(message.SystemInfo.Status))).
 		WithCondition(expression.And(
-			expression.Name("system_info.version").Equal(expression.Value(shipment.SystemInfo.Version)),
+			expression.Name("system_info.version").Equal(expression.Value(message.SystemInfo.Version)),
 			expression.Name("system_info.queued").Equal(expression.Value(1)),
 		)).
 		Build()
@@ -901,20 +901,20 @@ func (c *queueSDKClient[T]) SendToDLQ(ctx context.Context, id string) (*Result, 
 // - If there's an error unmarshalling the DynamoDB response, this error is returned.
 // Otherwise, if the operation succeeds, the error will be 'nil'.
 func (c *queueSDKClient[T]) Touch(ctx context.Context, id string) (*Result, error) {
-	shipment, err := c.Get(ctx, id)
+	message, err := c.Get(ctx, id)
 	if err != nil {
 		return nil, err
 	}
-	if shipment == nil {
+	if message == nil {
 		return nil, &IDNotFoundError{}
 	}
-	shipment.Touch(c.clock.Now())
+	message.Touch(c.clock.Now())
 	expr, err := expression.NewBuilder().
 		WithUpdate(expression.
 			Add(expression.Name("system_info.version"), expression.Value(1)).
-			Set(expression.Name("last_updated_timestamp"), expression.Value(shipment.LastUpdatedTimestamp)).
-			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(shipment.SystemInfo.LastUpdatedTimestamp))).
-		WithCondition(expression.Name("system_info.version").Equal(expression.Value(shipment.SystemInfo.Version))).
+			Set(expression.Name("last_updated_timestamp"), expression.Value(message.LastUpdatedTimestamp)).
+			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(message.SystemInfo.LastUpdatedTimestamp))).
+		WithCondition(expression.Name("system_info.version").Equal(expression.Value(message.SystemInfo.Version))).
 		Build()
 	if err != nil {
 		return nil, &BuildingExpressionError{Cause: err}
@@ -931,18 +931,18 @@ func (c *queueSDKClient[T]) Touch(ctx context.Context, id string) (*Result, erro
 	}, nil
 }
 
-// List retrieves a list of Shipments from the DynamoDB table up to the given size.
+// List retrieves a list of Messages from the DynamoDB table up to the given size.
 // The function constructs a DynamoDB scan with specific projection expressions and
-// returns the list of found shipments.
+// returns the list of found messages.
 //
 // Parameters:
 //   - ctx: The context to use for the request.
 //   - size: The maximum number of items to retrieve.
 //
 // Returns:
-//   - A slice of pointers to Shipment if found.
+//   - A slice of pointers to Message if found.
 //   - error if there's any issue in the operation.
-func (c *queueSDKClient[T]) List(ctx context.Context, size int32) ([]*Shipment[T], error) {
+func (c *queueSDKClient[T]) List(ctx context.Context, size int32) ([]*Message[T], error) {
 	output, err := c.dynamoDB.Scan(ctx, &dynamodb.ScanInput{
 		TableName: &c.tableName,
 		Limit:     aws.Int32(size),
@@ -950,16 +950,16 @@ func (c *queueSDKClient[T]) List(ctx context.Context, size int32) ([]*Shipment[T
 	if err != nil {
 		return nil, handleDynamoDBError(err)
 	}
-	var shipments []*Shipment[T]
-	err = attributevalue.UnmarshalListOfMaps(output.Items, &shipments)
+	var messages []*Message[T]
+	err = attributevalue.UnmarshalListOfMaps(output.Items, &messages)
 	if err != nil {
 		return nil, &UnmarshalingAttributeError{Cause: err}
 	}
-	return shipments, nil
+	return messages, nil
 }
 
-// ListIDs retrieves a list of IDs from the Shipment items in the DynamoDB table
-// up to the given size. It uses the List function to retrieve the shipments and
+// ListIDs retrieves a list of IDs from the Message items in the DynamoDB table
+// up to the given size. It uses the List function to retrieve the messages and
 // then extracts the IDs from them.
 //
 // Parameters:
@@ -970,13 +970,13 @@ func (c *queueSDKClient[T]) List(ctx context.Context, size int32) ([]*Shipment[T
 //   - A slice of string IDs if found.
 //   - error if there's any issue in the operation.
 func (c *queueSDKClient[T]) ListIDs(ctx context.Context, size int32) ([]string, error) {
-	shipments, err := c.List(ctx, size)
+	messages, err := c.List(ctx, size)
 	if err != nil {
 		return nil, err
 	}
 
-	ids := make([]string, len(shipments))
-	for i, s := range shipments {
+	ids := make([]string, len(messages))
+	for i, s := range messages {
 		ids[i] = s.ID
 	}
 
@@ -984,8 +984,8 @@ func (c *queueSDKClient[T]) ListIDs(ctx context.Context, size int32) ([]string, 
 }
 
 // ListExtendedIDs retrieves a list of extended IDs (formatted as "ID - status: STATUS")
-// from the Shipment items in the DynamoDB table up to the given size.
-// It uses the List function to retrieve the shipments and then constructs
+// from the Message items in the DynamoDB table up to the given size.
+// It uses the List function to retrieve the messages and then constructs
 // the extended ID strings from them.
 //
 // Parameters:
@@ -996,25 +996,25 @@ func (c *queueSDKClient[T]) ListIDs(ctx context.Context, size int32) ([]string, 
 //   - A slice of extended ID strings if found.
 //   - error if there's any issue in the operation.
 func (c *queueSDKClient[T]) ListExtendedIDs(ctx context.Context, size int32) ([]string, error) {
-	shipments, err := c.List(ctx, size)
+	messages, err := c.List(ctx, size)
 	if err != nil {
 		return nil, err
 	}
 
-	extendedIDs := make([]string, len(shipments))
-	for i, s := range shipments {
+	extendedIDs := make([]string, len(messages))
+	for i, s := range messages {
 		extendedIDs[i] = fmt.Sprintf("ID: %s, status: %s", s.ID, s.SystemInfo.Status)
 	}
 
 	return extendedIDs, nil
 }
 
-// Delete removes the shipment record associated with the provided ID from the database.
+// Delete removes the message record associated with the provided ID from the database.
 // It will return an error if the ID is empty or if there's any issue deleting the record.
 //
 // Parameters:
 //   - ctx: The context to be used for the deletion request. It allows for timeout and cancellation.
-//   - id: The unique identifier of the shipment record to be deleted.
+//   - id: The unique identifier of the message record to be deleted.
 //
 // Returns:
 //   - error: Non-nil if there was an error during the delete operation.
@@ -1041,7 +1041,7 @@ func (c *queueSDKClient[T]) GetDynamodbClient() *dynamodb.Client {
 }
 
 func (c *queueSDKClient[T]) updateDynamoDBItem(ctx context.Context,
-	id string, expr *expression.Expression) (*Shipment[T], error) {
+	id string, expr *expression.Expression) (*Message[T], error) {
 	outcome, err := c.dynamoDB.UpdateItem(ctx, &dynamodb.UpdateItemInput{
 		Key: map[string]types.AttributeValue{
 			"id": &types.AttributeValueMemberS{
@@ -1058,12 +1058,12 @@ func (c *queueSDKClient[T]) updateDynamoDBItem(ctx context.Context,
 	if err != nil {
 		return nil, handleDynamoDBError(err)
 	}
-	shipment := Shipment[T]{}
-	err = attributevalue.UnmarshalMap(outcome.Attributes, &shipment)
+	message := Message[T]{}
+	err = attributevalue.UnmarshalMap(outcome.Attributes, &message)
 	if err != nil {
 		return nil, &UnmarshalingAttributeError{Cause: err}
 	}
-	return &shipment, nil
+	return &message, nil
 }
 
 func handleDynamoDBError(err error) error {

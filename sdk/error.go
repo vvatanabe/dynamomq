@@ -25,7 +25,7 @@ func (e ConditionalCheckFailedError) Error() string {
 type RecordNotConstructedError struct{}
 
 func (e RecordNotConstructedError) Error() string {
-	return "Shipment record not yet fully constructed .. cannot execute API."
+	return "Message record not yet fully constructed .. cannot execute API."
 }
 
 type IllegalStateError struct{}

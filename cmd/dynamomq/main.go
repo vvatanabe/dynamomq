@@ -54,7 +54,7 @@ func main() {
 		CredentialsProfile: *credentialsProfile,
 		TableName:          *tableName,
 		Client:             client,
-		Shipment:           nil,
+		Message:            nil,
 	}
 
 	// 1. Create a Scanner using the InputStream available.
@@ -62,8 +62,8 @@ func main() {
 
 	for {
 		// 2. Don't forget to prompt the user
-		if c.Shipment != nil {
-			fmt.Printf("\nID <%s> >> Enter command: ", c.Shipment.ID)
+		if c.Message != nil {
+			fmt.Printf("\nID <%s> >> Enter command: ", c.Message.ID)
 		} else {
 			fmt.Print("\n>> Enter command: ")
 		}

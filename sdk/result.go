@@ -9,18 +9,18 @@ type Result struct {
 
 type DequeueResult[T any] struct {
 	*Result
-	DequeuedShipmentObject *Shipment[T] `json:"-"`
+	DequeuedMessageObject *Message[T] `json:"-"`
 }
 
 // EnqueueResult represents the result for the enqueue() API call.
 type EnqueueResult[T any] struct {
-	*Result               // Embedded type for inheritance-like behavior in Go
-	Shipment *Shipment[T] `json:"-"`
+	*Result             // Embedded type for inheritance-like behavior in Go
+	Message *Message[T] `json:"-"`
 }
 
 // PeekResult represents the result for the peek() API call.
 type PeekResult[T any] struct {
-	*Result                           // Embedded type for inheritance-like behavior in Go
-	TimestampMillisUTC   int64        `json:"timestamp_milliseconds_utc"`
-	PeekedShipmentObject *Shipment[T] `json:"-"`
+	*Result                         // Embedded type for inheritance-like behavior in Go
+	TimestampMillisUTC  int64       `json:"timestamp_milliseconds_utc"`
+	PeekedMessageObject *Message[T] `json:"-"`
 }

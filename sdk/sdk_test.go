@@ -8,12 +8,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/vvatanabe/dynamomq/internal/test"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/upsidr/dynamotest"
 	"github.com/vvatanabe/dynamomq/internal/clock"
+	"github.com/vvatanabe/dynamomq/internal/test"
 )
 
 type mockClock struct {
@@ -96,45 +96,45 @@ func setupDynamoDB(t *testing.T, initialData ...*types.PutRequest) (client *dyna
 					KeyType:       types.KeyTypeHash,
 				},
 			},
-			TableName: aws.String("Shipment"),
+			TableName: aws.String(DefaultTableName),
 		},
 		InitialData: initialData,
 	})
 	return
 }
 
-func newTestShipmentItem(id string, now time.Time) *Shipment[test.ShipmentData] {
-	return NewDefaultShipment[test.ShipmentData](id, test.NewTestShipmentData(id), now)
+func newTestMessageItem(id string, now time.Time) *Message[test.MessageData] {
+	return NewDefaultMessage[test.MessageData](id, test.NewMessageData(id), now)
 }
 
-func newTestShipmentItemAsReady(id string, now time.Time) *Shipment[test.ShipmentData] {
-	shipment := NewDefaultShipment[test.ShipmentData](id, test.NewTestShipmentData(id), now)
-	shipment.MarkAsReadyForShipment(now)
-	return shipment
+func newTestMessageItemAsReady(id string, now time.Time) *Message[test.MessageData] {
+	message := NewDefaultMessage[test.MessageData](id, test.NewMessageData(id), now)
+	message.MarkAsReadyForMessage(now)
+	return message
 }
 
-func newTestShipmentItemAsEnqueued(id string, now time.Time) *Shipment[test.ShipmentData] {
-	shipment := NewDefaultShipment[test.ShipmentData](id, test.NewTestShipmentData(id), now)
-	shipment.MarkAsEnqueued(now)
-	return shipment
+func newTestMessageItemAsEnqueued(id string, now time.Time) *Message[test.MessageData] {
+	message := NewDefaultMessage[test.MessageData](id, test.NewMessageData(id), now)
+	message.MarkAsEnqueued(now)
+	return message
 }
 
-func newTestShipmentItemAsPeeked(id string, now time.Time) *Shipment[test.ShipmentData] {
-	shipment := NewDefaultShipment[test.ShipmentData](id, test.NewTestShipmentData(id), now)
-	shipment.MarkAsPeeked(now)
-	return shipment
+func newTestMessageItemAsPeeked(id string, now time.Time) *Message[test.MessageData] {
+	message := NewDefaultMessage[test.MessageData](id, test.NewMessageData(id), now)
+	message.MarkAsPeeked(now)
+	return message
 }
 
-func newTestShipmentItemAsRemoved(id string, now time.Time) *Shipment[test.ShipmentData] {
-	shipment := NewDefaultShipment[test.ShipmentData](id, test.NewTestShipmentData(id), now)
-	shipment.MarkAsRemoved(now)
-	return shipment
+func newTestMessageItemAsRemoved(id string, now time.Time) *Message[test.MessageData] {
+	message := NewDefaultMessage[test.MessageData](id, test.NewMessageData(id), now)
+	message.MarkAsRemoved(now)
+	return message
 }
 
-func newTestShipmentItemAsDLQ(id string, now time.Time) *Shipment[test.ShipmentData] {
-	shipment := NewDefaultShipment[test.ShipmentData](id, test.NewTestShipmentData(id), now)
-	shipment.MarkAsDLQ(now)
-	return shipment
+func newTestMessageItemAsDLQ(id string, now time.Time) *Message[test.MessageData] {
+	message := NewDefaultMessage[test.MessageData](id, test.NewMessageData(id), now)
+	message.MarkAsDLQ(now)
+	return message
 }
 
 func TestQueueSDKClientGetQueueStats(t *testing.T) {
@@ -148,7 +148,7 @@ func TestQueueSDKClientGetQueueStats(t *testing.T) {
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
-						Item: newTestShipmentItem("A-101", clock.Now()).MarshalMapUnsafe(),
+						Item: newTestMessageItem("A-101", clock.Now()).MarshalMapUnsafe(),
 					},
 				)
 			},
@@ -165,7 +165,7 @@ func TestQueueSDKClientGetQueueStats(t *testing.T) {
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
-						Item: newTestShipmentItemAsEnqueued("A-101", clock.Now()).MarshalMapUnsafe(),
+						Item: newTestMessageItemAsEnqueued("A-101", clock.Now()).MarshalMapUnsafe(),
 					},
 				)
 			},
@@ -182,7 +182,7 @@ func TestQueueSDKClientGetQueueStats(t *testing.T) {
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
-						Item: newTestShipmentItemAsPeeked("A-101", clock.Now()).MarshalMapUnsafe(),
+						Item: newTestMessageItemAsPeeked("A-101", clock.Now()).MarshalMapUnsafe(),
 					},
 				)
 			},
@@ -199,16 +199,16 @@ func TestQueueSDKClientGetQueueStats(t *testing.T) {
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
-						Item: newTestShipmentItem("A-101", clock.Now()).MarshalMapUnsafe(),
+						Item: newTestMessageItem("A-101", clock.Now()).MarshalMapUnsafe(),
 					},
 					&types.PutRequest{
-						Item: newTestShipmentItemAsEnqueued("B-202", clock.Now().Add(1*time.Second)).MarshalMapUnsafe(),
+						Item: newTestMessageItemAsEnqueued("B-202", clock.Now().Add(1*time.Second)).MarshalMapUnsafe(),
 					},
 					&types.PutRequest{
-						Item: newTestShipmentItemAsPeeked("C-303", clock.Now().Add(2*time.Second)).MarshalMapUnsafe(),
+						Item: newTestMessageItemAsPeeked("C-303", clock.Now().Add(2*time.Second)).MarshalMapUnsafe(),
 					},
 					&types.PutRequest{
-						Item: newTestShipmentItemAsPeeked("D-404", clock.Now().Add(3*time.Second)).MarshalMapUnsafe(),
+						Item: newTestMessageItemAsPeeked("D-404", clock.Now().Add(3*time.Second)).MarshalMapUnsafe(),
 					},
 				)
 			},
@@ -227,7 +227,7 @@ func TestQueueSDKClientGetQueueStats(t *testing.T) {
 			raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			client, err := NewQueueSDKClient[test.ShipmentData](ctx, WithAWSDynamoDBClient(raw))
+			client, err := NewQueueSDKClient[test.MessageData](ctx, WithAWSDynamoDBClient(raw))
 			if err != nil {
 				t.Fatalf("NewQueueSDKClient() error = %v", err)
 				return
@@ -255,13 +255,13 @@ func TestQueueSDKClientGetDLQStats(t *testing.T) {
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
-						Item: newTestShipmentItem("A-101", clock.Now().Add(time.Second)).MarshalMapUnsafe(),
+						Item: newTestMessageItem("A-101", clock.Now().Add(time.Second)).MarshalMapUnsafe(),
 					},
 					&types.PutRequest{
-						Item: newTestShipmentItemAsEnqueued("B-202", clock.Now().Add(1*time.Second)).MarshalMapUnsafe(),
+						Item: newTestMessageItemAsEnqueued("B-202", clock.Now().Add(1*time.Second)).MarshalMapUnsafe(),
 					},
 					&types.PutRequest{
-						Item: newTestShipmentItemAsPeeked("C-303", clock.Now().Add(2*time.Second)).MarshalMapUnsafe(),
+						Item: newTestMessageItemAsPeeked("C-303", clock.Now().Add(2*time.Second)).MarshalMapUnsafe(),
 					},
 				)
 			},
@@ -275,22 +275,22 @@ func TestQueueSDKClientGetDLQStats(t *testing.T) {
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
-						Item: newTestShipmentItem("A-101", clock.Now()).MarshalMapUnsafe(),
+						Item: newTestMessageItem("A-101", clock.Now()).MarshalMapUnsafe(),
 					},
 					&types.PutRequest{
-						Item: newTestShipmentItemAsEnqueued("B-202", clock.Now().Add(1*time.Second)).MarshalMapUnsafe(),
+						Item: newTestMessageItemAsEnqueued("B-202", clock.Now().Add(1*time.Second)).MarshalMapUnsafe(),
 					},
 					&types.PutRequest{
-						Item: newTestShipmentItemAsPeeked("C-303", clock.Now().Add(2*time.Second)).MarshalMapUnsafe(),
+						Item: newTestMessageItemAsPeeked("C-303", clock.Now().Add(2*time.Second)).MarshalMapUnsafe(),
 					},
 					&types.PutRequest{
-						Item: newTestShipmentItemAsDLQ("D-404", clock.Now().Add(3*time.Second)).MarshalMapUnsafe(),
+						Item: newTestMessageItemAsDLQ("D-404", clock.Now().Add(3*time.Second)).MarshalMapUnsafe(),
 					},
 					&types.PutRequest{
-						Item: newTestShipmentItemAsDLQ("E-505", clock.Now().Add(4*time.Second)).MarshalMapUnsafe(),
+						Item: newTestMessageItemAsDLQ("E-505", clock.Now().Add(4*time.Second)).MarshalMapUnsafe(),
 					},
 					&types.PutRequest{
-						Item: newTestShipmentItemAsDLQ("F-606", clock.Now().Add(5*time.Second)).MarshalMapUnsafe(),
+						Item: newTestMessageItemAsDLQ("F-606", clock.Now().Add(5*time.Second)).MarshalMapUnsafe(),
 					},
 				)
 			},
@@ -306,7 +306,7 @@ func TestQueueSDKClientGetDLQStats(t *testing.T) {
 			raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			client, err := NewQueueSDKClient[test.ShipmentData](ctx, WithAWSDynamoDBClient(raw))
+			client, err := NewQueueSDKClient[test.MessageData](ctx, WithAWSDynamoDBClient(raw))
 			if err != nil {
 				t.Fatalf("NewQueueSDKClient() error = %v", err)
 				return
@@ -332,7 +332,7 @@ func TestQueueSDKClientGet(t *testing.T) {
 		name    string
 		setup   func(*testing.T) (*dynamodb.Client, func())
 		args    args
-		want    *Shipment[test.ShipmentData]
+		want    *Message[test.MessageData]
 		wantErr error
 	}{
 		{
@@ -340,7 +340,7 @@ func TestQueueSDKClientGet(t *testing.T) {
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
-						Item: newTestShipmentItem("A-101", clock.Now()).MarshalMapUnsafe(),
+						Item: newTestMessageItem("A-101", clock.Now()).MarshalMapUnsafe(),
 					},
 				)
 			},
@@ -355,7 +355,7 @@ func TestQueueSDKClientGet(t *testing.T) {
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
-						Item: newTestShipmentItem("A-101", clock.Now()).MarshalMapUnsafe(),
+						Item: newTestMessageItem("A-101", clock.Now()).MarshalMapUnsafe(),
 					},
 				)
 			},
@@ -366,21 +366,21 @@ func TestQueueSDKClientGet(t *testing.T) {
 			wantErr: nil,
 		},
 		{
-			name: "get a shipment",
+			name: "get a message",
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
-						Item: newTestShipmentItem("A-101", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)).MarshalMapUnsafe(),
+						Item: newTestMessageItem("A-101", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)).MarshalMapUnsafe(),
 					},
 					&types.PutRequest{
-						Item: newTestShipmentItem("B-202", clock.Now()).MarshalMapUnsafe(),
+						Item: newTestMessageItem("B-202", clock.Now()).MarshalMapUnsafe(),
 					},
 				)
 			},
 			args: args{
 				id: "A-101",
 			},
-			want:    newTestShipmentItem("A-101", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)),
+			want:    newTestMessageItem("A-101", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)),
 			wantErr: nil,
 		},
 	}
@@ -390,7 +390,7 @@ func TestQueueSDKClientGet(t *testing.T) {
 			raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			client, err := NewQueueSDKClient[test.ShipmentData](ctx, WithAWSDynamoDBClient(raw))
+			client, err := NewQueueSDKClient[test.MessageData](ctx, WithAWSDynamoDBClient(raw))
 			if err != nil {
 				t.Fatalf("NewQueueSDKClient() error = %v", err)
 				return
@@ -413,13 +413,13 @@ func TestQueueSDKClientGet(t *testing.T) {
 func TestQueueSDKClientPut(t *testing.T) {
 
 	type args struct {
-		shipment *Shipment[test.ShipmentData]
+		message *Message[test.MessageData]
 	}
 	tests := []struct {
 		name    string
 		setup   func(*testing.T) (*dynamodb.Client, func())
 		args    args
-		want    *Shipment[test.ShipmentData]
+		want    *Message[test.MessageData]
 		wantErr error
 	}{
 		{
@@ -427,12 +427,12 @@ func TestQueueSDKClientPut(t *testing.T) {
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
-						Item: newTestShipmentItem("A-101", clock.Now()).MarshalMapUnsafe(),
+						Item: newTestMessageItem("A-101", clock.Now()).MarshalMapUnsafe(),
 					},
 				)
 			},
 			args: args{
-				shipment: &Shipment[test.ShipmentData]{
+				message: &Message[test.MessageData]{
 					ID: "",
 				},
 			},
@@ -444,14 +444,14 @@ func TestQueueSDKClientPut(t *testing.T) {
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
-						Item: newTestShipmentItem("A-101", clock.Now()).MarshalMapUnsafe(),
+						Item: newTestMessageItem("A-101", clock.Now()).MarshalMapUnsafe(),
 					},
 				)
 			},
 			args: args{
-				shipment: newTestShipmentItem("A-101", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)),
+				message: newTestMessageItem("A-101", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)),
 			},
-			want:    newTestShipmentItem("A-101", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)),
+			want:    newTestMessageItem("A-101", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)),
 			wantErr: nil,
 		},
 		{
@@ -459,14 +459,14 @@ func TestQueueSDKClientPut(t *testing.T) {
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
-						Item: newTestShipmentItem("A-101", clock.Now()).MarshalMapUnsafe(),
+						Item: newTestMessageItem("A-101", clock.Now()).MarshalMapUnsafe(),
 					},
 				)
 			},
 			args: args{
-				shipment: newTestShipmentItem("B-202", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)),
+				message: newTestMessageItem("B-202", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)),
 			},
-			want:    newTestShipmentItem("B-202", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)),
+			want:    newTestMessageItem("B-202", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)),
 			wantErr: nil,
 		},
 	}
@@ -476,12 +476,12 @@ func TestQueueSDKClientPut(t *testing.T) {
 			raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			client, err := NewQueueSDKClient[test.ShipmentData](ctx, WithAWSDynamoDBClient(raw))
+			client, err := NewQueueSDKClient[test.MessageData](ctx, WithAWSDynamoDBClient(raw))
 			if err != nil {
 				t.Fatalf("NewQueueSDKClient() error = %v", err)
 				return
 			}
-			err = client.Put(ctx, tt.args.shipment)
+			err = client.Put(ctx, tt.args.message)
 			if tt.wantErr != nil {
 				if err != tt.wantErr {
 					t.Errorf("Put() error = %v, wantErr %v", err, tt.wantErr)
@@ -493,13 +493,13 @@ func TestQueueSDKClientPut(t *testing.T) {
 				t.Errorf("Put() error = %v", err)
 				return
 			}
-			shipment, err := client.Get(ctx, tt.args.shipment.ID)
+			message, err := client.Get(ctx, tt.args.message.ID)
 			if err != nil {
 				t.Errorf("Get() error = %v", err)
 				return
 			}
-			if !reflect.DeepEqual(shipment, tt.want) {
-				t.Errorf("Get() got = %v, want %v", shipment, tt.want)
+			if !reflect.DeepEqual(message, tt.want) {
+				t.Errorf("Get() got = %v, want %v", message, tt.want)
 			}
 		})
 	}
@@ -507,14 +507,14 @@ func TestQueueSDKClientPut(t *testing.T) {
 
 func TestQueueSDKClientUpsert(t *testing.T) {
 	type args struct {
-		shipment *Shipment[test.ShipmentData]
+		message *Message[test.MessageData]
 	}
 	tests := []struct {
 		name     string
 		setup    func(*testing.T) (*dynamodb.Client, func())
 		sdkClock clock.Clock
 		args     args
-		want     *Shipment[test.ShipmentData]
+		want     *Message[test.MessageData]
 		wantErr  error
 	}{
 		{
@@ -522,12 +522,12 @@ func TestQueueSDKClientUpsert(t *testing.T) {
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
-						Item: newTestShipmentItem("A-101", clock.Now()).MarshalMapUnsafe(),
+						Item: newTestMessageItem("A-101", clock.Now()).MarshalMapUnsafe(),
 					},
 				)
 			},
 			args: args{
-				shipment: &Shipment[test.ShipmentData]{
+				message: &Message[test.MessageData]{
 					ID: "",
 				},
 			},
@@ -539,7 +539,7 @@ func TestQueueSDKClientUpsert(t *testing.T) {
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
-						Item: newTestShipmentItem("A-101", clock.Now()).MarshalMapUnsafe(),
+						Item: newTestMessageItem("A-101", clock.Now()).MarshalMapUnsafe(),
 					},
 				)
 			},
@@ -547,10 +547,10 @@ func TestQueueSDKClientUpsert(t *testing.T) {
 				t: time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC),
 			},
 			args: args{
-				shipment: newTestShipmentItemAsPeeked("A-101", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)),
+				message: newTestMessageItemAsPeeked("A-101", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)),
 			},
-			want: func() *Shipment[test.ShipmentData] {
-				s := newTestShipmentItemAsPeeked("A-101", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
+			want: func() *Message[test.MessageData] {
+				s := newTestMessageItemAsPeeked("A-101", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
 				s.Update(s, time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC))
 				return s
 			}(),
@@ -561,14 +561,14 @@ func TestQueueSDKClientUpsert(t *testing.T) {
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
-						Item: newTestShipmentItem("A-101", clock.Now()).MarshalMapUnsafe(),
+						Item: newTestMessageItem("A-101", clock.Now()).MarshalMapUnsafe(),
 					},
 				)
 			},
 			args: args{
-				shipment: newTestShipmentItem("B-202", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)),
+				message: newTestMessageItem("B-202", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)),
 			},
-			want:    newTestShipmentItem("B-202", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)),
+			want:    newTestMessageItem("B-202", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)),
 			wantErr: nil,
 		},
 	}
@@ -578,12 +578,12 @@ func TestQueueSDKClientUpsert(t *testing.T) {
 			raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			client, err := NewQueueSDKClient[test.ShipmentData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock))
+			client, err := NewQueueSDKClient[test.MessageData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock))
 			if err != nil {
 				t.Fatalf("NewQueueSDKClient() error = %v", err)
 				return
 			}
-			err = client.Upsert(ctx, tt.args.shipment)
+			err = client.Upsert(ctx, tt.args.message)
 			if tt.wantErr != nil {
 				if err != tt.wantErr {
 					t.Errorf("Upsert() error = %v, wantErr %v", err, tt.wantErr)
@@ -595,13 +595,13 @@ func TestQueueSDKClientUpsert(t *testing.T) {
 				t.Errorf("Upsert() error = %v", err)
 				return
 			}
-			shipment, err := client.Get(ctx, tt.args.shipment.ID)
+			message, err := client.Get(ctx, tt.args.message.ID)
 			if err != nil {
 				t.Errorf("Get() error = %v", err)
 				return
 			}
-			if !reflect.DeepEqual(shipment, tt.want) {
-				t.Errorf("Get() got = %v, want %v", shipment, tt.want)
+			if !reflect.DeepEqual(message, tt.want) {
+				t.Errorf("Get() got = %v, want %v", message, tt.want)
 			}
 		})
 	}
@@ -625,7 +625,7 @@ func TestQueueSDKClientUpdateStatus(t *testing.T) {
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
-						Item: newTestShipmentItem("A-101", clock.Now()).MarshalMapUnsafe(),
+						Item: newTestMessageItem("A-101", clock.Now()).MarshalMapUnsafe(),
 					},
 				)
 			},
@@ -641,7 +641,7 @@ func TestQueueSDKClientUpdateStatus(t *testing.T) {
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
-						Item: newTestShipmentItem("A-101", clock.Now()).MarshalMapUnsafe(),
+						Item: newTestMessageItem("A-101", clock.Now()).MarshalMapUnsafe(),
 					},
 				)
 			},
@@ -657,7 +657,7 @@ func TestQueueSDKClientUpdateStatus(t *testing.T) {
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
-						Item: newTestShipmentItem("A-101", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)).MarshalMapUnsafe(),
+						Item: newTestMessageItem("A-101", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)).MarshalMapUnsafe(),
 					},
 				)
 			},
@@ -678,7 +678,7 @@ func TestQueueSDKClientUpdateStatus(t *testing.T) {
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
-						Item: newTestShipmentItem("A-101", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)).MarshalMapUnsafe(),
+						Item: newTestMessageItem("A-101", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)).MarshalMapUnsafe(),
 					},
 				)
 			},
@@ -704,7 +704,7 @@ func TestQueueSDKClientUpdateStatus(t *testing.T) {
 			raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			client, err := NewQueueSDKClient[test.ShipmentData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock))
+			client, err := NewQueueSDKClient[test.MessageData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock))
 			if err != nil {
 				t.Fatalf("NewQueueSDKClient() error = %v", err)
 				return
@@ -737,7 +737,7 @@ func TestQueueSDKClientEnqueue(t *testing.T) {
 		setup    func(*testing.T) (*dynamodb.Client, func())
 		sdkClock clock.Clock
 		args     args
-		want     *EnqueueResult[test.ShipmentData]
+		want     *EnqueueResult[test.MessageData]
 		wantErr  error
 	}{
 		{
@@ -745,7 +745,7 @@ func TestQueueSDKClientEnqueue(t *testing.T) {
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
-						Item: newTestShipmentItem("A-101", clock.Now()).MarshalMapUnsafe(),
+						Item: newTestMessageItem("A-101", clock.Now()).MarshalMapUnsafe(),
 					},
 				)
 			},
@@ -760,7 +760,7 @@ func TestQueueSDKClientEnqueue(t *testing.T) {
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
-						Item: newTestShipmentItem("A-101", clock.Now()).MarshalMapUnsafe(),
+						Item: newTestMessageItem("A-101", clock.Now()).MarshalMapUnsafe(),
 					},
 				)
 			},
@@ -775,7 +775,7 @@ func TestQueueSDKClientEnqueue(t *testing.T) {
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
-						Item: newTestShipmentItem("A-101", clock.Now()).MarshalMapUnsafe(),
+						Item: newTestMessageItem("A-101", clock.Now()).MarshalMapUnsafe(),
 					},
 				)
 			},
@@ -790,7 +790,7 @@ func TestQueueSDKClientEnqueue(t *testing.T) {
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
-						Item: newTestShipmentItemAsPeeked("A-101", clock.Now()).MarshalMapUnsafe(),
+						Item: newTestMessageItemAsPeeked("A-101", clock.Now()).MarshalMapUnsafe(),
 					},
 				)
 			},
@@ -805,7 +805,7 @@ func TestQueueSDKClientEnqueue(t *testing.T) {
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
-						Item: newTestShipmentItemAsReady("A-101", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)).MarshalMapUnsafe(),
+						Item: newTestMessageItemAsReady("A-101", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)).MarshalMapUnsafe(),
 					},
 				)
 			},
@@ -815,15 +815,15 @@ func TestQueueSDKClientEnqueue(t *testing.T) {
 			args: args{
 				id: "A-101",
 			},
-			want: &EnqueueResult[test.ShipmentData]{
+			want: &EnqueueResult[test.MessageData]{
 				Result: &Result{
 					ID:                   "A-101",
 					Status:               StatusReady,
 					LastUpdatedTimestamp: clock.FormatRFC3339(time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC)),
 					Version:              2,
 				},
-				Shipment: func() *Shipment[test.ShipmentData] {
-					s := newTestShipmentItemAsReady("A-101", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
+				Message: func() *Message[test.MessageData] {
+					s := newTestMessageItemAsReady("A-101", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
 					s.MarkAsEnqueued(time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC))
 					s.SystemInfo.Version = 2
 					return s
@@ -838,7 +838,7 @@ func TestQueueSDKClientEnqueue(t *testing.T) {
 			raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			client, err := NewQueueSDKClient[test.ShipmentData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock))
+			client, err := NewQueueSDKClient[test.MessageData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock))
 			if err != nil {
 				t.Fatalf("NewQueueSDKClient() error = %v", err)
 				return
@@ -867,7 +867,7 @@ func TestQueueSDKClientPeek(t *testing.T) {
 		name     string
 		setup    func(*testing.T) (*dynamodb.Client, func())
 		sdkClock clock.Clock
-		want     *PeekResult[test.ShipmentData]
+		want     *PeekResult[test.MessageData]
 		wantErr  error
 	}{
 		{
@@ -875,13 +875,13 @@ func TestQueueSDKClientPeek(t *testing.T) {
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
-						Item: newTestShipmentItem("A-101", clock.Now()).MarshalMapUnsafe(),
+						Item: newTestMessageItem("A-101", clock.Now()).MarshalMapUnsafe(),
 					},
 					&types.PutRequest{
-						Item: newTestShipmentItemAsPeeked("A-202", clock.Now()).MarshalMapUnsafe(),
+						Item: newTestMessageItemAsPeeked("A-202", clock.Now()).MarshalMapUnsafe(),
 					},
 					&types.PutRequest{
-						Item: newTestShipmentItemAsDLQ("A-303", clock.Now()).MarshalMapUnsafe(),
+						Item: newTestMessageItemAsDLQ("A-303", clock.Now()).MarshalMapUnsafe(),
 					},
 				)
 			},
@@ -893,10 +893,10 @@ func TestQueueSDKClientPeek(t *testing.T) {
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
-						Item: newTestShipmentItem("A-101", clock.Now()).MarshalMapUnsafe(),
+						Item: newTestMessageItem("A-101", clock.Now()).MarshalMapUnsafe(),
 					},
 					&types.PutRequest{
-						Item: newTestShipmentItemAsEnqueued("B-202",
+						Item: newTestMessageItemAsEnqueued("B-202",
 							time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)).
 							MarshalMapUnsafe(),
 					},
@@ -905,19 +905,19 @@ func TestQueueSDKClientPeek(t *testing.T) {
 			sdkClock: mockClock{
 				t: time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC),
 			},
-			want: func() *PeekResult[test.ShipmentData] {
-				s := newTestShipmentItemAsEnqueued("B-202", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
+			want: func() *PeekResult[test.MessageData] {
+				s := newTestMessageItemAsEnqueued("B-202", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
 				s.MarkAsPeeked(time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC))
 				s.SystemInfo.Version = 2
-				r := &PeekResult[test.ShipmentData]{
+				r := &PeekResult[test.MessageData]{
 					Result: &Result{
 						ID:                   s.ID,
 						Status:               s.SystemInfo.Status,
 						LastUpdatedTimestamp: s.LastUpdatedTimestamp,
 						Version:              s.SystemInfo.Version,
 					},
-					TimestampMillisUTC:   s.SystemInfo.PeekUTCTimestamp,
-					PeekedShipmentObject: s,
+					TimestampMillisUTC:  s.SystemInfo.PeekUTCTimestamp,
+					PeekedMessageObject: s,
 				}
 				return r
 			}(),
@@ -928,10 +928,10 @@ func TestQueueSDKClientPeek(t *testing.T) {
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
-						Item: newTestShipmentItem("A-101", clock.Now()).MarshalMapUnsafe(),
+						Item: newTestMessageItem("A-101", clock.Now()).MarshalMapUnsafe(),
 					},
 					&types.PutRequest{
-						Item: newTestShipmentItemAsPeeked("B-202",
+						Item: newTestMessageItemAsPeeked("B-202",
 							time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)).
 							MarshalMapUnsafe(),
 					},
@@ -940,19 +940,19 @@ func TestQueueSDKClientPeek(t *testing.T) {
 			sdkClock: mockClock{
 				t: time.Date(2023, 12, 1, 0, 1, 1, 0, time.UTC),
 			},
-			want: func() *PeekResult[test.ShipmentData] {
-				s := newTestShipmentItemAsPeeked("B-202", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
+			want: func() *PeekResult[test.MessageData] {
+				s := newTestMessageItemAsPeeked("B-202", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
 				s.MarkAsPeeked(time.Date(2023, 12, 1, 0, 1, 1, 0, time.UTC))
 				s.SystemInfo.Version = 2
-				r := &PeekResult[test.ShipmentData]{
+				r := &PeekResult[test.MessageData]{
 					Result: &Result{
 						ID:                   s.ID,
 						Status:               s.SystemInfo.Status,
 						LastUpdatedTimestamp: s.LastUpdatedTimestamp,
 						Version:              s.SystemInfo.Version,
 					},
-					TimestampMillisUTC:   s.SystemInfo.PeekUTCTimestamp,
-					PeekedShipmentObject: s,
+					TimestampMillisUTC:  s.SystemInfo.PeekUTCTimestamp,
+					PeekedMessageObject: s,
 				}
 				return r
 			}(),
@@ -963,10 +963,10 @@ func TestQueueSDKClientPeek(t *testing.T) {
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
-						Item: newTestShipmentItem("A-101", clock.Now()).MarshalMapUnsafe(),
+						Item: newTestMessageItem("A-101", clock.Now()).MarshalMapUnsafe(),
 					},
 					&types.PutRequest{
-						Item: newTestShipmentItemAsPeeked("B-202",
+						Item: newTestMessageItemAsPeeked("B-202",
 							time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)).
 							MarshalMapUnsafe(),
 					},
@@ -985,7 +985,7 @@ func TestQueueSDKClientPeek(t *testing.T) {
 			raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			client, err := NewQueueSDKClient[test.ShipmentData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
+			client, err := NewQueueSDKClient[test.MessageData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
 			if err != nil {
 				t.Fatalf("NewQueueSDKClient() error = %v", err)
 				return
@@ -1014,7 +1014,7 @@ func TestQueueSDKClientDequeue(t *testing.T) {
 		name     string
 		setup    func(*testing.T) (*dynamodb.Client, func())
 		sdkClock clock.Clock
-		want     *DequeueResult[test.ShipmentData]
+		want     *DequeueResult[test.MessageData]
 		wantErr  error
 	}{
 		{
@@ -1022,13 +1022,13 @@ func TestQueueSDKClientDequeue(t *testing.T) {
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
-						Item: newTestShipmentItem("A-101", clock.Now()).MarshalMapUnsafe(),
+						Item: newTestMessageItem("A-101", clock.Now()).MarshalMapUnsafe(),
 					},
 					&types.PutRequest{
-						Item: newTestShipmentItemAsPeeked("A-202", clock.Now()).MarshalMapUnsafe(),
+						Item: newTestMessageItemAsPeeked("A-202", clock.Now()).MarshalMapUnsafe(),
 					},
 					&types.PutRequest{
-						Item: newTestShipmentItemAsDLQ("A-303", clock.Now()).MarshalMapUnsafe(),
+						Item: newTestMessageItemAsDLQ("A-303", clock.Now()).MarshalMapUnsafe(),
 					},
 				)
 			},
@@ -1040,10 +1040,10 @@ func TestQueueSDKClientDequeue(t *testing.T) {
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
-						Item: newTestShipmentItem("A-101", clock.Now()).MarshalMapUnsafe(),
+						Item: newTestMessageItem("A-101", clock.Now()).MarshalMapUnsafe(),
 					},
 					&types.PutRequest{
-						Item: newTestShipmentItemAsEnqueued("B-202",
+						Item: newTestMessageItemAsEnqueued("B-202",
 							time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)).
 							MarshalMapUnsafe(),
 					},
@@ -1052,19 +1052,19 @@ func TestQueueSDKClientDequeue(t *testing.T) {
 			sdkClock: mockClock{
 				t: time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC),
 			},
-			want: func() *DequeueResult[test.ShipmentData] {
-				s := newTestShipmentItemAsEnqueued("B-202", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
+			want: func() *DequeueResult[test.MessageData] {
+				s := newTestMessageItemAsEnqueued("B-202", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
 				s.MarkAsPeeked(time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC))
 				s.MarkAsRemoved(time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC))
 				s.SystemInfo.Version = 3
-				r := &DequeueResult[test.ShipmentData]{
+				r := &DequeueResult[test.MessageData]{
 					Result: &Result{
 						ID:                   s.ID,
 						Status:               s.SystemInfo.Status,
 						LastUpdatedTimestamp: s.LastUpdatedTimestamp,
 						Version:              s.SystemInfo.Version,
 					},
-					DequeuedShipmentObject: s,
+					DequeuedMessageObject: s,
 				}
 				return r
 			}(),
@@ -1075,10 +1075,10 @@ func TestQueueSDKClientDequeue(t *testing.T) {
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
-						Item: newTestShipmentItem("A-101", clock.Now()).MarshalMapUnsafe(),
+						Item: newTestMessageItem("A-101", clock.Now()).MarshalMapUnsafe(),
 					},
 					&types.PutRequest{
-						Item: newTestShipmentItemAsPeeked("B-202",
+						Item: newTestMessageItemAsPeeked("B-202",
 							time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)).
 							MarshalMapUnsafe(),
 					},
@@ -1087,19 +1087,19 @@ func TestQueueSDKClientDequeue(t *testing.T) {
 			sdkClock: mockClock{
 				t: time.Date(2023, 12, 1, 0, 1, 1, 0, time.UTC),
 			},
-			want: func() *DequeueResult[test.ShipmentData] {
-				s := newTestShipmentItemAsPeeked("B-202", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
+			want: func() *DequeueResult[test.MessageData] {
+				s := newTestMessageItemAsPeeked("B-202", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
 				s.MarkAsPeeked(time.Date(2023, 12, 1, 0, 1, 1, 0, time.UTC))
 				s.MarkAsRemoved(time.Date(2023, 12, 1, 0, 1, 1, 0, time.UTC))
 				s.SystemInfo.Version = 3
-				r := &DequeueResult[test.ShipmentData]{
+				r := &DequeueResult[test.MessageData]{
 					Result: &Result{
 						ID:                   s.ID,
 						Status:               s.SystemInfo.Status,
 						LastUpdatedTimestamp: s.LastUpdatedTimestamp,
 						Version:              s.SystemInfo.Version,
 					},
-					DequeuedShipmentObject: s,
+					DequeuedMessageObject: s,
 				}
 				return r
 			}(),
@@ -1110,10 +1110,10 @@ func TestQueueSDKClientDequeue(t *testing.T) {
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
-						Item: newTestShipmentItem("A-101", clock.Now()).MarshalMapUnsafe(),
+						Item: newTestMessageItem("A-101", clock.Now()).MarshalMapUnsafe(),
 					},
 					&types.PutRequest{
-						Item: newTestShipmentItemAsPeeked("B-202",
+						Item: newTestMessageItemAsPeeked("B-202",
 							time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)).
 							MarshalMapUnsafe(),
 					},
@@ -1132,7 +1132,7 @@ func TestQueueSDKClientDequeue(t *testing.T) {
 			raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			client, err := NewQueueSDKClient[test.ShipmentData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
+			client, err := NewQueueSDKClient[test.MessageData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
 			if err != nil {
 				t.Fatalf("NewQueueSDKClient() error = %v", err)
 				return
@@ -1173,7 +1173,7 @@ func TestQueueSDKClientRemove(t *testing.T) {
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
-						Item: newTestShipmentItem("A-101", clock.Now()).MarshalMapUnsafe(),
+						Item: newTestMessageItem("A-101", clock.Now()).MarshalMapUnsafe(),
 					},
 				)
 			},
@@ -1188,7 +1188,7 @@ func TestQueueSDKClientRemove(t *testing.T) {
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
-						Item: newTestShipmentItem("A-101", clock.Now()).MarshalMapUnsafe(),
+						Item: newTestMessageItem("A-101", clock.Now()).MarshalMapUnsafe(),
 					},
 				)
 			},
@@ -1203,7 +1203,7 @@ func TestQueueSDKClientRemove(t *testing.T) {
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
-						Item: newTestShipmentItemAsRemoved("A-101",
+						Item: newTestMessageItemAsRemoved("A-101",
 							time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)).
 							MarshalMapUnsafe(),
 					},
@@ -1213,7 +1213,7 @@ func TestQueueSDKClientRemove(t *testing.T) {
 				id: "A-101",
 			},
 			want: func() *Result {
-				s := newTestShipmentItemAsRemoved("A-101",
+				s := newTestMessageItemAsRemoved("A-101",
 					time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
 				r := &Result{
 					ID:                   s.ID,
@@ -1230,7 +1230,7 @@ func TestQueueSDKClientRemove(t *testing.T) {
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
-						Item: newTestShipmentItem("A-101",
+						Item: newTestMessageItem("A-101",
 							time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)).
 							MarshalMapUnsafe(),
 					},
@@ -1243,7 +1243,7 @@ func TestQueueSDKClientRemove(t *testing.T) {
 				id: "A-101",
 			},
 			want: func() *Result {
-				s := newTestShipmentItem("A-101",
+				s := newTestMessageItem("A-101",
 					time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
 				s.MarkAsRemoved(time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC))
 				s.SystemInfo.Version = 2
@@ -1264,7 +1264,7 @@ func TestQueueSDKClientRemove(t *testing.T) {
 			raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			client, err := NewQueueSDKClient[test.ShipmentData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
+			client, err := NewQueueSDKClient[test.MessageData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
 			if err != nil {
 				t.Fatalf("NewQueueSDKClient() error = %v", err)
 				return
@@ -1305,7 +1305,7 @@ func TestQueueSDKClientRestore(t *testing.T) {
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
-						Item: newTestShipmentItemAsPeeked("A-101", clock.Now()).MarshalMapUnsafe(),
+						Item: newTestMessageItemAsPeeked("A-101", clock.Now()).MarshalMapUnsafe(),
 					},
 				)
 			},
@@ -1320,7 +1320,7 @@ func TestQueueSDKClientRestore(t *testing.T) {
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
-						Item: newTestShipmentItemAsPeeked("A-101", clock.Now()).MarshalMapUnsafe(),
+						Item: newTestMessageItemAsPeeked("A-101", clock.Now()).MarshalMapUnsafe(),
 					},
 				)
 			},
@@ -1335,7 +1335,7 @@ func TestQueueSDKClientRestore(t *testing.T) {
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
-						Item: newTestShipmentItemAsEnqueued("A-101",
+						Item: newTestMessageItemAsEnqueued("A-101",
 							time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)).
 							MarshalMapUnsafe(),
 					},
@@ -1345,7 +1345,7 @@ func TestQueueSDKClientRestore(t *testing.T) {
 				id: "A-101",
 			},
 			want: func() *Result {
-				s := newTestShipmentItemAsEnqueued("A-101",
+				s := newTestMessageItemAsEnqueued("A-101",
 					time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
 				r := &Result{
 					ID:                   s.ID,
@@ -1362,7 +1362,7 @@ func TestQueueSDKClientRestore(t *testing.T) {
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
-						Item: newTestShipmentItemAsPeeked("A-101",
+						Item: newTestMessageItemAsPeeked("A-101",
 							time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)).
 							MarshalMapUnsafe(),
 					},
@@ -1375,7 +1375,7 @@ func TestQueueSDKClientRestore(t *testing.T) {
 				id: "A-101",
 			},
 			want: func() *Result {
-				s := newTestShipmentItemAsPeeked("A-101",
+				s := newTestMessageItemAsPeeked("A-101",
 					time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
 				s.MarkAsEnqueued(time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC))
 				s.SystemInfo.Version = 2
@@ -1396,7 +1396,7 @@ func TestQueueSDKClientRestore(t *testing.T) {
 			raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			client, err := NewQueueSDKClient[test.ShipmentData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
+			client, err := NewQueueSDKClient[test.MessageData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
 			if err != nil {
 				t.Fatalf("NewQueueSDKClient() error = %v", err)
 				return
@@ -1437,7 +1437,7 @@ func TestQueueSDKClientSendToDLQ(t *testing.T) {
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
-						Item: newTestShipmentItem("A-101", clock.Now()).MarshalMapUnsafe(),
+						Item: newTestMessageItem("A-101", clock.Now()).MarshalMapUnsafe(),
 					},
 				)
 			},
@@ -1452,7 +1452,7 @@ func TestQueueSDKClientSendToDLQ(t *testing.T) {
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
-						Item: newTestShipmentItem("A-101", clock.Now()).MarshalMapUnsafe(),
+						Item: newTestMessageItem("A-101", clock.Now()).MarshalMapUnsafe(),
 					},
 				)
 			},
@@ -1467,7 +1467,7 @@ func TestQueueSDKClientSendToDLQ(t *testing.T) {
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
-						Item: newTestShipmentItemAsDLQ("A-101",
+						Item: newTestMessageItemAsDLQ("A-101",
 							time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)).
 							MarshalMapUnsafe(),
 					},
@@ -1477,7 +1477,7 @@ func TestQueueSDKClientSendToDLQ(t *testing.T) {
 				id: "A-101",
 			},
 			want: func() *Result {
-				s := newTestShipmentItemAsDLQ("A-101",
+				s := newTestMessageItemAsDLQ("A-101",
 					time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
 				r := &Result{
 					ID:                   s.ID,
@@ -1494,7 +1494,7 @@ func TestQueueSDKClientSendToDLQ(t *testing.T) {
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
-						Item: newTestShipmentItemAsPeeked("A-101",
+						Item: newTestMessageItemAsPeeked("A-101",
 							time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)).
 							MarshalMapUnsafe(),
 					},
@@ -1507,7 +1507,7 @@ func TestQueueSDKClientSendToDLQ(t *testing.T) {
 				id: "A-101",
 			},
 			want: func() *Result {
-				s := newTestShipmentItemAsDLQ("A-101",
+				s := newTestMessageItemAsDLQ("A-101",
 					time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
 				s.MarkAsDLQ(time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC))
 				s.SystemInfo.Version = 2
@@ -1528,7 +1528,7 @@ func TestQueueSDKClientSendToDLQ(t *testing.T) {
 			raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			client, err := NewQueueSDKClient[test.ShipmentData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
+			client, err := NewQueueSDKClient[test.MessageData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
 			if err != nil {
 				t.Fatalf("NewQueueSDKClient() error = %v", err)
 				return
@@ -1569,7 +1569,7 @@ func TestQueueSDKClientTouch(t *testing.T) {
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
-						Item: newTestShipmentItem("A-101", clock.Now()).MarshalMapUnsafe(),
+						Item: newTestMessageItem("A-101", clock.Now()).MarshalMapUnsafe(),
 					},
 				)
 			},
@@ -1584,7 +1584,7 @@ func TestQueueSDKClientTouch(t *testing.T) {
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
-						Item: newTestShipmentItem("A-101", clock.Now()).MarshalMapUnsafe(),
+						Item: newTestMessageItem("A-101", clock.Now()).MarshalMapUnsafe(),
 					},
 				)
 			},
@@ -1599,7 +1599,7 @@ func TestQueueSDKClientTouch(t *testing.T) {
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
-						Item: newTestShipmentItem("A-101",
+						Item: newTestMessageItem("A-101",
 							time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)).
 							MarshalMapUnsafe(),
 					},
@@ -1612,7 +1612,7 @@ func TestQueueSDKClientTouch(t *testing.T) {
 				id: "A-101",
 			},
 			want: func() *Result {
-				s := newTestShipmentItem("A-101",
+				s := newTestMessageItem("A-101",
 					time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
 				s.Touch(time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC))
 				s.SystemInfo.Version = 2
@@ -1633,7 +1633,7 @@ func TestQueueSDKClientTouch(t *testing.T) {
 			raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			client, err := NewQueueSDKClient[test.ShipmentData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
+			client, err := NewQueueSDKClient[test.MessageData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
 			if err != nil {
 				t.Fatalf("NewQueueSDKClient() error = %v", err)
 				return
@@ -1666,7 +1666,7 @@ func TestQueueSDKClientList(t *testing.T) {
 		setup    func(*testing.T) (*dynamodb.Client, func())
 		sdkClock clock.Clock
 		args     args
-		want     []*Shipment[test.ShipmentData]
+		want     []*Message[test.MessageData]
 		wantErr  error
 	}{
 		{
@@ -1677,7 +1677,7 @@ func TestQueueSDKClientList(t *testing.T) {
 			args: args{
 				size: 10,
 			},
-			want:    []*Shipment[test.ShipmentData]{},
+			want:    []*Message[test.MessageData]{},
 			wantErr: nil,
 		},
 		{
@@ -1686,7 +1686,7 @@ func TestQueueSDKClientList(t *testing.T) {
 				var puts []*types.PutRequest
 				for i := 0; i < 10; i++ {
 					puts = append(puts, &types.PutRequest{
-						Item: newTestShipmentItem(fmt.Sprintf("A-%d", i),
+						Item: newTestMessageItem(fmt.Sprintf("A-%d", i),
 							time.Date(2023, 12, 1, 0, 0, i, 0, time.UTC)).
 							MarshalMapUnsafe(),
 					})
@@ -1696,13 +1696,13 @@ func TestQueueSDKClientList(t *testing.T) {
 			args: args{
 				size: 10,
 			},
-			want: func() []*Shipment[test.ShipmentData] {
-				var shipments []*Shipment[test.ShipmentData]
+			want: func() []*Message[test.MessageData] {
+				var messages []*Message[test.MessageData]
 				for i := 0; i < 10; i++ {
-					shipments = append(shipments, newTestShipmentItem(fmt.Sprintf("A-%d", i),
+					messages = append(messages, newTestMessageItem(fmt.Sprintf("A-%d", i),
 						time.Date(2023, 12, 1, 0, 0, i, 0, time.UTC)))
 				}
-				return shipments
+				return messages
 			}(),
 			wantErr: nil,
 		},
@@ -1713,7 +1713,7 @@ func TestQueueSDKClientList(t *testing.T) {
 			raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			client, err := NewQueueSDKClient[test.ShipmentData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
+			client, err := NewQueueSDKClient[test.MessageData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
 			if err != nil {
 				t.Fatalf("NewQueueSDKClient() error = %v", err)
 				return
@@ -1769,7 +1769,7 @@ func TestQueueSDKClientListIDs(t *testing.T) {
 				var puts []*types.PutRequest
 				for i := 0; i < 10; i++ {
 					puts = append(puts, &types.PutRequest{
-						Item: newTestShipmentItem(fmt.Sprintf("A-%d", i),
+						Item: newTestMessageItem(fmt.Sprintf("A-%d", i),
 							time.Date(2023, 12, 1, 0, 0, i, 0, time.UTC)).
 							MarshalMapUnsafe(),
 					})
@@ -1795,7 +1795,7 @@ func TestQueueSDKClientListIDs(t *testing.T) {
 			raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			client, err := NewQueueSDKClient[test.ShipmentData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
+			client, err := NewQueueSDKClient[test.MessageData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
 			if err != nil {
 				t.Fatalf("NewQueueSDKClient() error = %v", err)
 				return
@@ -1851,7 +1851,7 @@ func TestQueueSDKClientListExtendedIDs(t *testing.T) {
 				var puts []*types.PutRequest
 				for i := 0; i < 10; i++ {
 					puts = append(puts, &types.PutRequest{
-						Item: newTestShipmentItem(fmt.Sprintf("A-%d", i),
+						Item: newTestMessageItem(fmt.Sprintf("A-%d", i),
 							time.Date(2023, 12, 1, 0, 0, i, 0, time.UTC)).
 							MarshalMapUnsafe(),
 					})
@@ -1864,7 +1864,7 @@ func TestQueueSDKClientListExtendedIDs(t *testing.T) {
 			want: func() []string {
 				var ids []string
 				for i := 0; i < 10; i++ {
-					item := newTestShipmentItem(fmt.Sprintf("A-%d", i),
+					item := newTestMessageItem(fmt.Sprintf("A-%d", i),
 						time.Date(2023, 12, 1, 0, 0, i, 0, time.UTC))
 					ids = append(ids, fmt.Sprintf("ID: %s, status: %s", item.ID, item.SystemInfo.Status))
 				}
@@ -1879,7 +1879,7 @@ func TestQueueSDKClientListExtendedIDs(t *testing.T) {
 			raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			client, err := NewQueueSDKClient[test.ShipmentData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
+			client, err := NewQueueSDKClient[test.MessageData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
 			if err != nil {
 				t.Fatalf("NewQueueSDKClient() error = %v", err)
 				return
@@ -1923,7 +1923,7 @@ func TestQueueSDKClientDelete(t *testing.T) {
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
-						Item: newTestShipmentItem("A-101", clock.Now()).MarshalMapUnsafe(),
+						Item: newTestMessageItem("A-101", clock.Now()).MarshalMapUnsafe(),
 					},
 				)
 			},
@@ -1938,7 +1938,7 @@ func TestQueueSDKClientDelete(t *testing.T) {
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
-						Item: newTestShipmentItem("A-101", clock.Now()).MarshalMapUnsafe(),
+						Item: newTestMessageItem("A-101", clock.Now()).MarshalMapUnsafe(),
 					},
 				)
 			},
@@ -1952,7 +1952,7 @@ func TestQueueSDKClientDelete(t *testing.T) {
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
-						Item: newTestShipmentItem("A-101", clock.Now()).MarshalMapUnsafe(),
+						Item: newTestMessageItem("A-101", clock.Now()).MarshalMapUnsafe(),
 					},
 				)
 			},
@@ -1968,7 +1968,7 @@ func TestQueueSDKClientDelete(t *testing.T) {
 			raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			client, err := NewQueueSDKClient[test.ShipmentData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
+			client, err := NewQueueSDKClient[test.MessageData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
 			if err != nil {
 				t.Fatalf("NewQueueSDKClient() error = %v", err)
 				return
