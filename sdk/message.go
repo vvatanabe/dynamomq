@@ -64,7 +64,7 @@ func (m *Message[T]) IsDLQ() bool {
 		m.SystemInfo.Status == StatusInDLQ
 }
 
-func (m *Message[T]) MarkAsReadyForMessage(now time.Time) {
+func (m *Message[T]) MarkAsReady(now time.Time) {
 	ts := clock.FormatRFC3339(now)
 	m.LastUpdatedTimestamp = ts
 	m.SystemInfo.LastUpdatedTimestamp = ts

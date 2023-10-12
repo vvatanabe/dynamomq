@@ -109,7 +109,7 @@ func newTestMessageItem(id string, now time.Time) *Message[test.MessageData] {
 
 func newTestMessageItemAsReady(id string, now time.Time) *Message[test.MessageData] {
 	message := NewDefaultMessage[test.MessageData](id, test.NewMessageData(id), now)
-	message.MarkAsReadyForMessage(now)
+	message.MarkAsReady(now)
 	return message
 }
 

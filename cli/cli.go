@@ -85,7 +85,7 @@ func (c *CLI) help(_ context.Context, _ []string) {
     > sys                                         [Show system info data in a JSON format]
     > data                                        [Print the data as JSON for the current message record]
     > info                                        [Print all info regarding Message record: system_info and data as JSON]
-    > update <new Message status>                [Update Message status .. e.g.: from UNDER_CONSTRUCTION to READY_TO_SHIP]
+    > update <new Message status>                 [Update Message status .. e.g.: from PENDING to READY]
     > reset                                       [Reset the system info of the current message record]
     > ready                                       [Make the record ready for the message]
     > enqueue | en                                [Enqueue current ID]
@@ -332,7 +332,7 @@ func (c *CLI) ready(ctx context.Context, _ []string) {
 	}
 	now := clock.Now()
 	c.Message.ResetSystemInfo(now)
-	c.Message.MarkAsReadyForMessage(now)
+	c.Message.MarkAsReady(now)
 	err := c.Client.Put(ctx, c.Message)
 	if err != nil {
 		printError(err)
@@ -514,7 +514,7 @@ func (c *CLI) update(ctx context.Context, params []string) {
 	}
 	statusStr := strings.TrimSpace(strings.ToUpper(params[0]))
 	if statusStr == string(sdk.StatusReady) {
-		c.Message.MarkAsReadyForMessage(clock.Now())
+		c.Message.MarkAsReady(clock.Now())
 		rr, err := c.Client.UpdateStatus(ctx, c.Message.ID, sdk.StatusReady)
 		if err != nil {
 			printError(err)

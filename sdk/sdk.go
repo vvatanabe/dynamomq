@@ -488,8 +488,8 @@ func (c *queueSDKClient[T]) UpdateStatus(ctx context.Context, id string, newStat
 // If the message with the given ID cannot be found, it returns an error indicating the ID was not found.
 //
 // The function performs several checks on the status of the message:
-// - If the status is UNDER_CONSTRUCTION, it indicates the record is not yet constructed.
-// - If the status is not READY_TO_SHIP, it indicates an illegal state.
+// - If the status is PENDING, it indicates the record is not yet constructed.
+// - If the status is not READY, it indicates an illegal state.
 //
 // If all checks pass, the function attempts to update several attributes of the message
 // in the DynamoDB table. If the update is successful, it retrieves the message from
