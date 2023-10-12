@@ -6,7 +6,10 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/vvatanabe/dynamomq/internal/clock"
+	"github.com/vvatanabe/dynamomq/internal/test"
 	"github.com/vvatanabe/dynamomq/sdk"
 )
 
@@ -20,8 +23,8 @@ type CLI struct {
 	CredentialsProfile string
 	TableName          string
 
-	Client   sdk.QueueSDKClient
-	Shipment *sdk.Shipment
+	Client   sdk.QueueSDKClient[any]
+	Shipment *sdk.Shipment[any]
 }
 
 func (c *CLI) Run(ctx context.Context, command string, params []string) {
@@ -110,7 +113,7 @@ func (c *CLI) aws(ctx context.Context, params []string) {
 	if endpoint != "" {
 		c.BaseEndpoint = endpoint
 	}
-	client, err := sdk.NewQueueSDKClient(ctx,
+	client, err := sdk.NewQueueSDKClient[any](ctx,
 		sdk.WithAWSRegion(c.Region),
 		sdk.WithAWSCredentialsProfileName(profile),
 		sdk.WithTableName(c.TableName),
@@ -193,12 +196,26 @@ func (c *CLI) createTest(ctx context.Context, _ []string) {
 	fmt.Println("Creating shipment with IDs:")
 	ids := []string{"A-101", "A-202", "A-303", "A-404"}
 	for _, id := range ids {
-		_, err := c.Client.CreateTestData(ctx, id)
+		shipment := sdk.NewDefaultShipment[test.ShipmentData](id, test.NewTestShipmentData(id), clock.Now())
+		item, err := shipment.MarshalMap()
 		if err != nil {
 			fmt.Printf("* ID: %s, error: %s\n", id, err)
-		} else {
-			fmt.Printf("* ID: %s\n", id)
+			continue
 		}
+		err = c.Client.Delete(ctx, id)
+		if err != nil {
+			fmt.Printf("* ID: %s, error: %s\n", id, err)
+			continue
+		}
+		_, err = c.Client.GetDynamodbClient().PutItem(ctx, &dynamodb.PutItemInput{
+			TableName: aws.String(c.TableName),
+			Item:      item,
+		})
+		if err != nil {
+			fmt.Printf("* ID: %s, error: %s\n", id, err)
+			continue
+		}
+		fmt.Printf("* ID: %s\n", id)
 	}
 }
 

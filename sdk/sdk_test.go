@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/vvatanabe/dynamomq/internal/test"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
@@ -24,7 +25,7 @@ func (m mockClock) Now() time.Time {
 }
 
 func withClock(clock clock.Clock) Option {
-	return func(s *queueSDKClient) {
+	return func(s *options) {
 		if clock != nil {
 			s.clock = clock
 		}
@@ -102,36 +103,36 @@ func setupDynamoDB(t *testing.T, initialData ...*types.PutRequest) (client *dyna
 	return
 }
 
-func newTestShipmentItem(id string, now time.Time) *Shipment {
-	return NewDefaultShipment(id, newTestShipmentData(id), now)
+func newTestShipmentItem(id string, now time.Time) *Shipment[test.ShipmentData] {
+	return NewDefaultShipment[test.ShipmentData](id, test.NewTestShipmentData(id), now)
 }
 
-func newTestShipmentItemAsReady(id string, now time.Time) *Shipment {
-	shipment := NewDefaultShipment(id, newTestShipmentData(id), now)
+func newTestShipmentItemAsReady(id string, now time.Time) *Shipment[test.ShipmentData] {
+	shipment := NewDefaultShipment[test.ShipmentData](id, test.NewTestShipmentData(id), now)
 	shipment.MarkAsReadyForShipment(now)
 	return shipment
 }
 
-func newTestShipmentItemAsEnqueued(id string, now time.Time) *Shipment {
-	shipment := NewDefaultShipment(id, newTestShipmentData(id), now)
+func newTestShipmentItemAsEnqueued(id string, now time.Time) *Shipment[test.ShipmentData] {
+	shipment := NewDefaultShipment[test.ShipmentData](id, test.NewTestShipmentData(id), now)
 	shipment.MarkAsEnqueued(now)
 	return shipment
 }
 
-func newTestShipmentItemAsPeeked(id string, now time.Time) *Shipment {
-	shipment := NewDefaultShipment(id, newTestShipmentData(id), now)
+func newTestShipmentItemAsPeeked(id string, now time.Time) *Shipment[test.ShipmentData] {
+	shipment := NewDefaultShipment[test.ShipmentData](id, test.NewTestShipmentData(id), now)
 	shipment.MarkAsPeeked(now)
 	return shipment
 }
 
-func newTestShipmentItemAsRemoved(id string, now time.Time) *Shipment {
-	shipment := NewDefaultShipment(id, newTestShipmentData(id), now)
+func newTestShipmentItemAsRemoved(id string, now time.Time) *Shipment[test.ShipmentData] {
+	shipment := NewDefaultShipment[test.ShipmentData](id, test.NewTestShipmentData(id), now)
 	shipment.MarkAsRemoved(now)
 	return shipment
 }
 
-func newTestShipmentItemAsDLQ(id string, now time.Time) *Shipment {
-	shipment := NewDefaultShipment(id, newTestShipmentData(id), now)
+func newTestShipmentItemAsDLQ(id string, now time.Time) *Shipment[test.ShipmentData] {
+	shipment := NewDefaultShipment[test.ShipmentData](id, test.NewTestShipmentData(id), now)
 	shipment.MarkAsDLQ(now)
 	return shipment
 }
@@ -226,7 +227,7 @@ func TestQueueSDKClientGetQueueStats(t *testing.T) {
 			raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			client, err := NewQueueSDKClient(ctx, WithAWSDynamoDBClient(raw))
+			client, err := NewQueueSDKClient[test.ShipmentData](ctx, WithAWSDynamoDBClient(raw))
 			if err != nil {
 				t.Fatalf("NewQueueSDKClient() error = %v", err)
 				return
@@ -305,7 +306,7 @@ func TestQueueSDKClientGetDLQStats(t *testing.T) {
 			raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			client, err := NewQueueSDKClient(ctx, WithAWSDynamoDBClient(raw))
+			client, err := NewQueueSDKClient[test.ShipmentData](ctx, WithAWSDynamoDBClient(raw))
 			if err != nil {
 				t.Fatalf("NewQueueSDKClient() error = %v", err)
 				return
@@ -331,7 +332,7 @@ func TestQueueSDKClientGet(t *testing.T) {
 		name    string
 		setup   func(*testing.T) (*dynamodb.Client, func())
 		args    args
-		want    *Shipment
+		want    *Shipment[test.ShipmentData]
 		wantErr error
 	}{
 		{
@@ -389,7 +390,7 @@ func TestQueueSDKClientGet(t *testing.T) {
 			raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			client, err := NewQueueSDKClient(ctx, WithAWSDynamoDBClient(raw))
+			client, err := NewQueueSDKClient[test.ShipmentData](ctx, WithAWSDynamoDBClient(raw))
 			if err != nil {
 				t.Fatalf("NewQueueSDKClient() error = %v", err)
 				return
@@ -412,13 +413,13 @@ func TestQueueSDKClientGet(t *testing.T) {
 func TestQueueSDKClientPut(t *testing.T) {
 
 	type args struct {
-		shipment *Shipment
+		shipment *Shipment[test.ShipmentData]
 	}
 	tests := []struct {
 		name    string
 		setup   func(*testing.T) (*dynamodb.Client, func())
 		args    args
-		want    *Shipment
+		want    *Shipment[test.ShipmentData]
 		wantErr error
 	}{
 		{
@@ -431,7 +432,7 @@ func TestQueueSDKClientPut(t *testing.T) {
 				)
 			},
 			args: args{
-				shipment: &Shipment{
+				shipment: &Shipment[test.ShipmentData]{
 					ID: "",
 				},
 			},
@@ -475,7 +476,7 @@ func TestQueueSDKClientPut(t *testing.T) {
 			raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			client, err := NewQueueSDKClient(ctx, WithAWSDynamoDBClient(raw))
+			client, err := NewQueueSDKClient[test.ShipmentData](ctx, WithAWSDynamoDBClient(raw))
 			if err != nil {
 				t.Fatalf("NewQueueSDKClient() error = %v", err)
 				return
@@ -506,14 +507,14 @@ func TestQueueSDKClientPut(t *testing.T) {
 
 func TestQueueSDKClientUpsert(t *testing.T) {
 	type args struct {
-		shipment *Shipment
+		shipment *Shipment[test.ShipmentData]
 	}
 	tests := []struct {
 		name     string
 		setup    func(*testing.T) (*dynamodb.Client, func())
 		sdkClock clock.Clock
 		args     args
-		want     *Shipment
+		want     *Shipment[test.ShipmentData]
 		wantErr  error
 	}{
 		{
@@ -526,7 +527,7 @@ func TestQueueSDKClientUpsert(t *testing.T) {
 				)
 			},
 			args: args{
-				shipment: &Shipment{
+				shipment: &Shipment[test.ShipmentData]{
 					ID: "",
 				},
 			},
@@ -548,7 +549,7 @@ func TestQueueSDKClientUpsert(t *testing.T) {
 			args: args{
 				shipment: newTestShipmentItemAsPeeked("A-101", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)),
 			},
-			want: func() *Shipment {
+			want: func() *Shipment[test.ShipmentData] {
 				s := newTestShipmentItemAsPeeked("A-101", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
 				s.Update(s, time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC))
 				return s
@@ -577,7 +578,7 @@ func TestQueueSDKClientUpsert(t *testing.T) {
 			raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			client, err := NewQueueSDKClient(ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock))
+			client, err := NewQueueSDKClient[test.ShipmentData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock))
 			if err != nil {
 				t.Fatalf("NewQueueSDKClient() error = %v", err)
 				return
@@ -703,7 +704,7 @@ func TestQueueSDKClientUpdateStatus(t *testing.T) {
 			raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			client, err := NewQueueSDKClient(ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock))
+			client, err := NewQueueSDKClient[test.ShipmentData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock))
 			if err != nil {
 				t.Fatalf("NewQueueSDKClient() error = %v", err)
 				return
@@ -736,7 +737,7 @@ func TestQueueSDKClientEnqueue(t *testing.T) {
 		setup    func(*testing.T) (*dynamodb.Client, func())
 		sdkClock clock.Clock
 		args     args
-		want     *EnqueueResult
+		want     *EnqueueResult[test.ShipmentData]
 		wantErr  error
 	}{
 		{
@@ -814,14 +815,14 @@ func TestQueueSDKClientEnqueue(t *testing.T) {
 			args: args{
 				id: "A-101",
 			},
-			want: &EnqueueResult{
+			want: &EnqueueResult[test.ShipmentData]{
 				Result: &Result{
 					ID:                   "A-101",
 					Status:               StatusReady,
 					LastUpdatedTimestamp: clock.FormatRFC3339(time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC)),
 					Version:              2,
 				},
-				Shipment: func() *Shipment {
+				Shipment: func() *Shipment[test.ShipmentData] {
 					s := newTestShipmentItemAsReady("A-101", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
 					s.MarkAsEnqueued(time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC))
 					s.SystemInfo.Version = 2
@@ -837,7 +838,7 @@ func TestQueueSDKClientEnqueue(t *testing.T) {
 			raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			client, err := NewQueueSDKClient(ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock))
+			client, err := NewQueueSDKClient[test.ShipmentData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock))
 			if err != nil {
 				t.Fatalf("NewQueueSDKClient() error = %v", err)
 				return
@@ -866,7 +867,7 @@ func TestQueueSDKClientPeek(t *testing.T) {
 		name     string
 		setup    func(*testing.T) (*dynamodb.Client, func())
 		sdkClock clock.Clock
-		want     *PeekResult
+		want     *PeekResult[test.ShipmentData]
 		wantErr  error
 	}{
 		{
@@ -904,11 +905,11 @@ func TestQueueSDKClientPeek(t *testing.T) {
 			sdkClock: mockClock{
 				t: time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC),
 			},
-			want: func() *PeekResult {
+			want: func() *PeekResult[test.ShipmentData] {
 				s := newTestShipmentItemAsEnqueued("B-202", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
 				s.MarkAsPeeked(time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC))
 				s.SystemInfo.Version = 2
-				r := &PeekResult{
+				r := &PeekResult[test.ShipmentData]{
 					Result: &Result{
 						ID:                   s.ID,
 						Status:               s.SystemInfo.Status,
@@ -939,11 +940,11 @@ func TestQueueSDKClientPeek(t *testing.T) {
 			sdkClock: mockClock{
 				t: time.Date(2023, 12, 1, 0, 1, 1, 0, time.UTC),
 			},
-			want: func() *PeekResult {
+			want: func() *PeekResult[test.ShipmentData] {
 				s := newTestShipmentItemAsPeeked("B-202", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
 				s.MarkAsPeeked(time.Date(2023, 12, 1, 0, 1, 1, 0, time.UTC))
 				s.SystemInfo.Version = 2
-				r := &PeekResult{
+				r := &PeekResult[test.ShipmentData]{
 					Result: &Result{
 						ID:                   s.ID,
 						Status:               s.SystemInfo.Status,
@@ -984,7 +985,7 @@ func TestQueueSDKClientPeek(t *testing.T) {
 			raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			client, err := NewQueueSDKClient(ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
+			client, err := NewQueueSDKClient[test.ShipmentData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
 			if err != nil {
 				t.Fatalf("NewQueueSDKClient() error = %v", err)
 				return
@@ -1013,7 +1014,7 @@ func TestQueueSDKClientDequeue(t *testing.T) {
 		name     string
 		setup    func(*testing.T) (*dynamodb.Client, func())
 		sdkClock clock.Clock
-		want     *DequeueResult
+		want     *DequeueResult[test.ShipmentData]
 		wantErr  error
 	}{
 		{
@@ -1051,12 +1052,12 @@ func TestQueueSDKClientDequeue(t *testing.T) {
 			sdkClock: mockClock{
 				t: time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC),
 			},
-			want: func() *DequeueResult {
+			want: func() *DequeueResult[test.ShipmentData] {
 				s := newTestShipmentItemAsEnqueued("B-202", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
 				s.MarkAsPeeked(time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC))
 				s.MarkAsRemoved(time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC))
 				s.SystemInfo.Version = 3
-				r := &DequeueResult{
+				r := &DequeueResult[test.ShipmentData]{
 					Result: &Result{
 						ID:                   s.ID,
 						Status:               s.SystemInfo.Status,
@@ -1086,12 +1087,12 @@ func TestQueueSDKClientDequeue(t *testing.T) {
 			sdkClock: mockClock{
 				t: time.Date(2023, 12, 1, 0, 1, 1, 0, time.UTC),
 			},
-			want: func() *DequeueResult {
+			want: func() *DequeueResult[test.ShipmentData] {
 				s := newTestShipmentItemAsPeeked("B-202", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
 				s.MarkAsPeeked(time.Date(2023, 12, 1, 0, 1, 1, 0, time.UTC))
 				s.MarkAsRemoved(time.Date(2023, 12, 1, 0, 1, 1, 0, time.UTC))
 				s.SystemInfo.Version = 3
-				r := &DequeueResult{
+				r := &DequeueResult[test.ShipmentData]{
 					Result: &Result{
 						ID:                   s.ID,
 						Status:               s.SystemInfo.Status,
@@ -1131,7 +1132,7 @@ func TestQueueSDKClientDequeue(t *testing.T) {
 			raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			client, err := NewQueueSDKClient(ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
+			client, err := NewQueueSDKClient[test.ShipmentData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
 			if err != nil {
 				t.Fatalf("NewQueueSDKClient() error = %v", err)
 				return
@@ -1263,7 +1264,7 @@ func TestQueueSDKClientRemove(t *testing.T) {
 			raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			client, err := NewQueueSDKClient(ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
+			client, err := NewQueueSDKClient[test.ShipmentData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
 			if err != nil {
 				t.Fatalf("NewQueueSDKClient() error = %v", err)
 				return
@@ -1395,7 +1396,7 @@ func TestQueueSDKClientRestore(t *testing.T) {
 			raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			client, err := NewQueueSDKClient(ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
+			client, err := NewQueueSDKClient[test.ShipmentData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
 			if err != nil {
 				t.Fatalf("NewQueueSDKClient() error = %v", err)
 				return
@@ -1527,7 +1528,7 @@ func TestQueueSDKClientSendToDLQ(t *testing.T) {
 			raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			client, err := NewQueueSDKClient(ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
+			client, err := NewQueueSDKClient[test.ShipmentData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
 			if err != nil {
 				t.Fatalf("NewQueueSDKClient() error = %v", err)
 				return
@@ -1632,7 +1633,7 @@ func TestQueueSDKClientTouch(t *testing.T) {
 			raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			client, err := NewQueueSDKClient(ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
+			client, err := NewQueueSDKClient[test.ShipmentData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
 			if err != nil {
 				t.Fatalf("NewQueueSDKClient() error = %v", err)
 				return
@@ -1665,7 +1666,7 @@ func TestQueueSDKClientList(t *testing.T) {
 		setup    func(*testing.T) (*dynamodb.Client, func())
 		sdkClock clock.Clock
 		args     args
-		want     []*Shipment
+		want     []*Shipment[test.ShipmentData]
 		wantErr  error
 	}{
 		{
@@ -1676,7 +1677,7 @@ func TestQueueSDKClientList(t *testing.T) {
 			args: args{
 				size: 10,
 			},
-			want:    []*Shipment{},
+			want:    []*Shipment[test.ShipmentData]{},
 			wantErr: nil,
 		},
 		{
@@ -1695,8 +1696,8 @@ func TestQueueSDKClientList(t *testing.T) {
 			args: args{
 				size: 10,
 			},
-			want: func() []*Shipment {
-				var shipments []*Shipment
+			want: func() []*Shipment[test.ShipmentData] {
+				var shipments []*Shipment[test.ShipmentData]
 				for i := 0; i < 10; i++ {
 					shipments = append(shipments, newTestShipmentItem(fmt.Sprintf("A-%d", i),
 						time.Date(2023, 12, 1, 0, 0, i, 0, time.UTC)))
@@ -1712,7 +1713,7 @@ func TestQueueSDKClientList(t *testing.T) {
 			raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			client, err := NewQueueSDKClient(ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
+			client, err := NewQueueSDKClient[test.ShipmentData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
 			if err != nil {
 				t.Fatalf("NewQueueSDKClient() error = %v", err)
 				return
@@ -1794,7 +1795,7 @@ func TestQueueSDKClientListIDs(t *testing.T) {
 			raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			client, err := NewQueueSDKClient(ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
+			client, err := NewQueueSDKClient[test.ShipmentData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
 			if err != nil {
 				t.Fatalf("NewQueueSDKClient() error = %v", err)
 				return
@@ -1878,7 +1879,7 @@ func TestQueueSDKClientListExtendedIDs(t *testing.T) {
 			raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			client, err := NewQueueSDKClient(ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
+			client, err := NewQueueSDKClient[test.ShipmentData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
 			if err != nil {
 				t.Fatalf("NewQueueSDKClient() error = %v", err)
 				return
@@ -1967,7 +1968,7 @@ func TestQueueSDKClientDelete(t *testing.T) {
 			raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			client, err := NewQueueSDKClient(ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
+			client, err := NewQueueSDKClient[test.ShipmentData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
 			if err != nil {
 				t.Fatalf("NewQueueSDKClient() error = %v", err)
 				return
@@ -1983,93 +1984,6 @@ func TestQueueSDKClientDelete(t *testing.T) {
 			if err != nil {
 				t.Errorf("Delete() error = %v", err)
 				return
-			}
-		})
-	}
-}
-
-func TestQueueSDKClientCreateTestData(t *testing.T) {
-	type args struct {
-		id string
-	}
-	tests := []struct {
-		name     string
-		setup    func(*testing.T) (*dynamodb.Client, func())
-		sdkClock clock.Clock
-		args     args
-		want     *Shipment
-		wantErr  error
-	}{
-		{
-			name: "IDNotProvidedError",
-			setup: func(t *testing.T) (*dynamodb.Client, func()) {
-				return setupDynamoDB(t)
-			},
-			args: args{
-				id: "",
-			},
-			want:    nil,
-			wantErr: &IDNotProvidedError{},
-		},
-		{
-			name: "can create test data by duplicate id",
-			setup: func(t *testing.T) (*dynamodb.Client, func()) {
-				return setupDynamoDB(t,
-					&types.PutRequest{
-						Item: newTestShipmentItem("A-101",
-							time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)).MarshalMapUnsafe(),
-					},
-				)
-			},
-			sdkClock: mockClock{
-				t: time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC),
-			},
-			args: args{
-				id: "A-101",
-			},
-			want:    newTestShipmentItem("A-101", time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC)),
-			wantErr: nil,
-		},
-		{
-			name: "can create test data",
-			setup: func(t *testing.T) (*dynamodb.Client, func()) {
-				return setupDynamoDB(t)
-			},
-			sdkClock: mockClock{
-				t: time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC),
-			},
-			args: args{
-				id: "A-101",
-			},
-			want:    newTestShipmentItem("A-101", time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC)),
-			wantErr: nil,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			raw, clean := tt.setup(t)
-			defer clean()
-			ctx := context.Background()
-			client, err := NewQueueSDKClient(ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
-			if err != nil {
-				t.Fatalf("NewQueueSDKClient() error = %v", err)
-				return
-			}
-			shipment, err := client.CreateTestData(ctx, tt.args.id)
-			if tt.wantErr != nil {
-				if err != tt.wantErr {
-					t.Errorf("CreateTestData() error = %v, wantErr %v", err, tt.wantErr)
-					return
-				}
-				return
-			}
-			if err != nil {
-				t.Errorf("CreateTestData() error = %v", err)
-				return
-			}
-			if !reflect.DeepEqual(shipment, tt.want) {
-				t.Errorf("CreateTestData() got = %v, want %v", shipment, tt.want)
 			}
 		})
 	}

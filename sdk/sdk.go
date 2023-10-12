@@ -27,28 +27,28 @@ const (
 	DefaultVisibilityTimeoutInMinutes = 1
 )
 
-type QueueSDKClient interface {
+type QueueSDKClient[T any] interface {
 	GetQueueStats(ctx context.Context) (*QueueStats, error)
 	GetDLQStats(ctx context.Context) (*DLQStats, error)
-	Get(ctx context.Context, id string) (*Shipment, error)
-	Put(ctx context.Context, shipment *Shipment) error
-	Upsert(ctx context.Context, shipment *Shipment) error
+	Get(ctx context.Context, id string) (*Shipment[T], error)
+	Put(ctx context.Context, shipment *Shipment[T]) error
+	Upsert(ctx context.Context, shipment *Shipment[T]) error
 	UpdateStatus(ctx context.Context, id string, newStatus Status) (*Result, error)
-	Enqueue(ctx context.Context, id string) (*EnqueueResult, error)
-	Peek(ctx context.Context) (*PeekResult, error)
-	Dequeue(ctx context.Context) (*DequeueResult, error)
+	Enqueue(ctx context.Context, id string) (*EnqueueResult[T], error)
+	Peek(ctx context.Context) (*PeekResult[T], error)
+	Dequeue(ctx context.Context) (*DequeueResult[T], error)
 	Remove(ctx context.Context, id string) (*Result, error)
 	Restore(ctx context.Context, id string) (*Result, error)
 	SendToDLQ(ctx context.Context, id string) (*Result, error)
 	Touch(ctx context.Context, id string) (*Result, error)
-	List(ctx context.Context, size int32) ([]*Shipment, error)
+	List(ctx context.Context, size int32) ([]*Shipment[T], error)
 	ListIDs(ctx context.Context, size int32) ([]string, error)
 	ListExtendedIDs(ctx context.Context, size int32) ([]string, error)
 	Delete(ctx context.Context, id string) error
-	CreateTestData(ctx context.Context, id string) (*Shipment, error)
+	GetDynamodbClient() *dynamodb.Client
 }
 
-type queueSDKClient struct {
+type queueSDKClient[T any] struct {
 	dynamoDB *dynamodb.Client
 
 	tableName                 string
@@ -63,58 +63,70 @@ type queueSDKClient struct {
 	clock clock.Clock
 }
 
-type Option func(*queueSDKClient)
+type options struct {
+	tableName                  string
+	awsRegion                  string
+	awsCredentialsProfileName  string
+	credentialsProvider        aws.CredentialsProvider
+	baseEndpoint               string
+	retryMaxAttempts           int
+	visibilityTimeoutInMinutes int
+	dynamoDB                   *dynamodb.Client
+	clock                      clock.Clock
+}
+
+type Option func(*options)
 
 func WithTableName(tableName string) Option {
-	return func(s *queueSDKClient) {
+	return func(s *options) {
 		s.tableName = tableName
 	}
 }
 
 func WithAWSRegion(awsRegion string) Option {
-	return func(s *queueSDKClient) {
+	return func(s *options) {
 		s.awsRegion = awsRegion
 	}
 }
 
 func WithAWSCredentialsProfileName(awsCredentialsProfileName string) Option {
-	return func(s *queueSDKClient) {
+	return func(s *options) {
 		s.awsCredentialsProfileName = awsCredentialsProfileName
 	}
 }
 
 func WithAWSCredentialsProvider(credentialsProvider aws.CredentialsProvider) Option {
-	return func(s *queueSDKClient) {
+	return func(s *options) {
 		s.credentialsProvider = credentialsProvider
 	}
 }
 
 func WithAWSBaseEndpoint(baseEndpoint string) Option {
-	return func(s *queueSDKClient) {
+	return func(s *options) {
 		s.baseEndpoint = baseEndpoint
 	}
 }
 
 func WithAWSRetryMaxAttempts(retryMaxAttempts int) Option {
-	return func(s *queueSDKClient) {
+	return func(s *options) {
 		s.retryMaxAttempts = retryMaxAttempts
 	}
 }
 
 func WithAWSVisibilityTimeout(minutes int) Option {
-	return func(s *queueSDKClient) {
+	return func(s *options) {
 		s.visibilityTimeoutInMinutes = minutes
 	}
 }
 
 func WithAWSDynamoDBClient(client *dynamodb.Client) Option {
-	return func(s *queueSDKClient) {
+	return func(s *options) {
 		s.dynamoDB = client
 	}
 }
 
-func NewQueueSDKClient(ctx context.Context, opts ...Option) (QueueSDKClient, error) {
-	c := &queueSDKClient{
+func NewQueueSDKClient[T any](ctx context.Context, opts ...Option) (QueueSDKClient[T], error) {
+	o := &options{
 		tableName:                  DefaultTableName,
 		awsRegion:                  AwsRegionDefault,
 		awsCredentialsProfileName:  AwsProfileDefault,
@@ -123,7 +135,18 @@ func NewQueueSDKClient(ctx context.Context, opts ...Option) (QueueSDKClient, err
 		clock:                      &clock.RealClock{},
 	}
 	for _, opt := range opts {
-		opt(c)
+		opt(o)
+	}
+	c := &queueSDKClient[T]{
+		tableName:                  o.tableName,
+		awsRegion:                  o.awsRegion,
+		awsCredentialsProfileName:  o.awsCredentialsProfileName,
+		credentialsProvider:        o.credentialsProvider,
+		baseEndpoint:               o.baseEndpoint,
+		retryMaxAttempts:           o.retryMaxAttempts,
+		visibilityTimeoutInMinutes: o.visibilityTimeoutInMinutes,
+		dynamoDB:                   o.dynamoDB,
+		clock:                      o.clock,
 	}
 	if c.dynamoDB != nil {
 		return c, nil
@@ -171,7 +194,7 @@ func NewQueueSDKClient(ctx context.Context, opts ...Option) (QueueSDKClient, err
 //
 // Note: The function uses pagination to query the DynamoDB table and will continue querying
 // until all records have been fetched or an error occurs.
-func (c *queueSDKClient) GetQueueStats(ctx context.Context) (*QueueStats, error) {
+func (c *queueSDKClient[T]) GetQueueStats(ctx context.Context) (*QueueStats, error) {
 	expr, err := expression.NewBuilder().
 		WithProjection(expression.NamesList(expression.Name("id"), expression.Name("system_info"))).
 		WithKeyCondition(expression.KeyEqual(expression.Key("queued"), expression.Value(1))).
@@ -202,7 +225,7 @@ func (c *queueSDKClient) GetQueueStats(ctx context.Context) (*QueueStats, error)
 		exclusiveStartKey = queryOutput.LastEvaluatedKey
 		for _, itemMap := range queryOutput.Items {
 			totalQueueSize++
-			item := Shipment{}
+			item := Shipment[T]{}
 			err := attributevalue.UnmarshalMap(itemMap, &item)
 			if err != nil {
 				return nil, &UnmarshalingAttributeError{Cause: err}
@@ -245,7 +268,7 @@ func (c *queueSDKClient) GetQueueStats(ctx context.Context) (*QueueStats, error)
 //
 // Note: The function uses pagination to query the DynamoDB table and will continue querying
 // until all records have been fetched or an error occurs.
-func (c *queueSDKClient) GetDLQStats(ctx context.Context) (*DLQStats, error) {
+func (c *queueSDKClient[T]) GetDLQStats(ctx context.Context) (*DLQStats, error) {
 	expr, err := expression.NewBuilder().
 		WithProjection(expression.NamesList(
 			expression.Name("id"),
@@ -278,7 +301,7 @@ func (c *queueSDKClient) GetDLQStats(ctx context.Context) (*DLQStats, error) {
 		for _, itemMap := range resp.Items {
 			totalDLQSize++
 			if len(listBANs) < 100 {
-				item := Shipment{}
+				item := Shipment[T]{}
 				err := attributevalue.UnmarshalMap(itemMap, &item)
 				if err != nil {
 					return nil, &UnmarshalingAttributeError{Cause: err}
@@ -310,7 +333,7 @@ func (c *queueSDKClient) GetDLQStats(ctx context.Context) (*DLQStats, error) {
 //   - (error): An error if any occurred during the retrieval process, including
 //     if the 'id' is empty, the database query fails, or unmarshaling the response
 //     fails.
-func (c *queueSDKClient) Get(ctx context.Context, id string) (*Shipment, error) {
+func (c *queueSDKClient[T]) Get(ctx context.Context, id string) (*Shipment[T], error) {
 	if id == "" {
 		return nil, &IDNotProvidedError{}
 	}
@@ -327,7 +350,7 @@ func (c *queueSDKClient) Get(ctx context.Context, id string) (*Shipment, error) 
 	if resp.Item == nil {
 		return nil, nil
 	}
-	item := Shipment{}
+	item := Shipment[T]{}
 	err = attributevalue.UnmarshalMap(resp.Item, &item)
 	if err != nil {
 		return nil, &UnmarshalingAttributeError{Cause: err}
@@ -345,7 +368,7 @@ func (c *queueSDKClient) Get(ctx context.Context, id string) (*Shipment, error) 
 //
 // Returns:
 //   - error: Returns an error if one occurs, otherwise, it returns nil on successful storage.
-func (c *queueSDKClient) Put(ctx context.Context, shipment *Shipment) error {
+func (c *queueSDKClient[T]) Put(ctx context.Context, shipment *Shipment[T]) error {
 	retrieved, err := c.Get(ctx, shipment.ID)
 	if err != nil {
 		return err
@@ -374,7 +397,7 @@ func (c *queueSDKClient) Put(ctx context.Context, shipment *Shipment) error {
 //
 // Returns:
 //   - error: Returns an error if one occurs, otherwise, it returns nil on successful upsert.
-func (c *queueSDKClient) Upsert(ctx context.Context, shipment *Shipment) error {
+func (c *queueSDKClient[T]) Upsert(ctx context.Context, shipment *Shipment[T]) error {
 	retrieved, err := c.Get(ctx, shipment.ID)
 	if err != nil {
 		return err
@@ -386,7 +409,7 @@ func (c *queueSDKClient) Upsert(ctx context.Context, shipment *Shipment) error {
 	return c.put(ctx, shipment)
 }
 
-func (c *queueSDKClient) put(ctx context.Context, shipment *Shipment) error {
+func (c *queueSDKClient[T]) put(ctx context.Context, shipment *Shipment[T]) error {
 	item, err := shipment.MarshalMap()
 	if err != nil {
 		return err
@@ -420,7 +443,7 @@ func (c *queueSDKClient) put(ctx context.Context, shipment *Shipment) error {
 // Returns:
 //   - A pointer to a Result object containing the result of the update operation.
 //   - An error if one occurs during the process. A nil error indicates successful completion.
-func (c *queueSDKClient) UpdateStatus(ctx context.Context, id string, newStatus Status) (*Result, error) {
+func (c *queueSDKClient[T]) UpdateStatus(ctx context.Context, id string, newStatus Status) (*Result, error) {
 	shipment, err := c.Get(ctx, id)
 	if err != nil {
 		return nil, err
@@ -481,7 +504,7 @@ func (c *queueSDKClient) UpdateStatus(ctx context.Context, id string, newStatus 
 //
 //	*EnqueueResult: A pointer to the EnqueueResult structure which contains information about the enqueued shipment.
 //	error: An error that can occur during the execution, or nil if no errors occurred.
-func (c *queueSDKClient) Enqueue(ctx context.Context, id string) (*EnqueueResult, error) {
+func (c *queueSDKClient[T]) Enqueue(ctx context.Context, id string) (*EnqueueResult[T], error) {
 	retrieved, err := c.Get(ctx, id)
 	if err != nil {
 		return nil, err
@@ -533,7 +556,7 @@ func (c *queueSDKClient) Enqueue(ctx context.Context, id string) (*EnqueueResult
 	if err != nil {
 		return nil, err
 	}
-	return &EnqueueResult{
+	return &EnqueueResult[T]{
 		Result: &Result{
 			ID:                   enqueued.ID,
 			Status:               enqueued.SystemInfo.Status,
@@ -561,7 +584,7 @@ func (c *queueSDKClient) Enqueue(ctx context.Context, id string) (*EnqueueResult
 // Note:
 // The function does not update the top-level attribute `last_updated_timestamp` to
 // avoid re-indexing the order.
-func (c *queueSDKClient) Peek(ctx context.Context) (*PeekResult, error) {
+func (c *queueSDKClient[T]) Peek(ctx context.Context) (*PeekResult[T], error) {
 	expr, err := expression.NewBuilder().
 		WithProjection(expression.NamesList(
 			expression.Name("id"),
@@ -595,7 +618,7 @@ func (c *queueSDKClient) Peek(ctx context.Context) (*PeekResult, error) {
 		}
 		exclusiveStartKey = queryResult.LastEvaluatedKey
 		for _, itemMap := range queryResult.Items {
-			item := Shipment{}
+			item := Shipment[T]{}
 			if err = attributevalue.UnmarshalMap(itemMap, &item); err != nil {
 				return nil, &UnmarshalingAttributeError{Cause: err}
 			}
@@ -639,7 +662,7 @@ func (c *queueSDKClient) Peek(ctx context.Context) (*PeekResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &PeekResult{
+	return &PeekResult[T]{
 		Result: &Result{
 			ID:                   peeked.ID,
 			Status:               peeked.SystemInfo.Status,
@@ -660,7 +683,7 @@ func (c *queueSDKClient) Peek(ctx context.Context) (*PeekResult, error) {
 // Returns:
 //   - *DequeueResult: the result of the dequeue operation, containing information about the dequeued item.
 //   - error: any error encountered during the operation. If successful, this is nil.
-func (c *queueSDKClient) Dequeue(ctx context.Context) (*DequeueResult, error) {
+func (c *queueSDKClient[T]) Dequeue(ctx context.Context) (*DequeueResult[T], error) {
 	peekResult, err := c.Peek(ctx)
 	if err != nil {
 		return nil, err
@@ -674,7 +697,7 @@ func (c *queueSDKClient) Dequeue(ctx context.Context) (*DequeueResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &DequeueResult{
+	return &DequeueResult[T]{
 		Result:                 removeResult,
 		DequeuedShipmentObject: shipment,
 	}, nil
@@ -691,7 +714,7 @@ func (c *queueSDKClient) Dequeue(ctx context.Context) (*DequeueResult, error) {
 //   - *Result: the result of the remove operation, containing information about the removed item's status.
 //   - error: any error encountered during the operation, especially related to data marshaling and database interactions.
 //     If successful and the item is just not found, the error is nil but the Result reflects the status.
-func (c *queueSDKClient) Remove(ctx context.Context, id string) (*Result, error) {
+func (c *queueSDKClient[T]) Remove(ctx context.Context, id string) (*Result, error) {
 	shipment, err := c.Get(ctx, id)
 	if err != nil {
 		return nil, err
@@ -751,7 +774,7 @@ func (c *queueSDKClient) Remove(ctx context.Context, id string) (*Result, error)
 //
 //	error: An error that describes any issues that occurred during the
 //	restore operation. If the operation is successful, this will be nil.
-func (c *queueSDKClient) Restore(ctx context.Context, id string) (*Result, error) {
+func (c *queueSDKClient[T]) Restore(ctx context.Context, id string) (*Result, error) {
 	shipment, err := c.Get(ctx, id)
 	if err != nil {
 		return nil, err
@@ -811,7 +834,7 @@ func (c *queueSDKClient) Restore(ctx context.Context, id string) (*Result, error
 //   - *Result: A pointer to the result structure which contains details like Version, Status, LastUpdatedTimestamp,
 //     and ReturnValue indicating the result of the operation (e.g., success, failed due to ID not found, etc.).
 //   - error: Non-nil if there was an error during the operation.
-func (c *queueSDKClient) SendToDLQ(ctx context.Context, id string) (*Result, error) {
+func (c *queueSDKClient[T]) SendToDLQ(ctx context.Context, id string) (*Result, error) {
 	shipment, err := c.Get(ctx, id)
 	if err != nil {
 		return nil, err
@@ -877,7 +900,7 @@ func (c *queueSDKClient) SendToDLQ(ctx context.Context, id string) (*Result, err
 // - If there's an error while building the DynamoDB expression, this error is returned.
 // - If there's an error unmarshalling the DynamoDB response, this error is returned.
 // Otherwise, if the operation succeeds, the error will be 'nil'.
-func (c *queueSDKClient) Touch(ctx context.Context, id string) (*Result, error) {
+func (c *queueSDKClient[T]) Touch(ctx context.Context, id string) (*Result, error) {
 	shipment, err := c.Get(ctx, id)
 	if err != nil {
 		return nil, err
@@ -919,7 +942,7 @@ func (c *queueSDKClient) Touch(ctx context.Context, id string) (*Result, error) 
 // Returns:
 //   - A slice of pointers to Shipment if found.
 //   - error if there's any issue in the operation.
-func (c *queueSDKClient) List(ctx context.Context, size int32) ([]*Shipment, error) {
+func (c *queueSDKClient[T]) List(ctx context.Context, size int32) ([]*Shipment[T], error) {
 	output, err := c.dynamoDB.Scan(ctx, &dynamodb.ScanInput{
 		TableName: &c.tableName,
 		Limit:     aws.Int32(size),
@@ -927,7 +950,7 @@ func (c *queueSDKClient) List(ctx context.Context, size int32) ([]*Shipment, err
 	if err != nil {
 		return nil, handleDynamoDBError(err)
 	}
-	var shipments []*Shipment
+	var shipments []*Shipment[T]
 	err = attributevalue.UnmarshalListOfMaps(output.Items, &shipments)
 	if err != nil {
 		return nil, &UnmarshalingAttributeError{Cause: err}
@@ -946,7 +969,7 @@ func (c *queueSDKClient) List(ctx context.Context, size int32) ([]*Shipment, err
 // Returns:
 //   - A slice of string IDs if found.
 //   - error if there's any issue in the operation.
-func (c *queueSDKClient) ListIDs(ctx context.Context, size int32) ([]string, error) {
+func (c *queueSDKClient[T]) ListIDs(ctx context.Context, size int32) ([]string, error) {
 	shipments, err := c.List(ctx, size)
 	if err != nil {
 		return nil, err
@@ -972,7 +995,7 @@ func (c *queueSDKClient) ListIDs(ctx context.Context, size int32) ([]string, err
 // Returns:
 //   - A slice of extended ID strings if found.
 //   - error if there's any issue in the operation.
-func (c *queueSDKClient) ListExtendedIDs(ctx context.Context, size int32) ([]string, error) {
+func (c *queueSDKClient[T]) ListExtendedIDs(ctx context.Context, size int32) ([]string, error) {
 	shipments, err := c.List(ctx, size)
 	if err != nil {
 		return nil, err
@@ -995,7 +1018,7 @@ func (c *queueSDKClient) ListExtendedIDs(ctx context.Context, size int32) ([]str
 //
 // Returns:
 //   - error: Non-nil if there was an error during the delete operation.
-func (c *queueSDKClient) Delete(ctx context.Context, id string) error {
+func (c *queueSDKClient[T]) Delete(ctx context.Context, id string) error {
 	if id == "" {
 		return &IDNotProvidedError{}
 	}
@@ -1013,48 +1036,12 @@ func (c *queueSDKClient) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-// CreateTestData creates a test data shipment record associated with the provided ID.
-// It first ensures that no existing data with the given ID exists by deleting it,
-// then creates a shipment record with test data.
-// If the ID is empty or there's an issue creating the test data, it will return an error.
-//
-// Parameters:
-//   - ctx: The context to be used for the operation. It allows for timeout and cancellation.
-//   - id: The unique identifier for the shipment record to be created.
-//
-// Returns:
-//   - *Shipment: The created shipment record.
-//   - error: Non-nil if there was an error during the creation process.
-func (c *queueSDKClient) CreateTestData(ctx context.Context, id string) (*Shipment, error) {
-	err := c.Delete(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-	data := newTestShipmentData(id)
-	shipment := NewDefaultShipment(id, data, c.clock.Now())
-	err = c.Put(ctx, shipment)
-	if err != nil {
-		return nil, err
-	}
-	return shipment, nil
+func (c *queueSDKClient[T]) GetDynamodbClient() *dynamodb.Client {
+	return c.dynamoDB
 }
 
-func newTestShipmentData(id string) *ShipmentData {
-	return &ShipmentData{
-		ID:    id,
-		Data1: "Data 1",
-		Data2: "Data 2",
-		Data3: "Data 3",
-		Items: []ShipmentItem{
-			{SKU: "Item-1", Packed: true},
-			{SKU: "Item-2", Packed: true},
-			{SKU: "Item-3", Packed: true},
-		},
-	}
-}
-
-func (c *queueSDKClient) updateDynamoDBItem(ctx context.Context,
-	id string, expr *expression.Expression) (*Shipment, error) {
+func (c *queueSDKClient[T]) updateDynamoDBItem(ctx context.Context,
+	id string, expr *expression.Expression) (*Shipment[T], error) {
 	outcome, err := c.dynamoDB.UpdateItem(ctx, &dynamodb.UpdateItemInput{
 		Key: map[string]types.AttributeValue{
 			"id": &types.AttributeValueMemberS{
@@ -1071,7 +1058,7 @@ func (c *queueSDKClient) updateDynamoDBItem(ctx context.Context,
 	if err != nil {
 		return nil, handleDynamoDBError(err)
 	}
-	shipment := Shipment{}
+	shipment := Shipment[T]{}
 	err = attributevalue.UnmarshalMap(outcome.Attributes, &shipment)
 	if err != nil {
 		return nil, &UnmarshalingAttributeError{Cause: err}

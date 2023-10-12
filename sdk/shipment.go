@@ -8,8 +8,8 @@ import (
 	"github.com/vvatanabe/dynamomq/internal/clock"
 )
 
-func NewDefaultShipment(id string, data *ShipmentData, now time.Time) *Shipment {
-	return &Shipment{
+func NewDefaultShipment[T any](id string, data *T, now time.Time) *Shipment[T] {
+	return &Shipment[T]{
 		ID:                   id,
 		Data:                 data,
 		SystemInfo:           NewDefaultSystemInfo(id, now),
@@ -19,17 +19,17 @@ func NewDefaultShipment(id string, data *ShipmentData, now time.Time) *Shipment 
 	}
 }
 
-type Shipment struct {
-	ID         string        `json:"id" dynamodbav:"id"`
-	Data       *ShipmentData `json:"data" dynamodbav:"data"`
-	SystemInfo *SystemInfo   `json:"system_info" dynamodbav:"system_info"`
+type Shipment[T any] struct {
+	ID         string      `json:"id" dynamodbav:"id"`
+	Data       *T          `json:"data" dynamodbav:"data"`
+	SystemInfo *SystemInfo `json:"system_info" dynamodbav:"system_info"`
 
 	Queued               int    `json:"queued" dynamodbav:"queued,omitempty"`
 	LastUpdatedTimestamp string `json:"last_updated_timestamp" dynamodbav:"last_updated_timestamp,omitempty"`
 	DLQ                  int    `json:"DLQ" dynamodbav:"DLQ,omitempty"`
 }
 
-func (s *Shipment) IsQueueSelected(now time.Time, visibilityTimeout time.Duration) bool {
+func (s *Shipment[T]) IsQueueSelected(now time.Time, visibilityTimeout time.Duration) bool {
 	if !s.SystemInfo.SelectedFromQueue {
 		return false
 	}
@@ -37,7 +37,7 @@ func (s *Shipment) IsQueueSelected(now time.Time, visibilityTimeout time.Duratio
 	return timeDifference <= visibilityTimeout.Milliseconds()
 }
 
-func (s *Shipment) IsRemoved() bool {
+func (s *Shipment[T]) IsRemoved() bool {
 	return s.Queued == 0 &&
 		s.DLQ == 0 &&
 		s.SystemInfo.InQueue == 0 &&
@@ -45,7 +45,7 @@ func (s *Shipment) IsRemoved() bool {
 		s.SystemInfo.RemoveFromQueueTimestamp != ""
 }
 
-func (s *Shipment) IsEnqueued() bool {
+func (s *Shipment[T]) IsEnqueued() bool {
 	return s.Queued == 1 &&
 		s.DLQ == 0 &&
 		s.SystemInfo.InQueue == 1 &&
@@ -55,7 +55,7 @@ func (s *Shipment) IsEnqueued() bool {
 		s.SystemInfo.RemoveFromQueueTimestamp == ""
 }
 
-func (s *Shipment) IsDLQ() bool {
+func (s *Shipment[T]) IsDLQ() bool {
 	return s.Queued == 0 &&
 		s.DLQ == 1 &&
 		s.SystemInfo.InQueue == 0 &&
@@ -64,14 +64,14 @@ func (s *Shipment) IsDLQ() bool {
 		s.SystemInfo.Status == StatusInDLQ
 }
 
-func (s *Shipment) MarkAsReadyForShipment(now time.Time) {
+func (s *Shipment[T]) MarkAsReadyForShipment(now time.Time) {
 	ts := clock.FormatRFC3339(now)
 	s.LastUpdatedTimestamp = ts
 	s.SystemInfo.LastUpdatedTimestamp = ts
 	s.SystemInfo.Status = StatusReady
 }
 
-func (s *Shipment) MarkAsEnqueued(now time.Time) {
+func (s *Shipment[T]) MarkAsEnqueued(now time.Time) {
 	ts := clock.FormatRFC3339(now)
 	s.Queued = 1
 	s.DLQ = 0
@@ -83,7 +83,7 @@ func (s *Shipment) MarkAsEnqueued(now time.Time) {
 	s.SystemInfo.Status = StatusReady
 }
 
-func (s *Shipment) MarkAsPeeked(now time.Time) {
+func (s *Shipment[T]) MarkAsPeeked(now time.Time) {
 	ts := clock.FormatRFC3339(now)
 	unixTime := now.UnixMilli()
 	s.Queued = 1
@@ -96,7 +96,7 @@ func (s *Shipment) MarkAsPeeked(now time.Time) {
 	s.SystemInfo.Status = StatusProcessing
 }
 
-func (s *Shipment) MarkAsRemoved(now time.Time) {
+func (s *Shipment[T]) MarkAsRemoved(now time.Time) {
 	ts := clock.FormatRFC3339(now)
 	s.Queued = 0
 	s.DLQ = 0
@@ -107,7 +107,7 @@ func (s *Shipment) MarkAsRemoved(now time.Time) {
 	s.SystemInfo.RemoveFromQueueTimestamp = ts
 }
 
-func (s *Shipment) MarkAsDLQ(now time.Time) {
+func (s *Shipment[T]) MarkAsDLQ(now time.Time) {
 	ts := clock.FormatRFC3339(now)
 	s.Queued = 0
 	s.DLQ = 1
@@ -119,17 +119,17 @@ func (s *Shipment) MarkAsDLQ(now time.Time) {
 	s.SystemInfo.Status = StatusInDLQ
 }
 
-func (s *Shipment) ResetSystemInfo(now time.Time) {
+func (s *Shipment[T]) ResetSystemInfo(now time.Time) {
 	s.SystemInfo = NewDefaultSystemInfo(s.ID, now)
 }
 
-func (s *Shipment) Touch(now time.Time) {
+func (s *Shipment[T]) Touch(now time.Time) {
 	ts := clock.FormatRFC3339(now)
 	s.LastUpdatedTimestamp = ts
 	s.SystemInfo.LastUpdatedTimestamp = ts
 }
 
-func (s *Shipment) Update(shipment *Shipment, now time.Time) {
+func (s *Shipment[T]) Update(shipment *Shipment[T], now time.Time) {
 	formatted := clock.FormatRFC3339(now)
 	nextVersion := s.SystemInfo.Version + 1
 
@@ -143,7 +143,7 @@ func (s *Shipment) Update(shipment *Shipment, now time.Time) {
 	s.DLQ = shipment.DLQ
 }
 
-func (s *Shipment) ChangeStatus(status Status, now time.Time) {
+func (s *Shipment[T]) ChangeStatus(status Status, now time.Time) {
 	formatted := clock.FormatRFC3339(now)
 
 	s.SystemInfo.Status = status
@@ -151,7 +151,7 @@ func (s *Shipment) ChangeStatus(status Status, now time.Time) {
 	s.LastUpdatedTimestamp = formatted
 }
 
-func (s *Shipment) MarshalMap() (map[string]types.AttributeValue, error) {
+func (s *Shipment[T]) MarshalMap() (map[string]types.AttributeValue, error) {
 	item, err := attributevalue.MarshalMap(s)
 	if err != nil {
 		return nil, &MarshalingAttributeError{Cause: err}
@@ -159,20 +159,7 @@ func (s *Shipment) MarshalMap() (map[string]types.AttributeValue, error) {
 	return item, nil
 }
 
-func (s *Shipment) MarshalMapUnsafe() map[string]types.AttributeValue {
+func (s *Shipment[T]) MarshalMapUnsafe() map[string]types.AttributeValue {
 	item, _ := attributevalue.MarshalMap(s)
 	return item
-}
-
-type ShipmentData struct {
-	ID    string         `json:"id" dynamodbav:"id"`
-	Items []ShipmentItem `json:"items" dynamodbav:"items"`
-	Data1 string         `json:"data_element_1" dynamodbav:"data_1"`
-	Data2 string         `json:"data_element_2" dynamodbav:"data_2"`
-	Data3 string         `json:"data_element_3" dynamodbav:"data_3"`
-}
-
-type ShipmentItem struct {
-	SKU    string `json:"SKU" dynamodbav:"SKU"`
-	Packed bool   `json:"is_packed" dynamodbav:"is_packed"`
 }

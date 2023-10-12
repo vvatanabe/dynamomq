@@ -38,7 +38,7 @@ func main() {
 	fmt.Printf("endpoint is: [%s]\n", *endpoint)
 	fmt.Println("")
 
-	client, err := sdk.NewQueueSDKClient(context.Background(),
+	client, err := sdk.NewQueueSDKClient[any](context.Background(),
 		sdk.WithAWSRegion(*region),
 		sdk.WithAWSCredentialsProfileName(*credentialsProfile),
 		sdk.WithTableName(*tableName),
