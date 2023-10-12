@@ -28,7 +28,7 @@ func NewDefaultSystemInfo(id string, now time.Time) *SystemInfo {
 		ID:                       id,
 		CreationTimestamp:        ts,
 		LastUpdatedTimestamp:     ts,
-		Status:                   StatusUnderConstruction,
+		Status:                   StatusPending,
 		Version:                  1,
 		InQueue:                  0,
 		SelectedFromQueue:        false,

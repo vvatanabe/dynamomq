@@ -50,7 +50,7 @@ func (s *Shipment) IsEnqueued() bool {
 		s.DLQ == 0 &&
 		s.SystemInfo.InQueue == 1 &&
 		s.SystemInfo.SelectedFromQueue == false &&
-		s.SystemInfo.Status == StatusReadyToShip &&
+		s.SystemInfo.Status == StatusReady &&
 		s.SystemInfo.AddToQueueTimestamp != "" &&
 		s.SystemInfo.RemoveFromQueueTimestamp == ""
 }
@@ -68,7 +68,7 @@ func (s *Shipment) MarkAsReadyForShipment(now time.Time) {
 	ts := clock.FormatRFC3339(now)
 	s.LastUpdatedTimestamp = ts
 	s.SystemInfo.LastUpdatedTimestamp = ts
-	s.SystemInfo.Status = StatusReadyToShip
+	s.SystemInfo.Status = StatusReady
 }
 
 func (s *Shipment) MarkAsEnqueued(now time.Time) {
@@ -80,7 +80,7 @@ func (s *Shipment) MarkAsEnqueued(now time.Time) {
 	s.SystemInfo.SelectedFromQueue = false
 	s.SystemInfo.LastUpdatedTimestamp = ts
 	s.SystemInfo.AddToQueueTimestamp = ts
-	s.SystemInfo.Status = StatusReadyToShip
+	s.SystemInfo.Status = StatusReady
 }
 
 func (s *Shipment) MarkAsPeeked(now time.Time) {
@@ -93,7 +93,7 @@ func (s *Shipment) MarkAsPeeked(now time.Time) {
 	s.SystemInfo.LastUpdatedTimestamp = ts
 	s.SystemInfo.PeekFromQueueTimestamp = ts
 	s.SystemInfo.PeekUTCTimestamp = unixTime
-	s.SystemInfo.Status = StatusProcessingShipment
+	s.SystemInfo.Status = StatusProcessing
 }
 
 func (s *Shipment) MarkAsRemoved(now time.Time) {

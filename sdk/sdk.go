@@ -490,10 +490,10 @@ func (c *queueSDKClient) Enqueue(ctx context.Context, id string) (*EnqueueResult
 		return nil, &IDNotFoundError{}
 	}
 	preStatus := retrieved.SystemInfo.Status
-	if preStatus == StatusUnderConstruction {
+	if preStatus == StatusPending {
 		return nil, &RecordNotConstructedError{}
 	}
-	if preStatus != StatusReadyToShip {
+	if preStatus != StatusReady {
 		return nil, &IllegalStateError{}
 	}
 	retrieved.MarkAsEnqueued(c.clock.Now())

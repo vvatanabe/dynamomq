@@ -459,9 +459,9 @@ func (c *CLI) enqueue(ctx context.Context, _ []string) {
 		return
 	}
 	// convert under_construction to ready to ship
-	if shipment.SystemInfo.Status == sdk.StatusUnderConstruction {
+	if shipment.SystemInfo.Status == sdk.StatusPending {
 		shipment.ResetSystemInfo(clock.Now())
-		shipment.SystemInfo.Status = sdk.StatusReadyToShip
+		shipment.SystemInfo.Status = sdk.StatusReady
 		err = c.Client.Put(ctx, shipment)
 		if err != nil {
 			printError(err)
@@ -496,9 +496,9 @@ func (c *CLI) update(ctx context.Context, params []string) {
 		return
 	}
 	statusStr := strings.TrimSpace(strings.ToUpper(params[0]))
-	if statusStr == string(sdk.StatusReadyToShip) {
+	if statusStr == string(sdk.StatusReady) {
 		c.Shipment.MarkAsReadyForShipment(clock.Now())
-		rr, err := c.Client.UpdateStatus(ctx, c.Shipment.ID, sdk.StatusReadyToShip)
+		rr, err := c.Client.UpdateStatus(ctx, c.Shipment.ID, sdk.StatusReady)
 		if err != nil {
 			printError(err)
 			return

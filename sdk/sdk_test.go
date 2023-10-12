@@ -646,7 +646,7 @@ func TestQueueSDKClientUpdateStatus(t *testing.T) {
 			},
 			args: args{
 				id:        "B-202",
-				newStatus: StatusReadyToShip,
+				newStatus: StatusReady,
 			},
 			want:    nil,
 			wantErr: &IDNotFoundError{},
@@ -662,11 +662,11 @@ func TestQueueSDKClientUpdateStatus(t *testing.T) {
 			},
 			args: args{
 				id:        "A-101",
-				newStatus: StatusUnderConstruction,
+				newStatus: StatusPending,
 			},
 			want: &Result{
 				ID:                   "A-101",
-				Status:               StatusUnderConstruction,
+				Status:               StatusPending,
 				LastUpdatedTimestamp: clock.FormatRFC3339(time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)),
 				Version:              1,
 			},
@@ -686,11 +686,11 @@ func TestQueueSDKClientUpdateStatus(t *testing.T) {
 			},
 			args: args{
 				id:        "A-101",
-				newStatus: StatusReadyToShip,
+				newStatus: StatusReady,
 			},
 			want: &Result{
 				ID:                   "A-101",
-				Status:               StatusReadyToShip,
+				Status:               StatusReady,
 				LastUpdatedTimestamp: clock.FormatRFC3339(time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC)),
 				Version:              2,
 			},
@@ -817,7 +817,7 @@ func TestQueueSDKClientEnqueue(t *testing.T) {
 			want: &EnqueueResult{
 				Result: &Result{
 					ID:                   "A-101",
-					Status:               StatusReadyToShip,
+					Status:               StatusReady,
 					LastUpdatedTimestamp: clock.FormatRFC3339(time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC)),
 					Version:              2,
 				},
