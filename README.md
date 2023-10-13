@@ -6,4 +6,4 @@ Status: Under development
 
 ## State Machine
 
-![State Machine](./state-machine.png) 
+![State Machine](https://cacoo.com/diagrams/DjoA2pSKnhCghTYM-452C2.png) 
