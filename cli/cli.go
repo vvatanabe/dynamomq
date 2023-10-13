@@ -350,12 +350,7 @@ func (c *CLI) done(ctx context.Context, _ []string) {
 		printCLIModeRestriction("`done`")
 		return
 	}
-	_, err := c.Client.UpdateStatus(ctx, c.Message.ID, sdk.StatusCompleted)
-	if err != nil {
-		printError(err)
-		return
-	}
-	_, err = c.Client.Remove(ctx, c.Message.ID)
+	_, err := c.Client.Done(ctx, c.Message.ID)
 	if err != nil {
 		printError(err)
 		return

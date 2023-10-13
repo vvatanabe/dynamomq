@@ -38,6 +38,7 @@ type QueueSDKClient[T any] interface {
 	Peek(ctx context.Context) (*PeekResult[T], error)
 	Dequeue(ctx context.Context) (*DequeueResult[T], error)
 	Remove(ctx context.Context, id string) (*Result, error)
+	Done(ctx context.Context, id string) (*Result, error)
 	Restore(ctx context.Context, id string) (*Result, error)
 	SendToDLQ(ctx context.Context, id string) (*Result, error)
 	Touch(ctx context.Context, id string) (*Result, error)
@@ -730,17 +731,74 @@ func (c *queueSDKClient[T]) Remove(ctx context.Context, id string) (*Result, err
 			Version:              message.SystemInfo.Version,
 		}, nil
 	}
-	ts := clock.FormatRFC3339(c.clock.Now())
+	message.MarkAsRemoved(c.clock.Now())
 	expr, err := expression.NewBuilder().
 		WithUpdate(expression.
 			Add(expression.Name("system_info.version"), expression.Value(1)).
 			Remove(expression.Name("queued")).
 			Remove(expression.Name("DLQ")).
-			Set(expression.Name("system_info.queued"), expression.Value(0)).
-			Set(expression.Name("system_info.queue_selected"), expression.Value(false)).
-			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(ts)).
-			Set(expression.Name("last_updated_timestamp"), expression.Value(ts)).
-			Set(expression.Name("system_info.queue_remove_timestamp"), expression.Value(ts))).
+			Set(expression.Name("system_info.queued"), expression.Value(message.SystemInfo.InQueue)).
+			Set(expression.Name("system_info.queue_selected"), expression.Value(message.SystemInfo.SelectedFromQueue)).
+			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(message.SystemInfo.LastUpdatedTimestamp)).
+			Set(expression.Name("system_info.queue_remove_timestamp"), expression.Value(message.LastUpdatedTimestamp))).
+		WithCondition(expression.Name("system_info.version").Equal(expression.Value(message.SystemInfo.Version))).
+		Build()
+	if err != nil {
+		return nil, &BuildingExpressionError{Cause: err}
+	}
+	item, err := c.updateDynamoDBItem(ctx, id, &expr)
+	if err != nil {
+		return nil, err
+	}
+	return &Result{
+		ID:                   id,
+		Status:               item.SystemInfo.Status,
+		LastUpdatedTimestamp: item.SystemInfo.LastUpdatedTimestamp,
+		Version:              item.SystemInfo.Version,
+	}, nil
+}
+
+// Done checks if a message with the given id in the queue is done. If the message is done,
+// it returns a Result containing the status, last updated timestamp, and version of the message.
+// If the message is not done, it marks the message as done, updates its attributes in the database,
+// and returns the updated Result. If the message is not found or any other error occurs,
+// an appropriate error is returned.
+//
+// Parameters:
+// 	ctx context.Context: The context to use for the operation.
+// 	id string: The identifier of the message to check.
+//
+// Returns:
+// 	*Result: A pointer to a Result object containing information about the message's status,
+//           last updated timestamp, and version.
+// 	error: An error object if any error occurs during the operation, otherwise nil.
+func (c *queueSDKClient[T]) Done(ctx context.Context, id string) (*Result, error) {
+	message, err := c.Get(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if message == nil {
+		return nil, &IDNotFoundError{}
+	}
+	if message.IsDone() {
+		return &Result{
+			ID:                   id,
+			Status:               message.SystemInfo.Status,
+			LastUpdatedTimestamp: message.SystemInfo.LastUpdatedTimestamp,
+			Version:              message.SystemInfo.Version,
+		}, nil
+	}
+	message.MarkAsDone(c.clock.Now())
+	expr, err := expression.NewBuilder().
+		WithUpdate(expression.
+			Add(expression.Name("system_info.version"), expression.Value(1)).
+			Remove(expression.Name("queued")).
+			Remove(expression.Name("DLQ")).
+			Set(expression.Name("system_info.status"), expression.Value(message.SystemInfo.Status)).
+			Set(expression.Name("system_info.queued"), expression.Value(message.SystemInfo.InQueue)).
+			Set(expression.Name("system_info.queue_selected"), expression.Value(message.SystemInfo.SelectedFromQueue)).
+			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(message.SystemInfo.LastUpdatedTimestamp)).
+			Set(expression.Name("system_info.queue_remove_timestamp"), expression.Value(message.LastUpdatedTimestamp))).
 		WithCondition(expression.Name("system_info.version").Equal(expression.Value(message.SystemInfo.Version))).
 		Build()
 	if err != nil {

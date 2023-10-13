@@ -45,6 +45,15 @@ func (m *Message[T]) IsRemoved() bool {
 		m.SystemInfo.RemoveFromQueueTimestamp != ""
 }
 
+func (m *Message[T]) IsDone() bool {
+	return m.Queued == 0 &&
+		m.DLQ == 0 &&
+		m.SystemInfo.InQueue == 0 &&
+		m.SystemInfo.SelectedFromQueue == false &&
+		m.SystemInfo.RemoveFromQueueTimestamp != "" &&
+		m.SystemInfo.Status == StatusCompleted
+}
+
 func (m *Message[T]) IsEnqueued() bool {
 	return m.Queued == 1 &&
 		m.DLQ == 0 &&
@@ -103,6 +112,18 @@ func (m *Message[T]) MarkAsRemoved(now time.Time) {
 	m.LastUpdatedTimestamp = ts
 	m.SystemInfo.InQueue = 0
 	m.SystemInfo.SelectedFromQueue = false
+	m.SystemInfo.LastUpdatedTimestamp = ts
+	m.SystemInfo.RemoveFromQueueTimestamp = ts
+}
+
+func (m *Message[T]) MarkAsDone(now time.Time) {
+	ts := clock.FormatRFC3339(now)
+	m.Queued = 0
+	m.DLQ = 0
+	m.LastUpdatedTimestamp = ts
+	m.SystemInfo.InQueue = 0
+	m.SystemInfo.SelectedFromQueue = false
+	m.SystemInfo.Status = StatusCompleted
 	m.SystemInfo.LastUpdatedTimestamp = ts
 	m.SystemInfo.RemoveFromQueueTimestamp = ts
 }

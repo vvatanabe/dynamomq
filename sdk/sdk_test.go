@@ -131,6 +131,12 @@ func newTestMessageItemAsRemoved(id string, now time.Time) *Message[test.Message
 	return message
 }
 
+func newTestMessageItemAsDone(id string, now time.Time) *Message[test.MessageData] {
+	message := NewDefaultMessage[test.MessageData](id, test.NewMessageData(id), now)
+	message.MarkAsDone(now)
+	return message
+}
+
 func newTestMessageItemAsDLQ(id string, now time.Time) *Message[test.MessageData] {
 	message := NewDefaultMessage[test.MessageData](id, test.NewMessageData(id), now)
 	message.MarkAsDLQ(now)
@@ -1283,6 +1289,138 @@ func TestQueueSDKClientRemove(t *testing.T) {
 			}
 			if !reflect.DeepEqual(result, tt.want) {
 				t.Errorf("Remove() got = %v, want %v", result, tt.want)
+			}
+		})
+	}
+}
+
+func TestQueueSDKClientDone(t *testing.T) {
+	type args struct {
+		id string
+	}
+	tests := []struct {
+		name     string
+		setup    func(*testing.T) (*dynamodb.Client, func())
+		sdkClock clock.Clock
+		args     args
+		want     *Result
+		wantErr  error
+	}{
+		{
+			name: "IDNotProvidedError",
+			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+				return setupDynamoDB(t,
+					&types.PutRequest{
+						Item: newTestMessageItem("A-101", clock.Now()).MarshalMapUnsafe(),
+					},
+				)
+			},
+			args: args{
+				id: "",
+			},
+			want:    nil,
+			wantErr: &IDNotProvidedError{},
+		},
+		{
+			name: "IDNotFoundError",
+			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+				return setupDynamoDB(t,
+					&types.PutRequest{
+						Item: newTestMessageItem("A-101", clock.Now()).MarshalMapUnsafe(),
+					},
+				)
+			},
+			args: args{
+				id: "B-202",
+			},
+			want:    nil,
+			wantErr: &IDNotFoundError{},
+		},
+		{
+			name: "already done",
+			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+				return setupDynamoDB(t,
+					&types.PutRequest{
+						Item: newTestMessageItemAsDone("A-101",
+							time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)).
+							MarshalMapUnsafe(),
+					},
+				)
+			},
+			args: args{
+				id: "A-101",
+			},
+			want: func() *Result {
+				s := newTestMessageItemAsDone("A-101",
+					time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
+				r := &Result{
+					ID:                   s.ID,
+					Status:               s.SystemInfo.Status,
+					LastUpdatedTimestamp: s.LastUpdatedTimestamp,
+					Version:              s.SystemInfo.Version,
+				}
+				return r
+			}(),
+			wantErr: nil,
+		},
+		{
+			name: "can done",
+			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+				return setupDynamoDB(t,
+					&types.PutRequest{
+						Item: newTestMessageItem("A-101",
+							time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)).
+							MarshalMapUnsafe(),
+					},
+				)
+			},
+			sdkClock: mockClock{
+				t: time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC),
+			},
+			args: args{
+				id: "A-101",
+			},
+			want: func() *Result {
+				s := newTestMessageItem("A-101",
+					time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
+				s.MarkAsDone(time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC))
+				s.SystemInfo.Version = 2
+				r := &Result{
+					ID:                   s.ID,
+					Status:               s.SystemInfo.Status,
+					LastUpdatedTimestamp: s.LastUpdatedTimestamp,
+					Version:              s.SystemInfo.Version,
+				}
+				return r
+			}(),
+			wantErr: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			raw, clean := tt.setup(t)
+			defer clean()
+			ctx := context.Background()
+			client, err := NewQueueSDKClient[test.MessageData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
+			if err != nil {
+				t.Fatalf("NewQueueSDKClient() error = %v", err)
+				return
+			}
+			result, err := client.Done(ctx, tt.args.id)
+			if tt.wantErr != nil {
+				if err != tt.wantErr {
+					t.Errorf("Done() error = %v, wantErr %v", err, tt.wantErr)
+					return
+				}
+				return
+			}
+			if err != nil {
+				t.Errorf("Done() error = %v", err)
+				return
+			}
+			if !reflect.DeepEqual(result, tt.want) {
+				t.Errorf("Done() got = %v, want %v", result, tt.want)
 			}
 		})
 	}
