@@ -14,6 +14,7 @@ import (
 
 const (
 	defaultPollingInterval = time.Second * 10
+	defaultMaximumReceives = 0 // unlimited
 )
 
 type Option func(o *Options)
@@ -21,6 +22,12 @@ type Option func(o *Options)
 func WithPollingInterval(pollingInterval time.Duration) Option {
 	return func(o *Options) {
 		o.PollingInterval = pollingInterval
+	}
+}
+
+func WithMaximumReceives(maximumReceives int) Option {
+	return func(o *Options) {
+		o.MaximumReceives = maximumReceives
 	}
 }
 
@@ -38,6 +45,7 @@ func WithOnShutdown(onShutdown []func()) Option {
 
 type Options struct {
 	PollingInterval time.Duration
+	MaximumReceives int
 	// errorLog specifies an optional logger for errors accepting
 	// connections, unexpected behavior from handlers, and
 	// underlying FileSystem errors.
@@ -49,6 +57,7 @@ type Options struct {
 func NewConsumer[T any](client sdk.QueueSDKClient[T], processor MessageProcessor[T], opts ...Option) *Consumer[T] {
 	o := &Options{
 		PollingInterval: defaultPollingInterval,
+		MaximumReceives: defaultMaximumReceives,
 	}
 	for _, opt := range opts {
 		opt(o)
@@ -57,6 +66,7 @@ func NewConsumer[T any](client sdk.QueueSDKClient[T], processor MessageProcessor
 		client:           client,
 		messageProcessor: processor,
 		pollingInterval:  o.PollingInterval,
+		maximumReceives:  o.MaximumReceives,
 		errorLog:         o.ErrorLog,
 		onShutdown:       o.OnShutdown,
 		inShutdown:       0,
@@ -76,6 +86,7 @@ type Consumer[T any] struct {
 	messageProcessor MessageProcessor[T]
 
 	pollingInterval time.Duration
+	maximumReceives int
 	errorLog        *log.Logger
 	onShutdown      []func()
 
@@ -113,13 +124,31 @@ func (c *Consumer[T]) listen(ctx context.Context, msg *sdk.Message[T]) {
 	c.trackMessage(msg, false)
 }
 
+func (c *Consumer[T]) shouldRetry(msg *sdk.Message[T]) bool {
+	if c.maximumReceives == 0 {
+		return true
+	}
+	if msg.SystemInfo.ReceiveCount < c.maximumReceives {
+		return true
+	}
+	return false
+}
+
 func (c *Consumer[T]) processMessage(ctx context.Context, msg *sdk.Message[T]) {
 	err := c.messageProcessor.Process(msg)
 	if err != nil {
-		_, err := c.client.Restore(ctx, msg.ID)
-		if err != nil {
-			c.logf("DynamoMQ: Failed to restore a message. %s", err)
-			return
+		if c.shouldRetry(msg) {
+			_, err := c.client.Restore(ctx, msg.ID)
+			if err != nil {
+				c.logf("DynamoMQ: Failed to restore a message. %s", err)
+				return
+			}
+		} else {
+			_, err := c.client.SendToDLQ(ctx, msg.ID)
+			if err != nil {
+				c.logf("DynamoMQ: Failed to send a message to DLQ. %s", err)
+				return
+			}
 		}
 		return
 	}

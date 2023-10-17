@@ -11,6 +11,7 @@ type SystemInfo struct {
 	CreationTimestamp        string `json:"creation_timestamp" dynamodbav:"creation_timestamp"`
 	LastUpdatedTimestamp     string `json:"last_updated_timestamp" dynamodbav:"last_updated_timestamp"`
 	Status                   Status `json:"status" dynamodbav:"status"`
+	ReceiveCount             int    `json:"receive_count" dynamodbav:"receive_count"`
 	Version                  int    `json:"version" dynamodbav:"version"`
 	InQueue                  int    `json:"queued" dynamodbav:"queued"`
 	SelectedFromQueue        bool   `json:"queue_selected" dynamodbav:"queue_selected"`
@@ -29,6 +30,7 @@ func NewDefaultSystemInfo(id string, now time.Time) *SystemInfo {
 		CreationTimestamp:        ts,
 		LastUpdatedTimestamp:     ts,
 		Status:                   StatusPending,
+		ReceiveCount:             0,
 		Version:                  1,
 		InQueue:                  0,
 		SelectedFromQueue:        false,

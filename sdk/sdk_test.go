@@ -915,6 +915,7 @@ func TestQueueSDKClientPeek(t *testing.T) {
 				s := newTestMessageItemAsEnqueued("B-202", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
 				s.MarkAsPeeked(time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC))
 				s.SystemInfo.Version = 2
+				s.SystemInfo.ReceiveCount = 1
 				r := &PeekResult[test.MessageData]{
 					Result: &Result{
 						ID:                   s.ID,
@@ -950,6 +951,7 @@ func TestQueueSDKClientPeek(t *testing.T) {
 				s := newTestMessageItemAsPeeked("B-202", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
 				s.MarkAsPeeked(time.Date(2023, 12, 1, 0, 1, 1, 0, time.UTC))
 				s.SystemInfo.Version = 2
+				s.SystemInfo.ReceiveCount = 1
 				r := &PeekResult[test.MessageData]{
 					Result: &Result{
 						ID:                   s.ID,
@@ -1063,6 +1065,7 @@ func TestQueueSDKClientDequeue(t *testing.T) {
 				s.MarkAsPeeked(time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC))
 				s.MarkAsRemoved(time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC))
 				s.SystemInfo.Version = 3
+				s.SystemInfo.ReceiveCount = 1
 				r := &DequeueResult[test.MessageData]{
 					Result: &Result{
 						ID:                   s.ID,
@@ -1098,6 +1101,7 @@ func TestQueueSDKClientDequeue(t *testing.T) {
 				s.MarkAsPeeked(time.Date(2023, 12, 1, 0, 1, 1, 0, time.UTC))
 				s.MarkAsRemoved(time.Date(2023, 12, 1, 0, 1, 1, 0, time.UTC))
 				s.SystemInfo.Version = 3
+				s.SystemInfo.ReceiveCount = 1
 				r := &DequeueResult[test.MessageData]{
 					Result: &Result{
 						ID:                   s.ID,

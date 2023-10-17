@@ -60,6 +60,7 @@ type queueSDKClient[T any] struct {
 
 	retryMaxAttempts           int
 	visibilityTimeoutInMinutes int
+	maximumReceives            int
 
 	clock clock.Clock
 }
@@ -72,6 +73,7 @@ type options struct {
 	baseEndpoint               string
 	retryMaxAttempts           int
 	visibilityTimeoutInMinutes int
+	maximumReceives            int
 	dynamoDB                   *dynamodb.Client
 	clock                      clock.Clock
 }
@@ -146,6 +148,7 @@ func NewQueueSDKClient[T any](ctx context.Context, opts ...Option) (QueueSDKClie
 		baseEndpoint:               o.baseEndpoint,
 		retryMaxAttempts:           o.retryMaxAttempts,
 		visibilityTimeoutInMinutes: o.visibilityTimeoutInMinutes,
+		maximumReceives:            o.maximumReceives,
 		dynamoDB:                   o.dynamoDB,
 		clock:                      o.clock,
 	}
@@ -648,6 +651,7 @@ func (c *queueSDKClient[T]) Peek(ctx context.Context) (*PeekResult[T], error) {
 	expr, err = expression.NewBuilder().
 		WithUpdate(expression.
 			Add(expression.Name("system_info.version"), expression.Value(1)).
+			Add(expression.Name("system_info.receive_count"), expression.Value(1)).
 			Set(expression.Name("system_info.queue_selected"), expression.Value(message.SystemInfo.SelectedFromQueue)).
 			Set(expression.Name("last_updated_timestamp"), expression.Value(message.LastUpdatedTimestamp)).
 			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(message.SystemInfo.LastUpdatedTimestamp)).
@@ -765,13 +769,15 @@ func (c *queueSDKClient[T]) Remove(ctx context.Context, id string) (*Result, err
 // an appropriate error is returned.
 //
 // Parameters:
-// 	ctx context.Context: The context to use for the operation.
-// 	id string: The identifier of the message to check.
+//
+//	ctx context.Context: The context to use for the operation.
+//	id string: The identifier of the message to check.
 //
 // Returns:
-// 	*Result: A pointer to a Result object containing information about the message's status,
-//           last updated timestamp, and version.
-// 	error: An error object if any error occurs during the operation, otherwise nil.
+//
+//		*Result: A pointer to a Result object containing information about the message's status,
+//	          last updated timestamp, and version.
+//		error: An error object if any error occurs during the operation, otherwise nil.
 func (c *queueSDKClient[T]) Done(ctx context.Context, id string) (*Result, error) {
 	message, err := c.Get(ctx, id)
 	if err != nil {
