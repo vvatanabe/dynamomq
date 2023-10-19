@@ -20,7 +20,7 @@ type EnqueueResult[T any] struct {
 
 // PeekResult represents the result for the peek() API call.
 type PeekResult[T any] struct {
-	*Result                         // Embedded type for inheritance-like behavior in Go
-	TimestampMillisUTC  int64       `json:"timestamp_milliseconds_utc"`
-	PeekedMessageObject *Message[T] `json:"-"`
+	*Result                            // Embedded type for inheritance-like behavior in Go
+	PeekFromQueueTimestamp string      `json:"queue_peek_timestamp"`
+	PeekedMessageObject    *Message[T] `json:"-"`
 }

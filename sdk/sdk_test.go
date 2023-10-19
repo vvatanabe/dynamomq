@@ -923,8 +923,8 @@ func TestQueueSDKClientPeek(t *testing.T) {
 						LastUpdatedTimestamp: s.LastUpdatedTimestamp,
 						Version:              s.SystemInfo.Version,
 					},
-					TimestampMillisUTC:  s.SystemInfo.PeekUTCTimestamp,
-					PeekedMessageObject: s,
+					PeekFromQueueTimestamp: s.SystemInfo.PeekFromQueueTimestamp,
+					PeekedMessageObject:    s,
 				}
 				return r
 			}(),
@@ -959,8 +959,8 @@ func TestQueueSDKClientPeek(t *testing.T) {
 						LastUpdatedTimestamp: s.LastUpdatedTimestamp,
 						Version:              s.SystemInfo.Version,
 					},
-					TimestampMillisUTC:  s.SystemInfo.PeekUTCTimestamp,
-					PeekedMessageObject: s,
+					PeekFromQueueTimestamp: s.SystemInfo.PeekFromQueueTimestamp,
+					PeekedMessageObject:    s,
 				}
 				return r
 			}(),

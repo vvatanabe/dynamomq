@@ -33,7 +33,8 @@ func (m *Message[T]) IsQueueSelected(now time.Time, visibilityTimeout time.Durat
 	if !m.SystemInfo.SelectedFromQueue {
 		return false
 	}
-	timeDifference := now.UnixMilli() - m.SystemInfo.PeekUTCTimestamp
+	peekUTCTimestamp := clock.RFC3339ToUnixMilli(m.SystemInfo.PeekFromQueueTimestamp)
+	timeDifference := now.UnixMilli() - peekUTCTimestamp
 	return timeDifference <= visibilityTimeout.Milliseconds()
 }
 
@@ -94,14 +95,12 @@ func (m *Message[T]) MarkAsEnqueued(now time.Time) {
 
 func (m *Message[T]) MarkAsPeeked(now time.Time) {
 	ts := clock.FormatRFC3339(now)
-	unixTime := now.UnixMilli()
 	m.Queued = 1
 	m.LastUpdatedTimestamp = ts
 	m.SystemInfo.InQueue = 1
 	m.SystemInfo.SelectedFromQueue = true
 	m.SystemInfo.LastUpdatedTimestamp = ts
 	m.SystemInfo.PeekFromQueueTimestamp = ts
-	m.SystemInfo.PeekUTCTimestamp = unixTime
 	m.SystemInfo.Status = StatusProcessing
 }
 

@@ -581,7 +581,7 @@ func (c *queueSDKClient[T]) Enqueue(ctx context.Context, id string) (*EnqueueRes
 //
 // Returns:
 //   - *PeekResult: The result of the peek operation, containing details like ID, Version,
-//     LastUpdatedTimestamp, Status, and TimestampMillisUTC of the peeked item.
+//     LastUpdatedTimestamp, Status, and PeekFromQueueTimestamp of the peeked item.
 //     It also contains the ReturnValue which denotes the outcome of the operation.
 //   - error: An error encountered during the peek operation, if any. Otherwise, nil.
 //
@@ -656,7 +656,6 @@ func (c *queueSDKClient[T]) Peek(ctx context.Context) (*PeekResult[T], error) {
 			Set(expression.Name("last_updated_timestamp"), expression.Value(message.LastUpdatedTimestamp)).
 			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(message.SystemInfo.LastUpdatedTimestamp)).
 			Set(expression.Name("system_info.queue_peek_timestamp"), expression.Value(message.SystemInfo.PeekFromQueueTimestamp)).
-			Set(expression.Name("system_info.peek_utc_timestamp"), expression.Value(message.SystemInfo.PeekUTCTimestamp)).
 			Set(expression.Name("system_info.status"), expression.Value(message.SystemInfo.Status))).
 		WithCondition(expression.Name("system_info.version").Equal(expression.Value(selectedVersion))).
 		Build()
@@ -674,8 +673,8 @@ func (c *queueSDKClient[T]) Peek(ctx context.Context) (*PeekResult[T], error) {
 			LastUpdatedTimestamp: peeked.SystemInfo.LastUpdatedTimestamp,
 			Version:              peeked.SystemInfo.Version,
 		},
-		TimestampMillisUTC:  peeked.SystemInfo.PeekUTCTimestamp,
-		PeekedMessageObject: peeked,
+		PeekFromQueueTimestamp: peeked.SystemInfo.PeekFromQueueTimestamp,
+		PeekedMessageObject:    peeked,
 	}, nil
 }
 
