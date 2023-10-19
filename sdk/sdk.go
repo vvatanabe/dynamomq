@@ -21,7 +21,7 @@ const (
 	AwsRegionDefault                  = "us-east-1"
 	AwsProfileDefault                 = "default"
 	DefaultTableName                  = "DynamoMQPriorityQueue"
-	QueueingIndexName                 = "queueud-last_updated_timestamp-index"
+	QueueingIndexName                 = "queued-last_updated_timestamp-index"
 	DlqQueueingIndexName              = "dlq-last_updated_timestamp-index"
 	DefaultRetryMaxAttempts           = 10
 	DefaultVisibilityTimeoutInMinutes = 1

@@ -37,7 +37,7 @@
       }
     },
     {
-      "IndexName": "queueud-last_updated_timestamp-index",
+      "IndexName": "queued-last_updated_timestamp-index",
       "KeySchema": [
         {
           "AttributeName": "queued",

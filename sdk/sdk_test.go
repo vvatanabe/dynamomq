@@ -74,7 +74,7 @@ func setupDynamoDB(t *testing.T, initialData ...*types.PutRequest) (client *dyna
 					},
 				},
 				{
-					IndexName: aws.String("queueud-last_updated_timestamp-index"),
+					IndexName: aws.String("queued-last_updated_timestamp-index"),
 					KeySchema: []types.KeySchemaElement{
 						{
 							AttributeName: aws.String("queued"),
