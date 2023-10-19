@@ -234,7 +234,7 @@ func (c *queueSDKClient[T]) GetQueueStats(ctx context.Context) (*QueueStats, err
 			if err != nil {
 				return nil, &UnmarshalingAttributeError{Cause: err}
 			}
-			if item.SystemInfo.SelectedFromQueue {
+			if item.SystemInfo.Status == StatusProcessing {
 				peekedRecords++
 				if len(processingIDs) < 100 {
 					processingIDs = append(processingIDs, item.ID)
@@ -535,9 +535,6 @@ func (c *queueSDKClient[T]) Enqueue(ctx context.Context, id string) (*EnqueueRes
 			expression.Name("system_info.queued"),
 			expression.Value(retrieved.SystemInfo.InQueue),
 		).Set(
-			expression.Name("system_info.queue_selected"),
-			expression.Value(retrieved.SystemInfo.SelectedFromQueue),
-		).Set(
 			expression.Name("last_updated_timestamp"),
 			expression.Value(retrieved.LastUpdatedTimestamp),
 		).Set(
@@ -652,7 +649,6 @@ func (c *queueSDKClient[T]) Peek(ctx context.Context) (*PeekResult[T], error) {
 		WithUpdate(expression.
 			Add(expression.Name("system_info.version"), expression.Value(1)).
 			Add(expression.Name("system_info.receive_count"), expression.Value(1)).
-			Set(expression.Name("system_info.queue_selected"), expression.Value(message.SystemInfo.SelectedFromQueue)).
 			Set(expression.Name("last_updated_timestamp"), expression.Value(message.LastUpdatedTimestamp)).
 			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(message.SystemInfo.LastUpdatedTimestamp)).
 			Set(expression.Name("system_info.queue_peek_timestamp"), expression.Value(message.SystemInfo.PeekFromQueueTimestamp)).
@@ -741,7 +737,6 @@ func (c *queueSDKClient[T]) Remove(ctx context.Context, id string) (*Result, err
 			Remove(expression.Name("queued")).
 			Remove(expression.Name("DLQ")).
 			Set(expression.Name("system_info.queued"), expression.Value(message.SystemInfo.InQueue)).
-			Set(expression.Name("system_info.queue_selected"), expression.Value(message.SystemInfo.SelectedFromQueue)).
 			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(message.SystemInfo.LastUpdatedTimestamp)).
 			Set(expression.Name("system_info.queue_remove_timestamp"), expression.Value(message.LastUpdatedTimestamp))).
 		WithCondition(expression.Name("system_info.version").Equal(expression.Value(message.SystemInfo.Version))).
@@ -801,7 +796,6 @@ func (c *queueSDKClient[T]) Done(ctx context.Context, id string) (*Result, error
 			Remove(expression.Name("DLQ")).
 			Set(expression.Name("system_info.status"), expression.Value(message.SystemInfo.Status)).
 			Set(expression.Name("system_info.queued"), expression.Value(message.SystemInfo.InQueue)).
-			Set(expression.Name("system_info.queue_selected"), expression.Value(message.SystemInfo.SelectedFromQueue)).
 			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(message.SystemInfo.LastUpdatedTimestamp)).
 			Set(expression.Name("system_info.queue_remove_timestamp"), expression.Value(message.LastUpdatedTimestamp))).
 		WithCondition(expression.Name("system_info.version").Equal(expression.Value(message.SystemInfo.Version))).
@@ -845,7 +839,7 @@ func (c *queueSDKClient[T]) Restore(ctx context.Context, id string) (*Result, er
 	if message == nil {
 		return nil, &IDNotFoundError{}
 	}
-	if message.IsEnqueued() {
+	if message.IsReady() {
 		return &Result{
 			ID:                   id,
 			Status:               message.SystemInfo.Status,
@@ -861,7 +855,6 @@ func (c *queueSDKClient[T]) Restore(ctx context.Context, id string) (*Result, er
 			Set(expression.Name("queued"), expression.Value(message.Queued)).
 			Set(expression.Name("last_updated_timestamp"), expression.Value(message.LastUpdatedTimestamp)).
 			Set(expression.Name("system_info.queued"), expression.Value(message.SystemInfo.InQueue)).
-			Set(expression.Name("system_info.queue_selected"), expression.Value(message.SystemInfo.SelectedFromQueue)).
 			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(message.SystemInfo.LastUpdatedTimestamp)).
 			Set(expression.Name("system_info.queue_add_timestamp"), expression.Value(message.SystemInfo.AddToQueueTimestamp)).
 			Set(expression.Name("system_info.status"), expression.Value(message.SystemInfo.Status))).
@@ -920,7 +913,6 @@ func (c *queueSDKClient[T]) SendToDLQ(ctx context.Context, id string) (*Result, 
 			Remove(expression.Name("queued")).
 			Set(expression.Name("DLQ"), expression.Value(message.DLQ)).
 			Set(expression.Name("system_info.queued"), expression.Value(message.SystemInfo.InQueue)).
-			Set(expression.Name("system_info.queue_selected"), expression.Value(message.SystemInfo.SelectedFromQueue)).
 			Set(expression.Name("last_updated_timestamp"), expression.Value(message.LastUpdatedTimestamp)).
 			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(message.SystemInfo.LastUpdatedTimestamp)).
 			Set(expression.Name("system_info.dlq_add_timestamp"), expression.Value(message.SystemInfo.AddToDLQTimestamp)).

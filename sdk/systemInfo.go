@@ -14,7 +14,6 @@ type SystemInfo struct {
 	ReceiveCount             int    `json:"receive_count" dynamodbav:"receive_count"`
 	Version                  int    `json:"version" dynamodbav:"version"`
 	InQueue                  int    `json:"queued" dynamodbav:"queued"`
-	SelectedFromQueue        bool   `json:"queue_selected" dynamodbav:"queue_selected"`
 	AddToQueueTimestamp      string `json:"queue_add_timestamp" dynamodbav:"queue_add_timestamp"`
 	AddToDLQTimestamp        string `json:"dlq_add_timestamp" dynamodbav:"dlq_add_timestamp"`
 	PeekFromQueueTimestamp   string `json:"queue_peek_timestamp" dynamodbav:"queue_peek_timestamp"`
@@ -31,7 +30,6 @@ func NewDefaultSystemInfo(id string, now time.Time) *SystemInfo {
 		ReceiveCount:             0,
 		Version:                  1,
 		InQueue:                  0,
-		SelectedFromQueue:        false,
 		AddToQueueTimestamp:      "",
 		AddToDLQTimestamp:        "",
 		PeekFromQueueTimestamp:   "",

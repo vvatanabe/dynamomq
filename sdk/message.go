@@ -30,7 +30,7 @@ type Message[T any] struct {
 }
 
 func (m *Message[T]) IsQueueSelected(now time.Time, visibilityTimeout time.Duration) bool {
-	if !m.SystemInfo.SelectedFromQueue {
+	if m.SystemInfo.Status != StatusProcessing {
 		return false
 	}
 	peekUTCTimestamp := clock.RFC3339ToUnixMilli(m.SystemInfo.PeekFromQueueTimestamp)
@@ -42,7 +42,6 @@ func (m *Message[T]) IsRemoved() bool {
 	return m.Queued == 0 &&
 		m.DLQ == 0 &&
 		m.SystemInfo.InQueue == 0 &&
-		m.SystemInfo.SelectedFromQueue == false &&
 		m.SystemInfo.RemoveFromQueueTimestamp != ""
 }
 
@@ -50,16 +49,14 @@ func (m *Message[T]) IsDone() bool {
 	return m.Queued == 0 &&
 		m.DLQ == 0 &&
 		m.SystemInfo.InQueue == 0 &&
-		m.SystemInfo.SelectedFromQueue == false &&
 		m.SystemInfo.RemoveFromQueueTimestamp != "" &&
 		m.SystemInfo.Status == StatusCompleted
 }
 
-func (m *Message[T]) IsEnqueued() bool {
+func (m *Message[T]) IsReady() bool {
 	return m.Queued == 1 &&
 		m.DLQ == 0 &&
 		m.SystemInfo.InQueue == 1 &&
-		m.SystemInfo.SelectedFromQueue == false &&
 		m.SystemInfo.Status == StatusReady &&
 		m.SystemInfo.AddToQueueTimestamp != "" &&
 		m.SystemInfo.RemoveFromQueueTimestamp == ""
@@ -69,7 +66,6 @@ func (m *Message[T]) IsDLQ() bool {
 	return m.Queued == 0 &&
 		m.DLQ == 1 &&
 		m.SystemInfo.InQueue == 0 &&
-		m.SystemInfo.SelectedFromQueue == false &&
 		m.SystemInfo.AddToDLQTimestamp != "" &&
 		m.SystemInfo.Status == StatusInDLQ
 }
@@ -87,7 +83,6 @@ func (m *Message[T]) MarkAsEnqueued(now time.Time) {
 	m.DLQ = 0
 	m.LastUpdatedTimestamp = ts
 	m.SystemInfo.InQueue = 1
-	m.SystemInfo.SelectedFromQueue = false
 	m.SystemInfo.LastUpdatedTimestamp = ts
 	m.SystemInfo.AddToQueueTimestamp = ts
 	m.SystemInfo.Status = StatusReady
@@ -98,7 +93,6 @@ func (m *Message[T]) MarkAsPeeked(now time.Time) {
 	m.Queued = 1
 	m.LastUpdatedTimestamp = ts
 	m.SystemInfo.InQueue = 1
-	m.SystemInfo.SelectedFromQueue = true
 	m.SystemInfo.LastUpdatedTimestamp = ts
 	m.SystemInfo.PeekFromQueueTimestamp = ts
 	m.SystemInfo.Status = StatusProcessing
@@ -110,7 +104,6 @@ func (m *Message[T]) MarkAsRemoved(now time.Time) {
 	m.DLQ = 0
 	m.LastUpdatedTimestamp = ts
 	m.SystemInfo.InQueue = 0
-	m.SystemInfo.SelectedFromQueue = false
 	m.SystemInfo.LastUpdatedTimestamp = ts
 	m.SystemInfo.RemoveFromQueueTimestamp = ts
 }
@@ -121,7 +114,6 @@ func (m *Message[T]) MarkAsDone(now time.Time) {
 	m.DLQ = 0
 	m.LastUpdatedTimestamp = ts
 	m.SystemInfo.InQueue = 0
-	m.SystemInfo.SelectedFromQueue = false
 	m.SystemInfo.Status = StatusCompleted
 	m.SystemInfo.LastUpdatedTimestamp = ts
 	m.SystemInfo.RemoveFromQueueTimestamp = ts
@@ -133,7 +125,6 @@ func (m *Message[T]) MarkAsDLQ(now time.Time) {
 	m.DLQ = 1
 	m.LastUpdatedTimestamp = ts
 	m.SystemInfo.InQueue = 0
-	m.SystemInfo.SelectedFromQueue = false
 	m.SystemInfo.LastUpdatedTimestamp = ts
 	m.SystemInfo.AddToDLQTimestamp = ts
 	m.SystemInfo.Status = StatusInDLQ
