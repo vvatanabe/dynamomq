@@ -258,7 +258,7 @@ func (c *CLI) peek(ctx context.Context, _ []string) {
 	c.Message = rr.PeekedMessageObject
 	printMessageWithData(
 		fmt.Sprintf("Peek was successful ... record peeked is: [%s]\n", c.Message.ID),
-		c.Message.SystemInfo)
+		c.Message.GetSystemInfo())
 	stats, err := c.Client.GetQueueStats(ctx)
 	if err != nil {
 		printError(err)
@@ -300,7 +300,7 @@ func (c *CLI) system(_ context.Context, _ []string) {
 		printCLIModeRestriction("`system` or `sys`")
 		return
 	}
-	printMessageWithData("ID's system info:\n", c.Message.SystemInfo)
+	printMessageWithData("ID's system info:\n", c.Message.GetSystemInfo())
 }
 
 func (c *CLI) reset(ctx context.Context, _ []string) {
@@ -318,7 +318,7 @@ func (c *CLI) reset(ctx context.Context, _ []string) {
 		printError(err)
 		return
 	}
-	printMessageWithData("Reset system info:\n", c.Message.SystemInfo)
+	printMessageWithData("Reset system info:\n", c.Message.GetSystemInfo())
 }
 
 func (c *CLI) ready(ctx context.Context, _ []string) {
@@ -338,7 +338,7 @@ func (c *CLI) ready(ctx context.Context, _ []string) {
 		printError(err)
 		return
 	}
-	printMessageWithData("Ready system info:\n", c.Message.SystemInfo)
+	printMessageWithData("Ready system info:\n", c.Message.GetSystemInfo())
 }
 
 func (c *CLI) done(ctx context.Context, _ []string) {
@@ -471,9 +471,9 @@ func (c *CLI) enqueue(ctx context.Context, _ []string) {
 		return
 	}
 	// convert under_construction to ready to ship
-	if message.SystemInfo.Status == sdk.StatusPending {
+	if message.Status == sdk.StatusPending {
 		message.ResetSystemInfo(clock.Now())
-		message.SystemInfo.Status = sdk.StatusReady
+		message.Status = sdk.StatusReady
 		err = c.Client.Put(ctx, message)
 		if err != nil {
 			printError(err)
@@ -485,7 +485,7 @@ func (c *CLI) enqueue(ctx context.Context, _ []string) {
 		printError(fmt.Sprintf("Enqueue has failed! message: %s", err))
 		return
 	}
-	printMessageWithData("Record's system info:\n", rr.Message.SystemInfo)
+	printMessageWithData("Record's system info:\n", rr.Message.GetSystemInfo())
 	stats, err := c.Client.GetQueueStats(ctx)
 	if err != nil {
 		printError(err)

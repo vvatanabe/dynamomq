@@ -831,7 +831,7 @@ func TestQueueSDKClientEnqueue(t *testing.T) {
 				Message: func() *Message[test.MessageData] {
 					s := newTestMessageItemAsReady("A-101", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
 					s.MarkAsEnqueued(time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC))
-					s.SystemInfo.Version = 2
+					s.Version = 2
 					return s
 				}(),
 			},
@@ -914,16 +914,16 @@ func TestQueueSDKClientPeek(t *testing.T) {
 			want: func() *PeekResult[test.MessageData] {
 				s := newTestMessageItemAsEnqueued("B-202", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
 				s.MarkAsPeeked(time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC))
-				s.SystemInfo.Version = 2
-				s.SystemInfo.ReceiveCount = 1
+				s.Version = 2
+				s.ReceiveCount = 1
 				r := &PeekResult[test.MessageData]{
 					Result: &Result{
 						ID:                   s.ID,
-						Status:               s.SystemInfo.Status,
+						Status:               s.Status,
 						LastUpdatedTimestamp: s.LastUpdatedTimestamp,
-						Version:              s.SystemInfo.Version,
+						Version:              s.Version,
 					},
-					PeekFromQueueTimestamp: s.SystemInfo.PeekFromQueueTimestamp,
+					PeekFromQueueTimestamp: s.PeekFromQueueTimestamp,
 					PeekedMessageObject:    s,
 				}
 				return r
@@ -950,16 +950,16 @@ func TestQueueSDKClientPeek(t *testing.T) {
 			want: func() *PeekResult[test.MessageData] {
 				s := newTestMessageItemAsPeeked("B-202", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
 				s.MarkAsPeeked(time.Date(2023, 12, 1, 0, 1, 1, 0, time.UTC))
-				s.SystemInfo.Version = 2
-				s.SystemInfo.ReceiveCount = 1
+				s.Version = 2
+				s.ReceiveCount = 1
 				r := &PeekResult[test.MessageData]{
 					Result: &Result{
 						ID:                   s.ID,
-						Status:               s.SystemInfo.Status,
+						Status:               s.Status,
 						LastUpdatedTimestamp: s.LastUpdatedTimestamp,
-						Version:              s.SystemInfo.Version,
+						Version:              s.Version,
 					},
-					PeekFromQueueTimestamp: s.SystemInfo.PeekFromQueueTimestamp,
+					PeekFromQueueTimestamp: s.PeekFromQueueTimestamp,
 					PeekedMessageObject:    s,
 				}
 				return r
@@ -1064,14 +1064,14 @@ func TestQueueSDKClientDequeue(t *testing.T) {
 				s := newTestMessageItemAsEnqueued("B-202", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
 				s.MarkAsPeeked(time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC))
 				s.MarkAsRemoved(time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC))
-				s.SystemInfo.Version = 3
-				s.SystemInfo.ReceiveCount = 1
+				s.Version = 3
+				s.ReceiveCount = 1
 				r := &DequeueResult[test.MessageData]{
 					Result: &Result{
 						ID:                   s.ID,
-						Status:               s.SystemInfo.Status,
+						Status:               s.Status,
 						LastUpdatedTimestamp: s.LastUpdatedTimestamp,
-						Version:              s.SystemInfo.Version,
+						Version:              s.Version,
 					},
 					DequeuedMessageObject: s,
 				}
@@ -1100,14 +1100,14 @@ func TestQueueSDKClientDequeue(t *testing.T) {
 				s := newTestMessageItemAsPeeked("B-202", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
 				s.MarkAsPeeked(time.Date(2023, 12, 1, 0, 1, 1, 0, time.UTC))
 				s.MarkAsRemoved(time.Date(2023, 12, 1, 0, 1, 1, 0, time.UTC))
-				s.SystemInfo.Version = 3
-				s.SystemInfo.ReceiveCount = 1
+				s.Version = 3
+				s.ReceiveCount = 1
 				r := &DequeueResult[test.MessageData]{
 					Result: &Result{
 						ID:                   s.ID,
-						Status:               s.SystemInfo.Status,
+						Status:               s.Status,
 						LastUpdatedTimestamp: s.LastUpdatedTimestamp,
-						Version:              s.SystemInfo.Version,
+						Version:              s.Version,
 					},
 					DequeuedMessageObject: s,
 				}
@@ -1227,9 +1227,9 @@ func TestQueueSDKClientRemove(t *testing.T) {
 					time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
 				r := &Result{
 					ID:                   s.ID,
-					Status:               s.SystemInfo.Status,
+					Status:               s.Status,
 					LastUpdatedTimestamp: s.LastUpdatedTimestamp,
-					Version:              s.SystemInfo.Version,
+					Version:              s.Version,
 				}
 				return r
 			}(),
@@ -1256,12 +1256,12 @@ func TestQueueSDKClientRemove(t *testing.T) {
 				s := newTestMessageItem("A-101",
 					time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
 				s.MarkAsRemoved(time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC))
-				s.SystemInfo.Version = 2
+				s.Version = 2
 				r := &Result{
 					ID:                   s.ID,
-					Status:               s.SystemInfo.Status,
+					Status:               s.Status,
 					LastUpdatedTimestamp: s.LastUpdatedTimestamp,
-					Version:              s.SystemInfo.Version,
+					Version:              s.Version,
 				}
 				return r
 			}(),
@@ -1359,9 +1359,9 @@ func TestQueueSDKClientDone(t *testing.T) {
 					time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
 				r := &Result{
 					ID:                   s.ID,
-					Status:               s.SystemInfo.Status,
+					Status:               s.Status,
 					LastUpdatedTimestamp: s.LastUpdatedTimestamp,
-					Version:              s.SystemInfo.Version,
+					Version:              s.Version,
 				}
 				return r
 			}(),
@@ -1388,12 +1388,12 @@ func TestQueueSDKClientDone(t *testing.T) {
 				s := newTestMessageItem("A-101",
 					time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
 				s.MarkAsDone(time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC))
-				s.SystemInfo.Version = 2
+				s.Version = 2
 				r := &Result{
 					ID:                   s.ID,
-					Status:               s.SystemInfo.Status,
+					Status:               s.Status,
 					LastUpdatedTimestamp: s.LastUpdatedTimestamp,
-					Version:              s.SystemInfo.Version,
+					Version:              s.Version,
 				}
 				return r
 			}(),
@@ -1491,9 +1491,9 @@ func TestQueueSDKClientRestore(t *testing.T) {
 					time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
 				r := &Result{
 					ID:                   s.ID,
-					Status:               s.SystemInfo.Status,
+					Status:               s.Status,
 					LastUpdatedTimestamp: s.LastUpdatedTimestamp,
-					Version:              s.SystemInfo.Version,
+					Version:              s.Version,
 				}
 				return r
 			}(),
@@ -1520,12 +1520,12 @@ func TestQueueSDKClientRestore(t *testing.T) {
 				s := newTestMessageItemAsPeeked("A-101",
 					time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
 				s.MarkAsEnqueued(time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC))
-				s.SystemInfo.Version = 2
+				s.Version = 2
 				r := &Result{
 					ID:                   s.ID,
-					Status:               s.SystemInfo.Status,
+					Status:               s.Status,
 					LastUpdatedTimestamp: s.LastUpdatedTimestamp,
-					Version:              s.SystemInfo.Version,
+					Version:              s.Version,
 				}
 				return r
 			}(),
@@ -1623,9 +1623,9 @@ func TestQueueSDKClientSendToDLQ(t *testing.T) {
 					time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
 				r := &Result{
 					ID:                   s.ID,
-					Status:               s.SystemInfo.Status,
+					Status:               s.Status,
 					LastUpdatedTimestamp: s.LastUpdatedTimestamp,
-					Version:              s.SystemInfo.Version,
+					Version:              s.Version,
 				}
 				return r
 			}(),
@@ -1652,12 +1652,12 @@ func TestQueueSDKClientSendToDLQ(t *testing.T) {
 				s := newTestMessageItemAsDLQ("A-101",
 					time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
 				s.MarkAsDLQ(time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC))
-				s.SystemInfo.Version = 2
+				s.Version = 2
 				r := &Result{
 					ID:                   s.ID,
-					Status:               s.SystemInfo.Status,
+					Status:               s.Status,
 					LastUpdatedTimestamp: s.LastUpdatedTimestamp,
-					Version:              s.SystemInfo.Version,
+					Version:              s.Version,
 				}
 				return r
 			}(),
@@ -1757,12 +1757,12 @@ func TestQueueSDKClientTouch(t *testing.T) {
 				s := newTestMessageItem("A-101",
 					time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
 				s.Touch(time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC))
-				s.SystemInfo.Version = 2
+				s.Version = 2
 				r := &Result{
 					ID:                   s.ID,
-					Status:               s.SystemInfo.Status,
+					Status:               s.Status,
 					LastUpdatedTimestamp: s.LastUpdatedTimestamp,
-					Version:              s.SystemInfo.Version,
+					Version:              s.Version,
 				}
 				return r
 			}(),
@@ -1873,7 +1873,7 @@ func TestQueueSDKClientList(t *testing.T) {
 				return
 			}
 			sort.Slice(result, func(i, j int) bool {
-				return result[i].SystemInfo.LastUpdatedTimestamp < result[j].SystemInfo.LastUpdatedTimestamp
+				return result[i].LastUpdatedTimestamp < result[j].LastUpdatedTimestamp
 			})
 			if !reflect.DeepEqual(result, tt.want) {
 				t.Errorf("List() got = %v, want %v", result, tt.want)
@@ -2008,7 +2008,7 @@ func TestQueueSDKClientListExtendedIDs(t *testing.T) {
 				for i := 0; i < 10; i++ {
 					item := newTestMessageItem(fmt.Sprintf("A-%d", i),
 						time.Date(2023, 12, 1, 0, 0, i, 0, time.UTC))
-					ids = append(ids, fmt.Sprintf("ID: %s, status: %s", item.ID, item.SystemInfo.Status))
+					ids = append(ids, fmt.Sprintf("ID: %s, status: %s", item.ID, item.Status))
 				}
 				return ids
 			}(),

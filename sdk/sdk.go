@@ -200,7 +200,6 @@ func NewQueueSDKClient[T any](ctx context.Context, opts ...Option) (QueueSDKClie
 // until all records have been fetched or an error occurs.
 func (c *queueSDKClient[T]) GetQueueStats(ctx context.Context) (*QueueStats, error) {
 	expr, err := expression.NewBuilder().
-		WithProjection(expression.NamesList(expression.Name("id"), expression.Name("system_info"))).
 		WithKeyCondition(expression.KeyEqual(expression.Key("queued"), expression.Value(1))).
 		Build()
 	if err != nil {
@@ -213,7 +212,6 @@ func (c *queueSDKClient[T]) GetQueueStats(ctx context.Context) (*QueueStats, err
 	processingIDs := make([]string, 0)
 	for {
 		queryOutput, err := c.dynamoDB.Query(ctx, &dynamodb.QueryInput{
-			ProjectionExpression:      expr.Projection(),
 			IndexName:                 aws.String(QueueingIndexName),
 			TableName:                 aws.String(c.tableName),
 			ExpressionAttributeNames:  expr.Names(),
@@ -234,7 +232,7 @@ func (c *queueSDKClient[T]) GetQueueStats(ctx context.Context) (*QueueStats, err
 			if err != nil {
 				return nil, &UnmarshalingAttributeError{Cause: err}
 			}
-			if item.SystemInfo.Status == StatusProcessing {
+			if item.Status == StatusProcessing {
 				peekedRecords++
 				if len(processingIDs) < 100 {
 					processingIDs = append(processingIDs, item.ID)
@@ -274,10 +272,6 @@ func (c *queueSDKClient[T]) GetQueueStats(ctx context.Context) (*QueueStats, err
 // until all records have been fetched or an error occurs.
 func (c *queueSDKClient[T]) GetDLQStats(ctx context.Context) (*DLQStats, error) {
 	expr, err := expression.NewBuilder().
-		WithProjection(expression.NamesList(
-			expression.Name("id"),
-			expression.Name("DLQ"),
-			expression.Name("system_info"))).
 		WithKeyCondition(expression.KeyEqual(expression.Key("DLQ"), expression.Value(1))).
 		Build()
 	if err != nil {
@@ -288,7 +282,6 @@ func (c *queueSDKClient[T]) GetDLQStats(ctx context.Context) (*DLQStats, error) 
 	listBANs := make([]string, 0)
 	for {
 		resp, err := c.dynamoDB.Query(ctx, &dynamodb.QueryInput{
-			ProjectionExpression:      expr.Projection(),
 			IndexName:                 aws.String(DlqQueueingIndexName),
 			TableName:                 aws.String(c.tableName),
 			ExpressionAttributeNames:  expr.Names(),
@@ -455,22 +448,21 @@ func (c *queueSDKClient[T]) UpdateStatus(ctx context.Context, id string, newStat
 	if message == nil {
 		return nil, &IDNotFoundError{}
 	}
-	prevStatus := message.SystemInfo.Status
+	prevStatus := message.Status
 	if prevStatus == newStatus {
 		return &Result{
 			ID:                   message.ID,
 			Status:               newStatus,
-			LastUpdatedTimestamp: message.SystemInfo.LastUpdatedTimestamp,
-			Version:              message.SystemInfo.Version,
+			LastUpdatedTimestamp: message.LastUpdatedTimestamp,
+			Version:              message.Version,
 		}, nil
 	}
 	message.ChangeStatus(newStatus, c.clock.Now())
 	expr, err := expression.NewBuilder().
-		WithUpdate(expression.Add(expression.Name("system_info.version"), expression.Value(1)).
-			Set(expression.Name("system_info.status"), expression.Value(message.SystemInfo.Status)).
-			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(message.SystemInfo.LastUpdatedTimestamp)).
+		WithUpdate(expression.Add(expression.Name("version"), expression.Value(1)).
+			Set(expression.Name("status"), expression.Value(message.Status)).
 			Set(expression.Name("last_updated_timestamp"), expression.Value(message.LastUpdatedTimestamp))).
-		WithCondition(expression.Name("system_info.version").Equal(expression.Value(message.SystemInfo.Version))).
+		WithCondition(expression.Name("version").Equal(expression.Value(message.Version))).
 		Build()
 	if err != nil {
 		return nil, BuildingExpressionError{Cause: err}
@@ -480,10 +472,10 @@ func (c *queueSDKClient[T]) UpdateStatus(ctx context.Context, id string, newStat
 		return nil, err
 	}
 	return &Result{
-		ID:                   item.SystemInfo.ID,
-		Status:               item.SystemInfo.Status,
-		LastUpdatedTimestamp: item.SystemInfo.LastUpdatedTimestamp,
-		Version:              item.SystemInfo.Version,
+		ID:                   item.ID,
+		Status:               item.Status,
+		LastUpdatedTimestamp: item.LastUpdatedTimestamp,
+		Version:              item.Version,
 	}, nil
 }
 
@@ -516,7 +508,7 @@ func (c *queueSDKClient[T]) Enqueue(ctx context.Context, id string) (*EnqueueRes
 	if retrieved == nil {
 		return nil, &IDNotFoundError{}
 	}
-	preStatus := retrieved.SystemInfo.Status
+	preStatus := retrieved.Status
 	if preStatus == StatusPending {
 		return nil, &RecordNotConstructedError{}
 	}
@@ -526,29 +518,23 @@ func (c *queueSDKClient[T]) Enqueue(ctx context.Context, id string) (*EnqueueRes
 	retrieved.MarkAsEnqueued(c.clock.Now())
 	expr, err := expression.NewBuilder().
 		WithUpdate(expression.Add(
-			expression.Name("system_info.version"),
+			expression.Name("version"),
 			expression.Value(1),
 		).Set(
 			expression.Name("queued"),
 			expression.Value(retrieved.Queued),
 		).Set(
-			expression.Name("system_info.queued"),
-			expression.Value(retrieved.SystemInfo.InQueue),
-		).Set(
 			expression.Name("last_updated_timestamp"),
 			expression.Value(retrieved.LastUpdatedTimestamp),
 		).Set(
-			expression.Name("system_info.last_updated_timestamp"),
-			expression.Value(retrieved.SystemInfo.LastUpdatedTimestamp),
+			expression.Name("queue_add_timestamp"),
+			expression.Value(retrieved.AddToQueueTimestamp),
 		).Set(
-			expression.Name("system_info.queue_add_timestamp"),
-			expression.Value(retrieved.SystemInfo.AddToQueueTimestamp),
-		).Set(
-			expression.Name("system_info.status"),
-			expression.Value(retrieved.SystemInfo.Status),
+			expression.Name("status"),
+			expression.Value(retrieved.Status),
 		)).
-		WithCondition(expression.Name("system_info.version").
-			Equal(expression.Value(retrieved.SystemInfo.Version))).
+		WithCondition(expression.Name("version").
+			Equal(expression.Value(retrieved.Version))).
 		Build()
 	if err != nil {
 		return nil, &BuildingExpressionError{Cause: err}
@@ -560,9 +546,9 @@ func (c *queueSDKClient[T]) Enqueue(ctx context.Context, id string) (*EnqueueRes
 	return &EnqueueResult[T]{
 		Result: &Result{
 			ID:                   enqueued.ID,
-			Status:               enqueued.SystemInfo.Status,
-			LastUpdatedTimestamp: enqueued.SystemInfo.LastUpdatedTimestamp,
-			Version:              enqueued.SystemInfo.Version,
+			Status:               enqueued.Status,
+			LastUpdatedTimestamp: enqueued.LastUpdatedTimestamp,
+			Version:              enqueued.Version,
 		},
 		Message: enqueued,
 	}, nil
@@ -587,10 +573,6 @@ func (c *queueSDKClient[T]) Enqueue(ctx context.Context, id string) (*EnqueueRes
 // avoid re-indexing the order.
 func (c *queueSDKClient[T]) Peek(ctx context.Context) (*PeekResult[T], error) {
 	expr, err := expression.NewBuilder().
-		WithProjection(expression.NamesList(
-			expression.Name("id"),
-			expression.Name("queued"),
-			expression.Name("system_info"))).
 		WithKeyCondition(expression.Key("queued").Equal(expression.Value(1))).
 		Build()
 	if err != nil {
@@ -604,7 +586,6 @@ func (c *queueSDKClient[T]) Peek(ctx context.Context) (*PeekResult[T], error) {
 	)
 	for {
 		queryResult, err := c.dynamoDB.Query(ctx, &dynamodb.QueryInput{
-			ProjectionExpression:      expr.Projection(),
 			IndexName:                 aws.String(QueueingIndexName),
 			TableName:                 aws.String(c.tableName),
 			KeyConditionExpression:    expr.KeyCondition(),
@@ -626,7 +607,7 @@ func (c *queueSDKClient[T]) Peek(ctx context.Context) (*PeekResult[T], error) {
 			visibilityTimeout := time.Duration(c.visibilityTimeoutInMinutes) * time.Minute
 			if !item.IsQueueSelected(c.clock.Now(), visibilityTimeout) {
 				selectedID = item.ID
-				selectedVersion = item.SystemInfo.Version
+				selectedVersion = item.Version
 				recordForPeekIsFound = true
 				break
 			}
@@ -647,13 +628,12 @@ func (c *queueSDKClient[T]) Peek(ctx context.Context) (*PeekResult[T], error) {
 	// please note, we are not updating top-level attribute `last_updated_timestamp` in order to avoid re-indexing the order
 	expr, err = expression.NewBuilder().
 		WithUpdate(expression.
-			Add(expression.Name("system_info.version"), expression.Value(1)).
-			Add(expression.Name("system_info.receive_count"), expression.Value(1)).
+			Add(expression.Name("version"), expression.Value(1)).
+			Add(expression.Name("receive_count"), expression.Value(1)).
 			Set(expression.Name("last_updated_timestamp"), expression.Value(message.LastUpdatedTimestamp)).
-			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(message.SystemInfo.LastUpdatedTimestamp)).
-			Set(expression.Name("system_info.queue_peek_timestamp"), expression.Value(message.SystemInfo.PeekFromQueueTimestamp)).
-			Set(expression.Name("system_info.status"), expression.Value(message.SystemInfo.Status))).
-		WithCondition(expression.Name("system_info.version").Equal(expression.Value(selectedVersion))).
+			Set(expression.Name("queue_peek_timestamp"), expression.Value(message.PeekFromQueueTimestamp)).
+			Set(expression.Name("status"), expression.Value(message.Status))).
+		WithCondition(expression.Name("version").Equal(expression.Value(selectedVersion))).
 		Build()
 	if err != nil {
 		return nil, &BuildingExpressionError{Cause: err}
@@ -665,11 +645,11 @@ func (c *queueSDKClient[T]) Peek(ctx context.Context) (*PeekResult[T], error) {
 	return &PeekResult[T]{
 		Result: &Result{
 			ID:                   peeked.ID,
-			Status:               peeked.SystemInfo.Status,
-			LastUpdatedTimestamp: peeked.SystemInfo.LastUpdatedTimestamp,
-			Version:              peeked.SystemInfo.Version,
+			Status:               peeked.Status,
+			LastUpdatedTimestamp: peeked.LastUpdatedTimestamp,
+			Version:              peeked.Version,
 		},
-		PeekFromQueueTimestamp: peeked.SystemInfo.PeekFromQueueTimestamp,
+		PeekFromQueueTimestamp: peeked.PeekFromQueueTimestamp,
 		PeekedMessageObject:    peeked,
 	}, nil
 }
@@ -725,21 +705,20 @@ func (c *queueSDKClient[T]) Remove(ctx context.Context, id string) (*Result, err
 	if message.IsRemoved() {
 		return &Result{
 			ID:                   id,
-			Status:               message.SystemInfo.Status,
-			LastUpdatedTimestamp: message.SystemInfo.LastUpdatedTimestamp,
-			Version:              message.SystemInfo.Version,
+			Status:               message.Status,
+			LastUpdatedTimestamp: message.LastUpdatedTimestamp,
+			Version:              message.Version,
 		}, nil
 	}
 	message.MarkAsRemoved(c.clock.Now())
 	expr, err := expression.NewBuilder().
 		WithUpdate(expression.
-			Add(expression.Name("system_info.version"), expression.Value(1)).
+			Add(expression.Name("version"), expression.Value(1)).
 			Remove(expression.Name("queued")).
 			Remove(expression.Name("DLQ")).
-			Set(expression.Name("system_info.queued"), expression.Value(message.SystemInfo.InQueue)).
-			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(message.SystemInfo.LastUpdatedTimestamp)).
-			Set(expression.Name("system_info.queue_complete_timestamp"), expression.Value(message.LastUpdatedTimestamp))).
-		WithCondition(expression.Name("system_info.version").Equal(expression.Value(message.SystemInfo.Version))).
+			Set(expression.Name("last_updated_timestamp"), expression.Value(message.LastUpdatedTimestamp)).
+			Set(expression.Name("queue_complete_timestamp"), expression.Value(message.CompleteFromQueueTimestamp))).
+		WithCondition(expression.Name("version").Equal(expression.Value(message.Version))).
 		Build()
 	if err != nil {
 		return nil, &BuildingExpressionError{Cause: err}
@@ -750,9 +729,9 @@ func (c *queueSDKClient[T]) Remove(ctx context.Context, id string) (*Result, err
 	}
 	return &Result{
 		ID:                   id,
-		Status:               item.SystemInfo.Status,
-		LastUpdatedTimestamp: item.SystemInfo.LastUpdatedTimestamp,
-		Version:              item.SystemInfo.Version,
+		Status:               item.Status,
+		LastUpdatedTimestamp: item.LastUpdatedTimestamp,
+		Version:              item.Version,
 	}, nil
 }
 
@@ -783,22 +762,21 @@ func (c *queueSDKClient[T]) Done(ctx context.Context, id string) (*Result, error
 	if message.IsDone() {
 		return &Result{
 			ID:                   id,
-			Status:               message.SystemInfo.Status,
-			LastUpdatedTimestamp: message.SystemInfo.LastUpdatedTimestamp,
-			Version:              message.SystemInfo.Version,
+			Status:               message.Status,
+			LastUpdatedTimestamp: message.LastUpdatedTimestamp,
+			Version:              message.Version,
 		}, nil
 	}
 	message.MarkAsDone(c.clock.Now())
 	expr, err := expression.NewBuilder().
 		WithUpdate(expression.
-			Add(expression.Name("system_info.version"), expression.Value(1)).
+			Add(expression.Name("version"), expression.Value(1)).
 			Remove(expression.Name("queued")).
 			Remove(expression.Name("DLQ")).
-			Set(expression.Name("system_info.status"), expression.Value(message.SystemInfo.Status)).
-			Set(expression.Name("system_info.queued"), expression.Value(message.SystemInfo.InQueue)).
-			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(message.SystemInfo.LastUpdatedTimestamp)).
-			Set(expression.Name("system_info.queue_complete_timestamp"), expression.Value(message.LastUpdatedTimestamp))).
-		WithCondition(expression.Name("system_info.version").Equal(expression.Value(message.SystemInfo.Version))).
+			Set(expression.Name("status"), expression.Value(message.Status)).
+			Set(expression.Name("last_updated_timestamp"), expression.Value(message.LastUpdatedTimestamp)).
+			Set(expression.Name("queue_complete_timestamp"), expression.Value(message.CompleteFromQueueTimestamp))).
+		WithCondition(expression.Name("version").Equal(expression.Value(message.Version))).
 		Build()
 	if err != nil {
 		return nil, &BuildingExpressionError{Cause: err}
@@ -809,9 +787,9 @@ func (c *queueSDKClient[T]) Done(ctx context.Context, id string) (*Result, error
 	}
 	return &Result{
 		ID:                   id,
-		Status:               item.SystemInfo.Status,
-		LastUpdatedTimestamp: item.SystemInfo.LastUpdatedTimestamp,
-		Version:              item.SystemInfo.Version,
+		Status:               item.Status,
+		LastUpdatedTimestamp: item.LastUpdatedTimestamp,
+		Version:              item.Version,
 	}, nil
 }
 
@@ -842,23 +820,21 @@ func (c *queueSDKClient[T]) Restore(ctx context.Context, id string) (*Result, er
 	if message.IsReady() {
 		return &Result{
 			ID:                   id,
-			Status:               message.SystemInfo.Status,
-			LastUpdatedTimestamp: message.SystemInfo.LastUpdatedTimestamp,
-			Version:              message.SystemInfo.Version,
+			Status:               message.Status,
+			LastUpdatedTimestamp: message.LastUpdatedTimestamp,
+			Version:              message.Version,
 		}, nil
 	}
 	message.MarkAsEnqueued(c.clock.Now())
 	expr, err := expression.NewBuilder().
 		WithUpdate(expression.
-			Add(expression.Name("system_info.version"), expression.Value(1)).
+			Add(expression.Name("version"), expression.Value(1)).
 			Remove(expression.Name("DLQ")).
 			Set(expression.Name("queued"), expression.Value(message.Queued)).
 			Set(expression.Name("last_updated_timestamp"), expression.Value(message.LastUpdatedTimestamp)).
-			Set(expression.Name("system_info.queued"), expression.Value(message.SystemInfo.InQueue)).
-			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(message.SystemInfo.LastUpdatedTimestamp)).
-			Set(expression.Name("system_info.queue_add_timestamp"), expression.Value(message.SystemInfo.AddToQueueTimestamp)).
-			Set(expression.Name("system_info.status"), expression.Value(message.SystemInfo.Status))).
-		WithCondition(expression.Name("system_info.version").Equal(expression.Value(message.SystemInfo.Version))).
+			Set(expression.Name("queue_add_timestamp"), expression.Value(message.AddToQueueTimestamp)).
+			Set(expression.Name("status"), expression.Value(message.Status))).
+		WithCondition(expression.Name("version").Equal(expression.Value(message.Version))).
 		Build()
 	if err != nil {
 		return nil, &BuildingExpressionError{Cause: err}
@@ -869,9 +845,9 @@ func (c *queueSDKClient[T]) Restore(ctx context.Context, id string) (*Result, er
 	}
 	return &Result{
 		ID:                   id,
-		Status:               item.SystemInfo.Status,
-		LastUpdatedTimestamp: item.SystemInfo.LastUpdatedTimestamp,
-		Version:              item.SystemInfo.Version,
+		Status:               item.Status,
+		LastUpdatedTimestamp: item.LastUpdatedTimestamp,
+		Version:              item.Version,
 	}, nil
 }
 
@@ -901,25 +877,23 @@ func (c *queueSDKClient[T]) SendToDLQ(ctx context.Context, id string) (*Result, 
 	if message.IsDLQ() {
 		return &Result{
 			ID:                   id,
-			Status:               message.SystemInfo.Status,
-			LastUpdatedTimestamp: message.SystemInfo.LastUpdatedTimestamp,
-			Version:              message.SystemInfo.Version,
+			Status:               message.Status,
+			LastUpdatedTimestamp: message.LastUpdatedTimestamp,
+			Version:              message.Version,
 		}, nil
 	}
 	message.MarkAsDLQ(c.clock.Now())
 	expr, err := expression.NewBuilder().
 		WithUpdate(expression.
-			Add(expression.Name("system_info.version"), expression.Value(1)).
+			Add(expression.Name("version"), expression.Value(1)).
 			Remove(expression.Name("queued")).
 			Set(expression.Name("DLQ"), expression.Value(message.DLQ)).
-			Set(expression.Name("system_info.queued"), expression.Value(message.SystemInfo.InQueue)).
 			Set(expression.Name("last_updated_timestamp"), expression.Value(message.LastUpdatedTimestamp)).
-			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(message.SystemInfo.LastUpdatedTimestamp)).
-			Set(expression.Name("system_info.dlq_add_timestamp"), expression.Value(message.SystemInfo.AddToDLQTimestamp)).
-			Set(expression.Name("system_info.status"), expression.Value(message.SystemInfo.Status))).
+			Set(expression.Name("dlq_add_timestamp"), expression.Value(message.AddToDLQTimestamp)).
+			Set(expression.Name("status"), expression.Value(message.Status))).
 		WithCondition(expression.And(
-			expression.Name("system_info.version").Equal(expression.Value(message.SystemInfo.Version)),
-			expression.Name("system_info.queued").Equal(expression.Value(1)),
+			expression.Name("version").Equal(expression.Value(message.Version)),
+			expression.Name("queued").Equal(expression.Value(1)),
 		)).
 		Build()
 	if err != nil {
@@ -931,9 +905,9 @@ func (c *queueSDKClient[T]) SendToDLQ(ctx context.Context, id string) (*Result, 
 	}
 	return &Result{
 		ID:                   id,
-		Status:               item.SystemInfo.Status,
-		LastUpdatedTimestamp: item.SystemInfo.LastUpdatedTimestamp,
-		Version:              item.SystemInfo.Version,
+		Status:               item.Status,
+		LastUpdatedTimestamp: item.LastUpdatedTimestamp,
+		Version:              item.Version,
 	}, nil
 }
 
@@ -966,10 +940,9 @@ func (c *queueSDKClient[T]) Touch(ctx context.Context, id string) (*Result, erro
 	message.Touch(c.clock.Now())
 	expr, err := expression.NewBuilder().
 		WithUpdate(expression.
-			Add(expression.Name("system_info.version"), expression.Value(1)).
-			Set(expression.Name("last_updated_timestamp"), expression.Value(message.LastUpdatedTimestamp)).
-			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(message.SystemInfo.LastUpdatedTimestamp))).
-		WithCondition(expression.Name("system_info.version").Equal(expression.Value(message.SystemInfo.Version))).
+			Add(expression.Name("version"), expression.Value(1)).
+			Set(expression.Name("last_updated_timestamp"), expression.Value(message.LastUpdatedTimestamp))).
+		WithCondition(expression.Name("version").Equal(expression.Value(message.Version))).
 		Build()
 	if err != nil {
 		return nil, &BuildingExpressionError{Cause: err}
@@ -980,9 +953,9 @@ func (c *queueSDKClient[T]) Touch(ctx context.Context, id string) (*Result, erro
 	}
 	return &Result{
 		ID:                   id,
-		Status:               item.SystemInfo.Status,
-		LastUpdatedTimestamp: item.SystemInfo.LastUpdatedTimestamp,
-		Version:              item.SystemInfo.Version,
+		Status:               item.Status,
+		LastUpdatedTimestamp: item.LastUpdatedTimestamp,
+		Version:              item.Version,
 	}, nil
 }
 
@@ -1058,7 +1031,7 @@ func (c *queueSDKClient[T]) ListExtendedIDs(ctx context.Context, size int32) ([]
 
 	extendedIDs := make([]string, len(messages))
 	for i, s := range messages {
-		extendedIDs[i] = fmt.Sprintf("ID: %s, status: %s", s.ID, s.SystemInfo.Status)
+		extendedIDs[i] = fmt.Sprintf("ID: %s, status: %s", s.ID, s.Status)
 	}
 
 	return extendedIDs, nil

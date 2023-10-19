@@ -128,7 +128,7 @@ func (c *Consumer[T]) shouldRetry(msg *sdk.Message[T]) bool {
 	if c.maximumReceives == 0 {
 		return true
 	}
-	if msg.SystemInfo.ReceiveCount < c.maximumReceives {
+	if msg.ReceiveCount < c.maximumReceives {
 		return true
 	}
 	return false
