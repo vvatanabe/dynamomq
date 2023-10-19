@@ -42,14 +42,14 @@ func (m *Message[T]) IsRemoved() bool {
 	return m.Queued == 0 &&
 		m.DLQ == 0 &&
 		m.SystemInfo.InQueue == 0 &&
-		m.SystemInfo.RemoveFromQueueTimestamp != ""
+		m.SystemInfo.CompleteFromQueueTimestamp != ""
 }
 
 func (m *Message[T]) IsDone() bool {
 	return m.Queued == 0 &&
 		m.DLQ == 0 &&
 		m.SystemInfo.InQueue == 0 &&
-		m.SystemInfo.RemoveFromQueueTimestamp != "" &&
+		m.SystemInfo.CompleteFromQueueTimestamp != "" &&
 		m.SystemInfo.Status == StatusCompleted
 }
 
@@ -59,7 +59,7 @@ func (m *Message[T]) IsReady() bool {
 		m.SystemInfo.InQueue == 1 &&
 		m.SystemInfo.Status == StatusReady &&
 		m.SystemInfo.AddToQueueTimestamp != "" &&
-		m.SystemInfo.RemoveFromQueueTimestamp == ""
+		m.SystemInfo.CompleteFromQueueTimestamp == ""
 }
 
 func (m *Message[T]) IsDLQ() bool {
@@ -105,7 +105,7 @@ func (m *Message[T]) MarkAsRemoved(now time.Time) {
 	m.LastUpdatedTimestamp = ts
 	m.SystemInfo.InQueue = 0
 	m.SystemInfo.LastUpdatedTimestamp = ts
-	m.SystemInfo.RemoveFromQueueTimestamp = ts
+	m.SystemInfo.CompleteFromQueueTimestamp = ts
 }
 
 func (m *Message[T]) MarkAsDone(now time.Time) {
@@ -116,7 +116,7 @@ func (m *Message[T]) MarkAsDone(now time.Time) {
 	m.SystemInfo.InQueue = 0
 	m.SystemInfo.Status = StatusCompleted
 	m.SystemInfo.LastUpdatedTimestamp = ts
-	m.SystemInfo.RemoveFromQueueTimestamp = ts
+	m.SystemInfo.CompleteFromQueueTimestamp = ts
 }
 
 func (m *Message[T]) MarkAsDLQ(now time.Time) {

@@ -738,7 +738,7 @@ func (c *queueSDKClient[T]) Remove(ctx context.Context, id string) (*Result, err
 			Remove(expression.Name("DLQ")).
 			Set(expression.Name("system_info.queued"), expression.Value(message.SystemInfo.InQueue)).
 			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(message.SystemInfo.LastUpdatedTimestamp)).
-			Set(expression.Name("system_info.queue_remove_timestamp"), expression.Value(message.LastUpdatedTimestamp))).
+			Set(expression.Name("system_info.queue_complete_timestamp"), expression.Value(message.LastUpdatedTimestamp))).
 		WithCondition(expression.Name("system_info.version").Equal(expression.Value(message.SystemInfo.Version))).
 		Build()
 	if err != nil {
@@ -797,7 +797,7 @@ func (c *queueSDKClient[T]) Done(ctx context.Context, id string) (*Result, error
 			Set(expression.Name("system_info.status"), expression.Value(message.SystemInfo.Status)).
 			Set(expression.Name("system_info.queued"), expression.Value(message.SystemInfo.InQueue)).
 			Set(expression.Name("system_info.last_updated_timestamp"), expression.Value(message.SystemInfo.LastUpdatedTimestamp)).
-			Set(expression.Name("system_info.queue_remove_timestamp"), expression.Value(message.LastUpdatedTimestamp))).
+			Set(expression.Name("system_info.queue_complete_timestamp"), expression.Value(message.LastUpdatedTimestamp))).
 		WithCondition(expression.Name("system_info.version").Equal(expression.Value(message.SystemInfo.Version))).
 		Build()
 	if err != nil {
