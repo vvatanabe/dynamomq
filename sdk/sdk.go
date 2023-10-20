@@ -61,6 +61,7 @@ type queueSDKClient[T any] struct {
 	retryMaxAttempts           int
 	visibilityTimeoutInMinutes int
 	maximumReceives            int
+	useFIFO                    bool
 
 	clock clock.Clock
 }
@@ -74,6 +75,7 @@ type options struct {
 	retryMaxAttempts           int
 	visibilityTimeoutInMinutes int
 	maximumReceives            int
+	useFIFO                    bool
 	dynamoDB                   *dynamodb.Client
 	clock                      clock.Clock
 }
@@ -122,6 +124,12 @@ func WithAWSVisibilityTimeout(minutes int) Option {
 	}
 }
 
+func WithUseFIFO(useFIFO bool) Option {
+	return func(s *options) {
+		s.useFIFO = useFIFO
+	}
+}
+
 func WithAWSDynamoDBClient(client *dynamodb.Client) Option {
 	return func(s *options) {
 		s.dynamoDB = client
@@ -135,6 +143,7 @@ func NewQueueSDKClient[T any](ctx context.Context, opts ...Option) (QueueSDKClie
 		awsCredentialsProfileName:  AwsProfileDefault,
 		retryMaxAttempts:           DefaultRetryMaxAttempts,
 		visibilityTimeoutInMinutes: DefaultVisibilityTimeoutInMinutes,
+		useFIFO:                    false,
 		clock:                      &clock.RealClock{},
 	}
 	for _, opt := range opts {
@@ -149,6 +158,7 @@ func NewQueueSDKClient[T any](ctx context.Context, opts ...Option) (QueueSDKClie
 		retryMaxAttempts:           o.retryMaxAttempts,
 		visibilityTimeoutInMinutes: o.visibilityTimeoutInMinutes,
 		maximumReceives:            o.maximumReceives,
+		useFIFO:                    o.useFIFO,
 		dynamoDB:                   o.dynamoDB,
 		clock:                      o.clock,
 	}
@@ -605,7 +615,11 @@ func (c *queueSDKClient[T]) Peek(ctx context.Context) (*PeekResult[T], error) {
 				return nil, &UnmarshalingAttributeError{Cause: err}
 			}
 			visibilityTimeout := time.Duration(c.visibilityTimeoutInMinutes) * time.Minute
-			if !item.IsQueueSelected(c.clock.Now(), visibilityTimeout) {
+			isQueueSelected := item.IsQueueSelected(c.clock.Now(), visibilityTimeout)
+			if c.useFIFO && isQueueSelected {
+				goto ExitLoop
+			}
+			if !isQueueSelected {
 				selectedID = item.ID
 				selectedVersion = item.Version
 				recordForPeekIsFound = true
@@ -616,6 +630,7 @@ func (c *queueSDKClient[T]) Peek(ctx context.Context) (*PeekResult[T], error) {
 			break
 		}
 	}
+ExitLoop:
 	if selectedID == "" {
 		return nil, &EmptyQueueError{}
 	}
@@ -624,13 +639,13 @@ func (c *queueSDKClient[T]) Peek(ctx context.Context) (*PeekResult[T], error) {
 		return nil, err
 	}
 	message.MarkAsPeeked(c.clock.Now())
-	// IMPORTANT
-	// please note, we are not updating top-level attribute `last_updated_timestamp` in order to avoid re-indexing the order
 	expr, err = expression.NewBuilder().
 		WithUpdate(expression.
 			Add(expression.Name("version"), expression.Value(1)).
 			Add(expression.Name("receive_count"), expression.Value(1)).
-			Set(expression.Name("last_updated_timestamp"), expression.Value(message.LastUpdatedTimestamp)).
+			// IMPORTANT
+			// please note, we are not updating top-level attribute `last_updated_timestamp` in order to avoid re-indexing the order
+			// Set(expression.Name("last_updated_timestamp"), expression.Value(message.LastUpdatedTimestamp)).
 			Set(expression.Name("queue_peek_timestamp"), expression.Value(message.PeekFromQueueTimestamp)).
 			Set(expression.Name("status"), expression.Value(message.Status))).
 		WithCondition(expression.Name("version").Equal(expression.Value(selectedVersion))).

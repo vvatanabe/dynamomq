@@ -2,6 +2,8 @@ package sdk
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"reflect"
 	"sort"
@@ -1015,6 +1017,285 @@ func TestQueueSDKClientPeek(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestQueueSDKClientPeekUseFIFO(t *testing.T) {
+
+	raw, clean := setupDynamoDB(t,
+		&types.PutRequest{
+			Item: newTestMessageItemAsEnqueued("A-101", time.Date(2023, 12, 1, 0, 0, 3, 0, time.UTC)).MarshalMapUnsafe(),
+		},
+		&types.PutRequest{
+			Item: newTestMessageItemAsEnqueued("A-202", time.Date(2023, 12, 1, 0, 0, 2, 0, time.UTC)).MarshalMapUnsafe(),
+		},
+		&types.PutRequest{
+			Item: newTestMessageItemAsEnqueued("A-303", time.Date(2023, 12, 1, 0, 0, 1, 0, time.UTC)).MarshalMapUnsafe(),
+		},
+	)
+	defer clean()
+
+	now := time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC)
+
+	ctx := context.Background()
+	client, err := NewQueueSDKClient[test.MessageData](ctx,
+		WithAWSDynamoDBClient(raw),
+		withClock(mockClock{
+			t: now,
+		}),
+		WithAWSVisibilityTimeout(1),
+		WithUseFIFO(true))
+	if err != nil {
+		t.Fatalf("NewQueueSDKClient() error = %v", err)
+		return
+	}
+
+	want1 := func() *PeekResult[test.MessageData] {
+		s := newTestMessageItemAsEnqueued("A-303", time.Date(2023, 12, 1, 0, 0, 1, 0, time.UTC))
+		s.MarkAsPeeked(now)
+		s.Version = 2
+		s.ReceiveCount = 1
+		r := &PeekResult[test.MessageData]{
+			Result: &Result{
+				ID:                   s.ID,
+				Status:               s.Status,
+				LastUpdatedTimestamp: s.LastUpdatedTimestamp,
+				Version:              s.Version,
+			},
+			PeekFromQueueTimestamp: s.PeekFromQueueTimestamp,
+			PeekedMessageObject:    s,
+		}
+		return r
+	}()
+
+	result, err := client.Peek(ctx)
+	if err != nil {
+		t.Errorf("Peek() 1 error = %v", err)
+		return
+	}
+	if !reflect.DeepEqual(result, want1) {
+		v1, _ := json.Marshal(result)
+		v2, _ := json.Marshal(want1)
+		t.Errorf("Peek() 1 got = %v, want %v", string(v1), string(v2))
+	}
+	_, err = client.Peek(ctx)
+	if !errors.Is(err, &EmptyQueueError{}) {
+		t.Errorf("Peek() 2 error = %v, wantErr %v", err, &EmptyQueueError{})
+		return
+	}
+	_, err = client.Done(ctx, result.ID)
+	if err != nil {
+		t.Errorf("Done() 1 error = %v", err)
+		return
+	}
+
+	want2 := func() *PeekResult[test.MessageData] {
+		s := newTestMessageItemAsEnqueued("A-202", time.Date(2023, 12, 1, 0, 0, 2, 0, time.UTC))
+		s.MarkAsPeeked(now)
+		s.Version = 2
+		s.ReceiveCount = 1
+		r := &PeekResult[test.MessageData]{
+			Result: &Result{
+				ID:                   s.ID,
+				Status:               s.Status,
+				LastUpdatedTimestamp: s.LastUpdatedTimestamp,
+				Version:              s.Version,
+			},
+			PeekFromQueueTimestamp: s.PeekFromQueueTimestamp,
+			PeekedMessageObject:    s,
+		}
+		return r
+	}()
+
+	result, err = client.Peek(ctx)
+	if err != nil {
+		t.Errorf("Peek() 3 error = %v", err)
+		return
+	}
+	if !reflect.DeepEqual(result, want2) {
+		v1, _ := json.Marshal(result)
+		v2, _ := json.Marshal(want2)
+		t.Errorf("Peek() 3 got = %v, want %v", string(v1), string(v2))
+	}
+
+	_, err = client.Peek(ctx)
+	if !errors.Is(err, &EmptyQueueError{}) {
+		t.Errorf("Peek() 4 error = %v, wantErr %v", err, &EmptyQueueError{})
+		return
+	}
+	_, err = client.Done(ctx, result.ID)
+	if err != nil {
+		t.Errorf("Done() 2 error = %v", err)
+		return
+	}
+
+	want3 := func() *PeekResult[test.MessageData] {
+		s := newTestMessageItemAsEnqueued("A-101", time.Date(2023, 12, 1, 0, 0, 3, 0, time.UTC))
+		s.MarkAsPeeked(now)
+		s.Version = 2
+		s.ReceiveCount = 1
+		r := &PeekResult[test.MessageData]{
+			Result: &Result{
+				ID:                   s.ID,
+				Status:               s.Status,
+				LastUpdatedTimestamp: s.LastUpdatedTimestamp,
+				Version:              s.Version,
+			},
+			PeekFromQueueTimestamp: s.PeekFromQueueTimestamp,
+			PeekedMessageObject:    s,
+		}
+		return r
+	}()
+
+	result, err = client.Peek(ctx)
+	if err != nil {
+		t.Errorf("Peek() 5 error = %v", err)
+		return
+	}
+	if !reflect.DeepEqual(result, want3) {
+		v1, _ := json.Marshal(result)
+		v2, _ := json.Marshal(want3)
+		t.Errorf("Peek() 5 got = %v, want %v", string(v1), string(v2))
+	}
+
+	_, err = client.Peek(ctx)
+	if !errors.Is(err, &EmptyQueueError{}) {
+		t.Errorf("Peek() 6 error = %v, wantErr %v", err, &EmptyQueueError{})
+		return
+	}
+	_, err = client.Done(ctx, result.ID)
+	if err != nil {
+		t.Errorf("Done() 3 error = %v", err)
+		return
+	}
+	_, err = client.Peek(ctx)
+	if !errors.Is(err, &EmptyQueueError{}) {
+		t.Errorf("Peek() 7 error = %v, wantErr %v", err, &EmptyQueueError{})
+		return
+	}
+}
+
+func TestQueueSDKClientPeekNotUseFIFO(t *testing.T) {
+
+	raw, clean := setupDynamoDB(t,
+		&types.PutRequest{
+			Item: newTestMessageItemAsEnqueued("A-101", time.Date(2023, 12, 1, 0, 0, 3, 0, time.UTC)).MarshalMapUnsafe(),
+		},
+		&types.PutRequest{
+			Item: newTestMessageItemAsEnqueued("A-202", time.Date(2023, 12, 1, 0, 0, 2, 0, time.UTC)).MarshalMapUnsafe(),
+		},
+		&types.PutRequest{
+			Item: newTestMessageItemAsEnqueued("A-303", time.Date(2023, 12, 1, 0, 0, 1, 0, time.UTC)).MarshalMapUnsafe(),
+		},
+	)
+	defer clean()
+
+	now := time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC)
+
+	ctx := context.Background()
+	client, err := NewQueueSDKClient[test.MessageData](ctx,
+		WithAWSDynamoDBClient(raw),
+		withClock(mockClock{
+			t: now,
+		}),
+		WithAWSVisibilityTimeout(1))
+	if err != nil {
+		t.Fatalf("NewQueueSDKClient() error = %v", err)
+		return
+	}
+
+	want1 := func() *PeekResult[test.MessageData] {
+		s := newTestMessageItemAsEnqueued("A-303", time.Date(2023, 12, 1, 0, 0, 1, 0, time.UTC))
+		s.MarkAsPeeked(now)
+		s.Version = 2
+		s.ReceiveCount = 1
+		r := &PeekResult[test.MessageData]{
+			Result: &Result{
+				ID:                   s.ID,
+				Status:               s.Status,
+				LastUpdatedTimestamp: s.LastUpdatedTimestamp,
+				Version:              s.Version,
+			},
+			PeekFromQueueTimestamp: s.PeekFromQueueTimestamp,
+			PeekedMessageObject:    s,
+		}
+		return r
+	}()
+
+	result, err := client.Peek(ctx)
+	if err != nil {
+		t.Errorf("Peek() 1 error = %v", err)
+		return
+	}
+	if !reflect.DeepEqual(result, want1) {
+		v1, _ := json.Marshal(result)
+		v2, _ := json.Marshal(want1)
+		t.Errorf("Peek() 1 got = %v, want %v", string(v1), string(v2))
+	}
+
+	want2 := func() *PeekResult[test.MessageData] {
+		s := newTestMessageItemAsEnqueued("A-202", time.Date(2023, 12, 1, 0, 0, 2, 0, time.UTC))
+		s.MarkAsPeeked(now)
+		s.Version = 2
+		s.ReceiveCount = 1
+		r := &PeekResult[test.MessageData]{
+			Result: &Result{
+				ID:                   s.ID,
+				Status:               s.Status,
+				LastUpdatedTimestamp: s.LastUpdatedTimestamp,
+				Version:              s.Version,
+			},
+			PeekFromQueueTimestamp: s.PeekFromQueueTimestamp,
+			PeekedMessageObject:    s,
+		}
+		return r
+	}()
+
+	result, err = client.Peek(ctx)
+	if err != nil {
+		t.Errorf("Peek() 2 error = %v", err)
+		return
+	}
+	if !reflect.DeepEqual(result, want2) {
+		v1, _ := json.Marshal(result)
+		v2, _ := json.Marshal(want2)
+		t.Errorf("Peek() 2 got = %v, want %v", string(v1), string(v2))
+	}
+
+	want3 := func() *PeekResult[test.MessageData] {
+		s := newTestMessageItemAsEnqueued("A-101", time.Date(2023, 12, 1, 0, 0, 3, 0, time.UTC))
+		s.MarkAsPeeked(now)
+		s.Version = 2
+		s.ReceiveCount = 1
+		r := &PeekResult[test.MessageData]{
+			Result: &Result{
+				ID:                   s.ID,
+				Status:               s.Status,
+				LastUpdatedTimestamp: s.LastUpdatedTimestamp,
+				Version:              s.Version,
+			},
+			PeekFromQueueTimestamp: s.PeekFromQueueTimestamp,
+			PeekedMessageObject:    s,
+		}
+		return r
+	}()
+
+	result, err = client.Peek(ctx)
+	if err != nil {
+		t.Errorf("Peek() 3 error = %v", err)
+		return
+	}
+	if !reflect.DeepEqual(result, want3) {
+		v1, _ := json.Marshal(result)
+		v2, _ := json.Marshal(want3)
+		t.Errorf("Peek() 3 got = %v, want %v", string(v1), string(v2))
+	}
+
+	_, err = client.Peek(ctx)
+	if !errors.Is(err, &EmptyQueueError{}) {
+		t.Errorf("Peek() 4 error = %v, wantErr %v", err, &EmptyQueueError{})
+		return
+	}
+
 }
 
 func TestQueueSDKClientDequeue(t *testing.T) {

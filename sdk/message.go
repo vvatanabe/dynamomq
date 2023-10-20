@@ -141,7 +141,6 @@ func (m *Message[T]) MarkAsEnqueued(now time.Time) {
 	m.Queued = 1
 	m.DLQ = 0
 	m.LastUpdatedTimestamp = ts
-	m.LastUpdatedTimestamp = ts
 	m.AddToQueueTimestamp = ts
 	m.Status = StatusReady
 }
@@ -149,8 +148,9 @@ func (m *Message[T]) MarkAsEnqueued(now time.Time) {
 func (m *Message[T]) MarkAsPeeked(now time.Time) {
 	ts := clock.FormatRFC3339(now)
 	m.Queued = 1
-	m.LastUpdatedTimestamp = ts
-	m.LastUpdatedTimestamp = ts
+	// IMPORTANT
+	// please note, we are not updating top-level attribute `last_updated_timestamp` in order to avoid re-indexing the order
+	// m.LastUpdatedTimestamp = ts
 	m.PeekFromQueueTimestamp = ts
 	m.Status = StatusProcessing
 }
@@ -167,7 +167,6 @@ func (m *Message[T]) MarkAsDone(now time.Time) {
 	ts := clock.FormatRFC3339(now)
 	m.Queued = 0
 	m.DLQ = 0
-	m.LastUpdatedTimestamp = ts
 	m.Status = StatusCompleted
 	m.LastUpdatedTimestamp = ts
 	m.CompleteFromQueueTimestamp = ts
@@ -177,7 +176,6 @@ func (m *Message[T]) MarkAsDLQ(now time.Time) {
 	ts := clock.FormatRFC3339(now)
 	m.Queued = 0
 	m.DLQ = 1
-	m.LastUpdatedTimestamp = ts
 	m.LastUpdatedTimestamp = ts
 	m.AddToDLQTimestamp = ts
 	m.Status = StatusInDLQ
