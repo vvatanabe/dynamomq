@@ -22,7 +22,7 @@ This project is actively under development, but it is currently in version 0. Pl
 | GSIPK | queue_type               | string | STANDARD or DLQ           |
 |       | version                  | number | 1                         |
 |       | creation_timestamp       | string | 2023-12-01T12:00:00Z00:00 |
-| SK    | last_updated_timestamp   | string | 2023-12-01T12:00:00Z00:00 |
+|       | last_updated_timestamp   | string | 2023-12-01T12:00:00Z00:00 |
 | GSISK | queue_add_timestamp      | string | 2023-12-01T12:00:00Z00:00 |
 |       | queue_peek_timestamp     | string | 2023-12-01T12:00:00Z00:00 |
 

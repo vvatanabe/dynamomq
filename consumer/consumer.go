@@ -138,9 +138,9 @@ func (c *Consumer[T]) processMessage(ctx context.Context, msg *sdk.Message[T]) {
 	err := c.messageProcessor.Process(msg)
 	if err != nil {
 		if c.shouldRetry(msg) {
-			_, err := c.client.Restore(ctx, msg.ID)
+			_, err := c.client.Retry(ctx, msg.ID)
 			if err != nil {
-				c.logf("DynamoMQ: Failed to restore a message. %s", err)
+				c.logf("DynamoMQ: Failed to retry a message. %s", err)
 				return
 			}
 		} else {
@@ -152,9 +152,9 @@ func (c *Consumer[T]) processMessage(ctx context.Context, msg *sdk.Message[T]) {
 		}
 		return
 	}
-	_, err = c.client.Done(ctx, msg.ID)
+	err = c.client.Delete(ctx, msg.ID)
 	if err != nil {
-		c.logf("DynamoMQ: Failed to done a message. %s", err)
+		c.logf("DynamoMQ: Failed to delete a message. %s", err)
 		return
 	}
 }

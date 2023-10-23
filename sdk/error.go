@@ -71,3 +71,11 @@ type EmptyQueueError struct{}
 func (e EmptyQueueError) Error() string {
 	return "Cannot proceed, queue is empty."
 }
+
+type DuplicateIDError struct {
+	ID string
+}
+
+func (e *DuplicateIDError) Error() string {
+	return fmt.Sprintf("ID %s is duplicated", e.ID)
+}

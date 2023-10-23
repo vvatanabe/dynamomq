@@ -24,3 +24,9 @@ type PeekResult[T any] struct {
 	PeekFromQueueTimestamp string      `json:"queue_peek_timestamp"`
 	PeekedMessageObject    *Message[T] `json:"-"`
 }
+
+// RetryResult represents the result for the retry() API call.
+type RetryResult[T any] struct {
+	*Result             // Embedded type for inheritance-like behavior in Go
+	Message *Message[T] `json:"-"`
+}

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
@@ -33,40 +32,36 @@ func (c *CLI) Run(ctx context.Context, command string, params []string) {
 		c.help(ctx, params)
 	case "aws":
 		c.aws(ctx, params)
-	case "ls":
-		c.ls(ctx, params)
-	case "purge":
-		c.purge(ctx, params)
-	case "create-test", "ct":
-		c.createTest(ctx, params)
 	case "qstat", "qstats":
 		c.qstat(ctx, params)
 	case "dlq":
 		c.dlq(ctx, params)
+	case "enqueue-test", "et":
+		c.enqueueTest(ctx, params)
+	case "purge":
+		c.purge(ctx, params)
+	case "ls":
+		c.ls(ctx, params)
 	case "peek":
 		c.peek(ctx, params)
 	case "id":
 		c.id(ctx, params)
 	case "sys", "system":
 		c.system(ctx, params)
-	case "reset":
-		c.reset(ctx, params)
-	case "ready":
-		c.ready(ctx, params)
-	case "done":
-		c.done(ctx, params)
-	case "fail":
-		c.fail(ctx, params)
-	case "invalid":
-		c.invalid(ctx, params)
 	case "data":
 		c.data(ctx, params)
 	case "info":
 		c.info(ctx, params)
-	case "enqueue", "en":
-		c.enqueue(ctx, params)
-	case "update":
-		c.update(ctx, params)
+	case "reset":
+		c.reset(ctx, params)
+	case "redrive":
+		c.redrive(ctx, params)
+	case "delete":
+		c.delete(ctx, params)
+	case "fail":
+		c.fail(ctx, params)
+	case "invalid":
+		c.invalid(ctx, params)
 	default:
 		fmt.Println(" ... unrecognized command!")
 	}
@@ -77,7 +72,7 @@ func (c *CLI) help(_ context.Context, _ []string) {
   > aws --profile --region --table --endpoint-url [Establish connection with AWS; Default profile name: 'default' and region: 'us-east-1']
   > qstat | qstats                                [Retrieves the Queue statistics (no need to be in App mode)]
   > dlq                                           [Retrieves the Dead Letter Queue (DLQ) statistics]
-  > create-test | ct                              [Create test Message records in DynamoDB: A-101, A-202, A-303 and A-404; if already exists, it will overwrite it]
+  > enqueue-test | et                             [Enqueue test Message records in DynamoDB: A-101, A-202, A-303 and A-404; if already exists, it will overwrite it]
   > purge                                         [It will remove all test data from DynamoDB]
   > ls                                            [List all message IDs ... max 10 elements]
   > peek                                          [Peek the Message from the Queue .. it will replace the current ID with the peeked one]
@@ -85,11 +80,9 @@ func (c *CLI) help(_ context.Context, _ []string) {
     > sys                                         [Show system info data in a JSON format]
     > data                                        [Print the data as JSON for the current message record]
     > info                                        [Print all info regarding Message record: system_info and data as JSON]
-    > update <new Message status>                 [Update Message status .. e.g.: from PENDING to READY]
     > reset                                       [Reset the system info of the current message record]
-    > ready                                       [Make the record ready for the message]
-    > enqueue | en                                [Enqueue current ID]
-    > done                                        [Simulate successful record processing completion ... remove from the queue]
+    > redrive                                     [Redrive the record to STANDARD from DLQ]
+    > delete                                      [Delete current ID]
     > fail                                        [Simulate failed record's processing ... put back to the queue; needs to be peeked again]
     > invalid                                     [Remove record from the regular queue to dead letter queue (DLQ) for manual fix]
   > id`)
@@ -188,12 +181,12 @@ func (c *CLI) purge(ctx context.Context, _ []string) {
 	}
 }
 
-func (c *CLI) createTest(ctx context.Context, _ []string) {
+func (c *CLI) enqueueTest(ctx context.Context, _ []string) {
 	if c.Client == nil {
 		fmt.Println(needAWSMessage)
 		return
 	}
-	fmt.Println("Creating message with IDs:")
+	fmt.Println("Enqueue message with IDs:")
 	ids := []string{"A-101", "A-202", "A-303", "A-404"}
 	for _, id := range ids {
 		message := sdk.NewDefaultMessage[test.MessageData](id, test.NewMessageData(id), clock.Now())
@@ -321,27 +314,24 @@ func (c *CLI) reset(ctx context.Context, _ []string) {
 	printMessageWithData("Reset system info:\n", c.Message.GetSystemInfo())
 }
 
-func (c *CLI) ready(ctx context.Context, _ []string) {
+func (c *CLI) redrive(ctx context.Context, _ []string) {
 	if c.Client == nil {
 		fmt.Println(needAWSMessage)
 		return
 	}
 	if c.Message == nil {
-		printCLIModeRestriction("`ready`")
+		printCLIModeRestriction("`redrive`")
 		return
 	}
-	now := clock.Now()
-	c.Message.ResetSystemInfo(now)
-	c.Message.MarkAsReady(now)
-	err := c.Client.Put(ctx, c.Message)
+	result, err := c.Client.Redrive(ctx, c.Message.ID)
 	if err != nil {
 		printError(err)
 		return
 	}
-	printMessageWithData("Ready system info:\n", c.Message.GetSystemInfo())
+	printMessageWithData("Ready system info:\n", result)
 }
 
-func (c *CLI) done(ctx context.Context, _ []string) {
+func (c *CLI) delete(ctx context.Context, _ []string) {
 	if c.Client == nil {
 		fmt.Println(needAWSMessage)
 		return
@@ -350,21 +340,12 @@ func (c *CLI) done(ctx context.Context, _ []string) {
 		printCLIModeRestriction("`done`")
 		return
 	}
-	_, err := c.Client.Done(ctx, c.Message.ID)
+	err := c.Client.Delete(ctx, c.Message.ID)
 	if err != nil {
 		printError(err)
 		return
 	}
-	message, err := c.Client.Get(ctx, c.Message.ID)
-	if err != nil {
-		printError(err)
-		return
-	}
-	if message == nil {
-		printError(fmt.Sprintf("Message's [%s] not found!", message.ID))
-		return
-	}
-	fmt.Printf("Processing for ID [%s] is completed successfully! Remove from the queue!\n", message.ID)
+	fmt.Printf("Processing for ID [%s] is deleted successfully! Remove from the queue!\n", c.Message.ID)
 	stats, err := c.Client.GetQueueStats(ctx)
 	if err != nil {
 		printError(err)
@@ -382,7 +363,7 @@ func (c *CLI) fail(ctx context.Context, _ []string) {
 		printCLIModeRestriction("`fail`")
 		return
 	}
-	_, err := c.Client.Restore(ctx, c.Message.ID)
+	_, err := c.Client.Retry(ctx, c.Message.ID)
 	if err != nil {
 		printError(err)
 		return
@@ -450,75 +431,6 @@ func (c *CLI) info(_ context.Context, _ []string) {
 		return
 	}
 	printMessageWithData("Record's dump:\n", c.Message)
-}
-
-func (c *CLI) enqueue(ctx context.Context, _ []string) {
-	if c.Client == nil {
-		fmt.Println(needAWSMessage)
-		return
-	}
-	if c.Message == nil {
-		printCLIModeRestriction("`enqueue`")
-		return
-	}
-	message, err := c.Client.Get(ctx, c.Message.ID)
-	if err != nil {
-		printError(err)
-		return
-	}
-	if message == nil {
-		printError(fmt.Sprintf("Message's [%s] not found!", message.ID))
-		return
-	}
-	// convert under_construction to ready to ship
-	if message.Status == sdk.StatusPending {
-		message.ResetSystemInfo(clock.Now())
-		message.Status = sdk.StatusReady
-		err = c.Client.Put(ctx, message)
-		if err != nil {
-			printError(err)
-			return
-		}
-	}
-	rr, err := c.Client.Enqueue(ctx, message.ID)
-	if err != nil {
-		printError(fmt.Sprintf("Enqueue has failed! message: %s", err))
-		return
-	}
-	printMessageWithData("Record's system info:\n", rr.Message.GetSystemInfo())
-	stats, err := c.Client.GetQueueStats(ctx)
-	if err != nil {
-		printError(err)
-		return
-	}
-	printMessageWithData("Queue stats:\n", stats)
-}
-
-func (c *CLI) update(ctx context.Context, params []string) {
-	if c.Client == nil {
-		fmt.Println(needAWSMessage)
-		return
-	}
-	if c.Message == nil {
-		printCLIModeRestriction("`update <status>`")
-		return
-	}
-	if params == nil {
-		printError("'update <status>' command requires a new Status parameter to be specified!")
-		return
-	}
-	statusStr := strings.TrimSpace(strings.ToUpper(params[0]))
-	if statusStr == string(sdk.StatusReady) {
-		c.Message.MarkAsReady(clock.Now())
-		rr, err := c.Client.UpdateStatus(ctx, c.Message.ID, sdk.StatusReady)
-		if err != nil {
-			printError(err)
-			return
-		}
-		printMessageWithData("Status changed result:\n", rr)
-	} else {
-		fmt.Printf("Status change [%s] is not applied!\n", strings.TrimSpace(params[0]))
-	}
 }
 
 func printMessageWithData(message string, data any) {
