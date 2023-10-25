@@ -839,11 +839,7 @@ func TestQueueSDKClientGetQueueStats(t *testing.T) {
 		{
 			name: "empty items",
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
-				return setupDynamoDB(t,
-					&types.PutRequest{
-						Item: newTestMessageItemAsReady("A-101", clock.Now()).MarshalMapUnsafe(),
-					},
-				)
+				return setupDynamoDB(t)
 			},
 			want: &QueueStats{
 				First100IDsInQueue:         []string{},
