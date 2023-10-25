@@ -192,7 +192,7 @@ func (c *queueSDKClient[T]) Enqueue(ctx context.Context, id string, data *T) (*E
 	if err != nil {
 		return nil, err
 	}
-	if retrieved == nil {
+	if retrieved != nil {
 		return nil, &DuplicateIDError{ID: retrieved.ID}
 	}
 	message := NewDefaultMessage(id, data, c.clock.Now())

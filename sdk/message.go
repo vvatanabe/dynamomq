@@ -87,19 +87,8 @@ func (m *Message[T]) IsQueueSelected(now time.Time, visibilityTimeout time.Durat
 	return timeDifference <= visibilityTimeout.Milliseconds()
 }
 
-func (m *Message[T]) IsReady() bool {
-	return m.Status == StatusReady
-}
-
 func (m *Message[T]) IsDLQ() bool {
 	return m.QueueType == QueueTypeDLQ
-}
-
-func (m *Message[T]) MarkAsReady(now time.Time) {
-	ts := clock.FormatRFC3339(now)
-	m.LastUpdatedTimestamp = ts
-	m.AddToQueueTimestamp = ts
-	m.Status = StatusReady
 }
 
 func (m *Message[T]) MarkAsRetry(now time.Time) {
@@ -162,12 +151,6 @@ func (m *Message[T]) Update(message *Message[T], now time.Time) {
 	m.AddToQueueTimestamp = message.AddToQueueTimestamp
 	m.PeekFromQueueTimestamp = message.PeekFromQueueTimestamp
 	m.Version = nextVersion
-}
-
-func (m *Message[T]) ChangeStatus(status Status, now time.Time) {
-	formatted := clock.FormatRFC3339(now)
-	m.Status = status
-	m.LastUpdatedTimestamp = formatted
 }
 
 func (m *Message[T]) MarshalMap() (map[string]types.AttributeValue, error) {
