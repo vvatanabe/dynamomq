@@ -332,6 +332,9 @@ func (c *queueSDKClient[T]) Retry(ctx context.Context, id string) (*RetryResult[
 }
 
 func (c *queueSDKClient[T]) Delete(ctx context.Context, id string) error {
+	if id == "" {
+		return &IDNotProvidedError{}
+	}
 	_, err := c.dynamoDB.DeleteItem(ctx, &dynamodb.DeleteItemInput{
 		TableName: &c.tableName,
 		Key: map[string]types.AttributeValue{

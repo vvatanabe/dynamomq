@@ -632,7 +632,7 @@ func TestQueueSDKClientDelete(t *testing.T) {
 		want     error
 	}{
 		{
-			name: "should not return error when id is empty",
+			name: "should return IDNotProvidedError",
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
@@ -643,7 +643,7 @@ func TestQueueSDKClientDelete(t *testing.T) {
 			args: args{
 				id: "",
 			},
-			want: nil,
+			want: &IDNotProvidedError{},
 		},
 		{
 			name: "not exist id does not return error",
