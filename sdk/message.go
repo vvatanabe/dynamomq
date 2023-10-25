@@ -107,6 +107,7 @@ func (m *Message[T]) MarkAsPeeked(now time.Time) {
 func (m *Message[T]) MarkAsDLQ(now time.Time) {
 	ts := clock.FormatRFC3339(now)
 	m.QueueType = QueueTypeDLQ
+	m.Status = StatusReady
 	m.ReceiveCount = 0
 	m.LastUpdatedTimestamp = ts
 	m.AddToQueueTimestamp = ts
