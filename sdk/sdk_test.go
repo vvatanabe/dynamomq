@@ -131,7 +131,7 @@ func TestQueueSDKClientEnqueue(t *testing.T) {
 			wantErr: &IDNotProvidedError{},
 		},
 		{
-			name: "should return DuplicateIDError",
+			name: "should return IDDuplicatedError",
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
@@ -144,7 +144,7 @@ func TestQueueSDKClientEnqueue(t *testing.T) {
 				data: test.NewMessageData("A-101"),
 			},
 			want:    nil,
-			wantErr: &DuplicateIDError{},
+			wantErr: &IDDuplicatedError{},
 		},
 		{
 			name: "should enqueue succeeds",
@@ -163,7 +163,7 @@ func TestQueueSDKClientEnqueue(t *testing.T) {
 					ID:                   "A-101",
 					Status:               StatusReady,
 					LastUpdatedTimestamp: clock.FormatRFC3339(time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC)),
-					Version:              2,
+					Version:              1,
 				},
 				Message: func() *Message[test.MessageData] {
 					s := newTestMessageItemAsReady("A-101", time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC))

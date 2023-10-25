@@ -193,7 +193,7 @@ func (c *queueSDKClient[T]) Enqueue(ctx context.Context, id string, data *T) (*E
 		return nil, err
 	}
 	if retrieved != nil {
-		return nil, &DuplicateIDError{ID: retrieved.ID}
+		return nil, &IDDuplicatedError{}
 	}
 	message := NewDefaultMessage(id, data, c.clock.Now())
 	err = c.put(ctx, message)
@@ -303,7 +303,7 @@ func (c *queueSDKClient[T]) Retry(ctx context.Context, id string) (*RetryResult[
 		return nil, err
 	}
 	if message == nil {
-		return nil, &DuplicateIDError{ID: message.ID}
+		return nil, &IDNotFoundError{}
 	}
 	message.MarkAsRetry(c.clock.Now())
 	expr, err := expression.NewBuilder().

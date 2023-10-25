@@ -30,7 +30,7 @@ func newDefaultSystemInfo(id string, now time.Time) *SystemInfo {
 		Version:                1,
 		CreationTimestamp:      ts,
 		LastUpdatedTimestamp:   ts,
-		AddToQueueTimestamp:    "",
+		AddToQueueTimestamp:    ts,
 		PeekFromQueueTimestamp: "",
 	}
 }
