@@ -5,11 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/vvatanabe/dynamomq"
+
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/vvatanabe/dynamomq/internal/clock"
 	"github.com/vvatanabe/dynamomq/internal/test"
-	"github.com/vvatanabe/dynamomq/sdk"
 )
 
 const (
@@ -22,8 +23,8 @@ type CLI struct {
 	CredentialsProfile string
 	TableName          string
 
-	Client  sdk.QueueSDKClient[any]
-	Message *sdk.Message[any]
+	Client  dynamomq.QueueSDKClient[any]
+	Message *dynamomq.Message[any]
 }
 
 func (c *CLI) Run(ctx context.Context, command string, params []string) {
@@ -106,11 +107,11 @@ func (c *CLI) aws(ctx context.Context, params []string) {
 	if endpoint != "" {
 		c.BaseEndpoint = endpoint
 	}
-	client, err := sdk.NewQueueSDKClient[any](ctx,
-		sdk.WithAWSRegion(c.Region),
-		sdk.WithAWSCredentialsProfileName(profile),
-		sdk.WithTableName(c.TableName),
-		sdk.WithAWSBaseEndpoint(c.BaseEndpoint))
+	client, err := dynamomq.NewQueueSDKClient[any](ctx,
+		dynamomq.WithAWSRegion(c.Region),
+		dynamomq.WithAWSCredentialsProfileName(profile),
+		dynamomq.WithTableName(c.TableName),
+		dynamomq.WithAWSBaseEndpoint(c.BaseEndpoint))
 	if err != nil {
 		fmt.Printf(" ... AWS session could not be established!: %v\n", err)
 	} else {
@@ -189,7 +190,7 @@ func (c *CLI) enqueueTest(ctx context.Context, _ []string) {
 	fmt.Println("Enqueue message with IDs:")
 	ids := []string{"A-101", "A-202", "A-303", "A-404"}
 	for _, id := range ids {
-		message := sdk.NewDefaultMessage[test.MessageData](id, test.NewMessageData(id), clock.Now())
+		message := dynamomq.NewDefaultMessage[test.MessageData](id, test.NewMessageData(id), clock.Now())
 		item, err := message.MarshalMap()
 		if err != nil {
 			fmt.Printf("* ID: %s, error: %s\n", id, err)

@@ -1,4 +1,4 @@
-package sdk
+package dynamomq
 
 // QueueStats represents the structure to store Queue depth statistics.
 type QueueStats struct {

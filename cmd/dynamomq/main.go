@@ -8,8 +8,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/vvatanabe/dynamomq/cli"
-	"github.com/vvatanabe/dynamomq/sdk"
+	"github.com/vvatanabe/dynamomq/internal/cli"
+
+	"github.com/vvatanabe/dynamomq"
 )
 
 func main() {
@@ -25,9 +26,9 @@ func main() {
 	executionPath, _ := os.Getwd()
 	fmt.Printf("current directory is: [%s]\n", executionPath)
 
-	region := flag.String("region", sdk.AwsRegionDefault, "AWS region")
-	credentialsProfile := flag.String("profile", sdk.AwsProfileDefault, "AWS credentials profile")
-	tableName := flag.String("table", sdk.DefaultTableName, "AWS DynamoDB table name")
+	region := flag.String("region", dynamomq.AwsRegionDefault, "AWS region")
+	credentialsProfile := flag.String("profile", dynamomq.AwsProfileDefault, "AWS credentials profile")
+	tableName := flag.String("table", dynamomq.DefaultTableName, "AWS DynamoDB table name")
 	endpoint := flag.String("endpoint-url", "", "AWS DynamoDB base endpoint url")
 
 	flag.Parse()
@@ -38,11 +39,11 @@ func main() {
 	fmt.Printf("endpoint is: [%s]\n", *endpoint)
 	fmt.Println("")
 
-	client, err := sdk.NewQueueSDKClient[any](context.Background(),
-		sdk.WithAWSRegion(*region),
-		sdk.WithAWSCredentialsProfileName(*credentialsProfile),
-		sdk.WithTableName(*tableName),
-		sdk.WithAWSBaseEndpoint(*endpoint))
+	client, err := dynamomq.NewQueueSDKClient[any](context.Background(),
+		dynamomq.WithAWSRegion(*region),
+		dynamomq.WithAWSCredentialsProfileName(*credentialsProfile),
+		dynamomq.WithTableName(*tableName),
+		dynamomq.WithAWSBaseEndpoint(*endpoint))
 	if err != nil {
 		fmt.Printf("... AWS session could not be established!: %v\n", err)
 	} else {

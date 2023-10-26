@@ -1,4 +1,4 @@
-package consumer
+package dynamomq
 
 import (
 	"context"
@@ -8,8 +8,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"github.com/vvatanabe/dynamomq/sdk"
 )
 
 const (
@@ -17,27 +15,27 @@ const (
 	defaultMaximumReceives = 0 // unlimited
 )
 
-type Option func(o *Options)
+type ConsumerOption func(o *Options)
 
-func WithPollingInterval(pollingInterval time.Duration) Option {
+func WithPollingInterval(pollingInterval time.Duration) ConsumerOption {
 	return func(o *Options) {
 		o.PollingInterval = pollingInterval
 	}
 }
 
-func WithMaximumReceives(maximumReceives int) Option {
+func WithMaximumReceives(maximumReceives int) ConsumerOption {
 	return func(o *Options) {
 		o.MaximumReceives = maximumReceives
 	}
 }
 
-func WithErrorLog(errorLog *log.Logger) Option {
+func WithErrorLog(errorLog *log.Logger) ConsumerOption {
 	return func(o *Options) {
 		o.ErrorLog = errorLog
 	}
 }
 
-func WithOnShutdown(onShutdown []func()) Option {
+func WithOnShutdown(onShutdown []func()) ConsumerOption {
 	return func(o *Options) {
 		o.OnShutdown = onShutdown
 	}
@@ -54,7 +52,7 @@ type Options struct {
 	OnShutdown []func()
 }
 
-func NewConsumer[T any](client sdk.QueueSDKClient[T], processor MessageProcessor[T], opts ...Option) *Consumer[T] {
+func NewConsumer[T any](client QueueSDKClient[T], processor MessageProcessor[T], opts ...ConsumerOption) *Consumer[T] {
 	o := &Options{
 		PollingInterval: defaultPollingInterval,
 		MaximumReceives: defaultMaximumReceives,
@@ -71,18 +69,18 @@ func NewConsumer[T any](client sdk.QueueSDKClient[T], processor MessageProcessor
 		onShutdown:       o.OnShutdown,
 		inShutdown:       0,
 		mu:               sync.Mutex{},
-		activeMessages:   make(map[*sdk.Message[T]]struct{}),
+		activeMessages:   make(map[*Message[T]]struct{}),
 		activeMessagesWG: sync.WaitGroup{},
 		doneChan:         make(chan struct{}),
 	}
 }
 
 type MessageProcessor[T any] interface {
-	Process(msg *sdk.Message[T]) error
+	Process(msg *Message[T]) error
 }
 
 type Consumer[T any] struct {
-	client           sdk.QueueSDKClient[T]
+	client           QueueSDKClient[T]
 	messageProcessor MessageProcessor[T]
 
 	pollingInterval time.Duration
@@ -92,7 +90,7 @@ type Consumer[T any] struct {
 
 	inShutdown       int32
 	mu               sync.Mutex
-	activeMessages   map[*sdk.Message[T]]struct{}
+	activeMessages   map[*Message[T]]struct{}
 	activeMessagesWG sync.WaitGroup
 	doneChan         chan struct{}
 }
@@ -118,13 +116,13 @@ func (c *Consumer[T]) Listen() error {
 	}
 }
 
-func (c *Consumer[T]) listen(ctx context.Context, msg *sdk.Message[T]) {
+func (c *Consumer[T]) listen(ctx context.Context, msg *Message[T]) {
 	c.trackMessage(msg, true)
 	c.processMessage(ctx, msg)
 	c.trackMessage(msg, false)
 }
 
-func (c *Consumer[T]) shouldRetry(msg *sdk.Message[T]) bool {
+func (c *Consumer[T]) shouldRetry(msg *Message[T]) bool {
 	if c.maximumReceives == 0 {
 		return true
 	}
@@ -134,7 +132,7 @@ func (c *Consumer[T]) shouldRetry(msg *sdk.Message[T]) bool {
 	return false
 }
 
-func (c *Consumer[T]) processMessage(ctx context.Context, msg *sdk.Message[T]) {
+func (c *Consumer[T]) processMessage(ctx context.Context, msg *Message[T]) {
 	err := c.messageProcessor.Process(msg)
 	if err != nil {
 		if c.shouldRetry(msg) {
@@ -159,11 +157,11 @@ func (c *Consumer[T]) processMessage(ctx context.Context, msg *sdk.Message[T]) {
 	}
 }
 
-func (c *Consumer[T]) trackMessage(msg *sdk.Message[T], add bool) {
+func (c *Consumer[T]) trackMessage(msg *Message[T], add bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.activeMessages == nil {
-		c.activeMessages = make(map[*sdk.Message[T]]struct{})
+		c.activeMessages = make(map[*Message[T]]struct{})
 	}
 	if add {
 		if !c.shuttingDown() {
@@ -239,7 +237,7 @@ func (c *Consumer[T]) logf(format string, args ...any) {
 
 func isTemporary(err error) bool {
 	switch err.(type) {
-	case sdk.ConditionalCheckFailedError, sdk.DynamoDBAPIError, sdk.EmptyQueueError, sdk.IDNotProvidedError, sdk.IDNotFoundError:
+	case ConditionalCheckFailedError, DynamoDBAPIError, EmptyQueueError, IDNotProvidedError, IDNotFoundError:
 		return true
 	default:
 		return false

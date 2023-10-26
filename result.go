@@ -1,4 +1,4 @@
-package sdk
+package dynamomq
 
 type Result struct {
 	ID                   string `json:"id"`
