@@ -27,7 +27,7 @@ const (
 )
 
 type QueueSDKClient[T any] interface {
-	Enqueue(ctx context.Context, id string, data *T) (*EnqueueResult[T], error)
+	Enqueue(ctx context.Context, id string, data T) (*EnqueueResult[T], error)
 	Peek(ctx context.Context) (*PeekResult[T], error)
 	Retry(ctx context.Context, id string) (*RetryResult[T], error)
 	Delete(ctx context.Context, id string) error
@@ -187,7 +187,7 @@ func NewQueueSDKClient[T any](ctx context.Context, opts ...Option) (QueueSDKClie
 	return c, nil
 }
 
-func (c *queueSDKClient[T]) Enqueue(ctx context.Context, id string, data *T) (*EnqueueResult[T], error) {
+func (c *queueSDKClient[T]) Enqueue(ctx context.Context, id string, data T) (*EnqueueResult[T], error) {
 	retrieved, err := c.Get(ctx, id)
 	if err != nil {
 		return nil, err

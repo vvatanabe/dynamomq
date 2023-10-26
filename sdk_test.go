@@ -104,7 +104,7 @@ func newTestMessageItemAsDLQ(id string, now time.Time) *Message[test.MessageData
 func TestQueueSDKClientEnqueue(t *testing.T) {
 	type args struct {
 		id   string
-		data *test.MessageData
+		data test.MessageData
 	}
 	tests := []struct {
 		name     string
@@ -125,7 +125,7 @@ func TestQueueSDKClientEnqueue(t *testing.T) {
 			},
 			args: args{
 				id:   "",
-				data: nil,
+				data: test.MessageData{},
 			},
 			want:    nil,
 			wantErr: &IDNotProvidedError{},

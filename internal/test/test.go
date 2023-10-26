@@ -1,7 +1,7 @@
 package test
 
-func NewMessageData(id string) *MessageData {
-	return &MessageData{
+func NewMessageData(id string) MessageData {
+	return MessageData{
 		ID:    id,
 		Data1: "Data 1",
 		Data2: "Data 2",

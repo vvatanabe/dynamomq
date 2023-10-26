@@ -35,7 +35,7 @@ func newDefaultSystemInfo(id string, now time.Time) *SystemInfo {
 	}
 }
 
-func NewDefaultMessage[T any](id string, data *T, now time.Time) *Message[T] {
+func NewDefaultMessage[T any](id string, data T, now time.Time) *Message[T] {
 	system := newDefaultSystemInfo(id, now)
 	return &Message[T]{
 		ID:                     id,
@@ -53,7 +53,7 @@ func NewDefaultMessage[T any](id string, data *T, now time.Time) *Message[T] {
 
 type Message[T any] struct {
 	ID                     string    `json:"id" dynamodbav:"id"`
-	Data                   *T        `json:"data" dynamodbav:"data"`
+	Data                   T         `json:"data" dynamodbav:"data"`
 	Status                 Status    `json:"status" dynamodbav:"status"`
 	ReceiveCount           int       `json:"receive_count" dynamodbav:"receive_count"`
 	QueueType              QueueType `json:"queue_type" dynamodbav:"queue_type,omitempty"`
