@@ -401,10 +401,10 @@ func (c *queueSDKClient[T]) Redrive(ctx context.Context, id string) (*Result, er
 		return nil, &IDNotFoundError{}
 	}
 	if retrieved.QueueType == QueueTypeStandard {
-		return nil, &RecordNotConstructedError{} // FIXME
+		return nil, &RecordNotConstructedError{} // FIXME Define more appropriately named errors.
 	}
 	if retrieved.Status == StatusProcessing {
-		return nil, &IllegalStateError{} // FIXME
+		return nil, &IllegalStateError{} // FIXME Define more appropriately named errors.
 	}
 	retrieved.MarkAsRedrive(c.clock.Now())
 	expr, err := expression.NewBuilder().
@@ -414,6 +414,9 @@ func (c *queueSDKClient[T]) Redrive(ctx context.Context, id string) (*Result, er
 		).Set(
 			expression.Name("queue_type"),
 			expression.Value(retrieved.QueueType),
+		).Set(
+			expression.Name("status"),
+			expression.Value(retrieved.Status),
 		).Set(
 			expression.Name("last_updated_timestamp"),
 			expression.Value(retrieved.LastUpdatedTimestamp),

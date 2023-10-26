@@ -926,7 +926,131 @@ func TestQueueSDKClientSendToDLQ(t *testing.T) {
 }
 
 func TestQueueSDKClientRedrive(t *testing.T) {
-	// FIXME
+	type args struct {
+		id string
+	}
+	tests := []struct {
+		name     string
+		setup    func(*testing.T) (*dynamodb.Client, func())
+		sdkClock clock.Clock
+		args     args
+		want     *Result
+		wantErr  error
+	}{
+		{
+			name: "should return IDNotProvidedError",
+			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+				return setupDynamoDB(t,
+					&types.PutRequest{
+						Item: newTestMessageItemAsReady("A-101", clock.Now()).MarshalMapUnsafe(),
+					},
+				)
+			},
+			args: args{
+				id: "",
+			},
+			want:    nil,
+			wantErr: &IDNotProvidedError{},
+		},
+		{
+			name: "should return IDNotFoundError",
+			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+				return setupDynamoDB(t,
+					&types.PutRequest{
+						Item: newTestMessageItemAsReady("A-101", clock.Now()).MarshalMapUnsafe(),
+					},
+				)
+			},
+			args: args{
+				id: "B-202",
+			},
+			want:    nil,
+			wantErr: &IDNotFoundError{},
+		},
+		{
+			name: "should return RecordNotConstructedError",
+			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+				return setupDynamoDB(t,
+					&types.PutRequest{
+						Item: newTestMessageItemAsReady("A-101", clock.Now()).MarshalMapUnsafe(),
+					},
+				)
+			},
+			args: args{
+				id: "A-101",
+			},
+			want:    nil,
+			wantErr: &RecordNotConstructedError{},
+		},
+		{
+			name: "should return IllegalStateError",
+			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+				return setupDynamoDB(t, func() *types.PutRequest {
+					msg := newTestMessageItemAsDLQ("A-101", clock.Now())
+					msg.MarkAsPeeked(clock.Now())
+					return &types.PutRequest{
+						Item: msg.MarshalMapUnsafe(),
+					}
+				}())
+			},
+			args: args{
+				id: "A-101",
+			},
+			want:    nil,
+			wantErr: &IllegalStateError{},
+		},
+
+		{
+			name: "should redrive succeeds",
+			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+				return setupDynamoDB(t,
+					&types.PutRequest{
+						Item: newTestMessageItemAsDLQ("A-101", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)).MarshalMapUnsafe(),
+					},
+				)
+			},
+			sdkClock: mockClock{
+				t: time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC),
+			},
+			args: args{
+				id: "A-101",
+			},
+			want: &Result{
+				ID:                   "A-101",
+				Status:               StatusReady,
+				LastUpdatedTimestamp: clock.FormatRFC3339(time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC)),
+				Version:              2,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			raw, clean := tt.setup(t)
+			defer clean()
+			ctx := context.Background()
+			client, err := NewQueueSDKClient[test.MessageData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
+			if err != nil {
+				t.Fatalf("NewQueueSDKClient() error = %v", err)
+				return
+			}
+			result, err := client.Redrive(ctx, tt.args.id)
+			if tt.wantErr != nil {
+				if err != tt.wantErr {
+					t.Errorf("Redrive() error = %v, wantErr %v", err, tt.wantErr)
+					return
+				}
+				return
+			}
+			if err != nil {
+				t.Errorf("Redrive() error = %v", err)
+				return
+			}
+			if !reflect.DeepEqual(result, tt.want) {
+				t.Errorf("Redrive() got = %v, want %v", result, tt.want)
+			}
+		})
+	}
 }
 
 func TestQueueSDKClientGetQueueStats(t *testing.T) {
