@@ -15,33 +15,31 @@ const (
 	defaultMaximumReceives = 0 // unlimited
 )
 
-type ConsumerOption func(o *Options)
-
-func WithPollingInterval(pollingInterval time.Duration) ConsumerOption {
-	return func(o *Options) {
+func WithPollingInterval(pollingInterval time.Duration) func(o *ConsumerOptions) {
+	return func(o *ConsumerOptions) {
 		o.PollingInterval = pollingInterval
 	}
 }
 
-func WithMaximumReceives(maximumReceives int) ConsumerOption {
-	return func(o *Options) {
+func WithMaximumReceives(maximumReceives int) func(o *ConsumerOptions) {
+	return func(o *ConsumerOptions) {
 		o.MaximumReceives = maximumReceives
 	}
 }
 
-func WithErrorLog(errorLog *log.Logger) ConsumerOption {
-	return func(o *Options) {
+func WithErrorLog(errorLog *log.Logger) func(o *ConsumerOptions) {
+	return func(o *ConsumerOptions) {
 		o.ErrorLog = errorLog
 	}
 }
 
-func WithOnShutdown(onShutdown []func()) ConsumerOption {
-	return func(o *Options) {
+func WithOnShutdown(onShutdown []func()) func(o *ConsumerOptions) {
+	return func(o *ConsumerOptions) {
 		o.OnShutdown = onShutdown
 	}
 }
 
-type Options struct {
+type ConsumerOptions struct {
 	PollingInterval time.Duration
 	MaximumReceives int
 	// errorLog specifies an optional logger for errors accepting
@@ -52,8 +50,8 @@ type Options struct {
 	OnShutdown []func()
 }
 
-func NewConsumer[T any](client QueueSDKClient[T], processor MessageProcessor[T], opts ...ConsumerOption) *Consumer[T] {
-	o := &Options{
+func NewConsumer[T any](client Client[T], processor MessageProcessor[T], opts ...func(o *ConsumerOptions)) *Consumer[T] {
+	o := &ConsumerOptions{
 		PollingInterval: defaultPollingInterval,
 		MaximumReceives: defaultMaximumReceives,
 	}
@@ -80,7 +78,7 @@ type MessageProcessor[T any] interface {
 }
 
 type Consumer[T any] struct {
-	client           QueueSDKClient[T]
+	client           Client[T]
 	messageProcessor MessageProcessor[T]
 
 	pollingInterval time.Duration

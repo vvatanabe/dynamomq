@@ -23,7 +23,7 @@ type CLI struct {
 	CredentialsProfile string
 	TableName          string
 
-	Client  dynamomq.QueueSDKClient[any]
+	Client  dynamomq.Client[any]
 	Message *dynamomq.Message[any]
 }
 
@@ -107,7 +107,7 @@ func (c *CLI) aws(ctx context.Context, params []string) {
 	if endpoint != "" {
 		c.BaseEndpoint = endpoint
 	}
-	client, err := dynamomq.NewQueueSDKClient[any](ctx,
+	client, err := dynamomq.NewFromConfig[any](ctx,
 		dynamomq.WithAWSRegion(c.Region),
 		dynamomq.WithAWSCredentialsProfileName(profile),
 		dynamomq.WithTableName(c.TableName),

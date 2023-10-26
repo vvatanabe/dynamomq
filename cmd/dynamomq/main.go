@@ -39,7 +39,7 @@ func main() {
 	fmt.Printf("endpoint is: [%s]\n", *endpoint)
 	fmt.Println("")
 
-	client, err := dynamomq.NewQueueSDKClient[any](context.Background(),
+	client, err := dynamomq.NewFromConfig[any](context.Background(),
 		dynamomq.WithAWSRegion(*region),
 		dynamomq.WithAWSCredentialsProfileName(*credentialsProfile),
 		dynamomq.WithTableName(*tableName),

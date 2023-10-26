@@ -26,8 +26,8 @@ func (m mockClock) Now() time.Time {
 	return m.t
 }
 
-func withClock(clock clock.Clock) Option {
-	return func(s *options) {
+func withClock(clock clock.Clock) func(s *ClientOptions) {
+	return func(s *ClientOptions) {
 		if clock != nil {
 			s.clock = clock
 		}
@@ -179,9 +179,9 @@ func TestQueueSDKClientEnqueue(t *testing.T) {
 			raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			client, err := NewQueueSDKClient[test.MessageData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock))
+			client, err := NewFromConfig[test.MessageData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock))
 			if err != nil {
-				t.Fatalf("NewQueueSDKClient() error = %v", err)
+				t.Fatalf("NewFromConfig() error = %v", err)
 				return
 			}
 			result, err := client.Enqueue(ctx, tt.args.id, tt.args.data)
@@ -316,9 +316,9 @@ func TestQueueSDKClientPeek(t *testing.T) {
 			raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			client, err := NewQueueSDKClient[test.MessageData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
+			client, err := NewFromConfig[test.MessageData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
 			if err != nil {
-				t.Fatalf("NewQueueSDKClient() error = %v", err)
+				t.Fatalf("NewFromConfig() error = %v", err)
 				return
 			}
 			result, err := client.Peek(ctx)
@@ -357,7 +357,7 @@ func TestQueueSDKClientPeekUseFIFO(t *testing.T) {
 	now := time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC)
 
 	ctx := context.Background()
-	client, err := NewQueueSDKClient[test.MessageData](ctx,
+	client, err := NewFromConfig[test.MessageData](ctx,
 		WithAWSDynamoDBClient(raw),
 		withClock(mockClock{
 			t: now,
@@ -365,7 +365,7 @@ func TestQueueSDKClientPeekUseFIFO(t *testing.T) {
 		WithAWSVisibilityTimeout(1),
 		WithUseFIFO(true))
 	if err != nil {
-		t.Fatalf("NewQueueSDKClient() error = %v", err)
+		t.Fatalf("NewFromConfig() error = %v", err)
 		return
 	}
 
@@ -511,14 +511,14 @@ func TestQueueSDKClientPeekNotUseFIFO(t *testing.T) {
 	now := time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC)
 
 	ctx := context.Background()
-	client, err := NewQueueSDKClient[test.MessageData](ctx,
+	client, err := NewFromConfig[test.MessageData](ctx,
 		WithAWSDynamoDBClient(raw),
 		withClock(mockClock{
 			t: now,
 		}),
 		WithAWSVisibilityTimeout(1))
 	if err != nil {
-		t.Fatalf("NewQueueSDKClient() error = %v", err)
+		t.Fatalf("NewFromConfig() error = %v", err)
 		return
 	}
 
@@ -695,9 +695,9 @@ func TestQueueSDKClientRetry(t *testing.T) {
 			raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			client, err := NewQueueSDKClient[test.MessageData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
+			client, err := NewFromConfig[test.MessageData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
 			if err != nil {
-				t.Fatalf("NewQueueSDKClient() error = %v", err)
+				t.Fatalf("NewFromConfig() error = %v", err)
 				return
 			}
 			result, err := client.Retry(ctx, tt.args.id)
@@ -779,9 +779,9 @@ func TestQueueSDKClientDelete(t *testing.T) {
 			raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			client, err := NewQueueSDKClient[test.MessageData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
+			client, err := NewFromConfig[test.MessageData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
 			if err != nil {
-				t.Fatalf("NewQueueSDKClient() error = %v", err)
+				t.Fatalf("NewFromConfig() error = %v", err)
 				return
 			}
 			err = client.Delete(ctx, tt.args.id)
@@ -901,9 +901,9 @@ func TestQueueSDKClientSendToDLQ(t *testing.T) {
 			raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			client, err := NewQueueSDKClient[test.MessageData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
+			client, err := NewFromConfig[test.MessageData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
 			if err != nil {
-				t.Fatalf("NewQueueSDKClient() error = %v", err)
+				t.Fatalf("NewFromConfig() error = %v", err)
 				return
 			}
 			result, err := client.SendToDLQ(ctx, tt.args.id)
@@ -1029,9 +1029,9 @@ func TestQueueSDKClientRedrive(t *testing.T) {
 			raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			client, err := NewQueueSDKClient[test.MessageData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
+			client, err := NewFromConfig[test.MessageData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
 			if err != nil {
-				t.Fatalf("NewQueueSDKClient() error = %v", err)
+				t.Fatalf("NewFromConfig() error = %v", err)
 				return
 			}
 			result, err := client.Redrive(ctx, tt.args.id)
@@ -1139,9 +1139,9 @@ func TestQueueSDKClientGetQueueStats(t *testing.T) {
 			raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			client, err := NewQueueSDKClient[test.MessageData](ctx, WithAWSDynamoDBClient(raw))
+			client, err := NewFromConfig[test.MessageData](ctx, WithAWSDynamoDBClient(raw))
 			if err != nil {
-				t.Fatalf("NewQueueSDKClient() error = %v", err)
+				t.Fatalf("NewFromConfig() error = %v", err)
 				return
 			}
 			got, err := client.GetQueueStats(ctx)
@@ -1218,9 +1218,9 @@ func TestQueueSDKClientGetDLQStats(t *testing.T) {
 			raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			client, err := NewQueueSDKClient[test.MessageData](ctx, WithAWSDynamoDBClient(raw))
+			client, err := NewFromConfig[test.MessageData](ctx, WithAWSDynamoDBClient(raw))
 			if err != nil {
-				t.Fatalf("NewQueueSDKClient() error = %v", err)
+				t.Fatalf("NewFromConfig() error = %v", err)
 				return
 			}
 			got, err := client.GetDLQStats(ctx)
@@ -1302,9 +1302,9 @@ func TestQueueSDKClientGet(t *testing.T) {
 			raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			client, err := NewQueueSDKClient[test.MessageData](ctx, WithAWSDynamoDBClient(raw))
+			client, err := NewFromConfig[test.MessageData](ctx, WithAWSDynamoDBClient(raw))
 			if err != nil {
-				t.Fatalf("NewQueueSDKClient() error = %v", err)
+				t.Fatalf("NewFromConfig() error = %v", err)
 				return
 			}
 			got, err := client.Get(ctx, tt.args.id)
@@ -1388,9 +1388,9 @@ func TestQueueSDKClientPut(t *testing.T) {
 			raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			client, err := NewQueueSDKClient[test.MessageData](ctx, WithAWSDynamoDBClient(raw))
+			client, err := NewFromConfig[test.MessageData](ctx, WithAWSDynamoDBClient(raw))
 			if err != nil {
-				t.Fatalf("NewQueueSDKClient() error = %v", err)
+				t.Fatalf("NewFromConfig() error = %v", err)
 				return
 			}
 			err = client.Put(ctx, tt.args.message)
@@ -1490,9 +1490,9 @@ func TestQueueSDKClientUpsert(t *testing.T) {
 			raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			client, err := NewQueueSDKClient[test.MessageData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock))
+			client, err := NewFromConfig[test.MessageData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock))
 			if err != nil {
-				t.Fatalf("NewQueueSDKClient() error = %v", err)
+				t.Fatalf("NewFromConfig() error = %v", err)
 				return
 			}
 			err = client.Upsert(ctx, tt.args.message)
@@ -1600,9 +1600,9 @@ func TestQueueSDKClientTouch(t *testing.T) {
 			raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			client, err := NewQueueSDKClient[test.MessageData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
+			client, err := NewFromConfig[test.MessageData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
 			if err != nil {
-				t.Fatalf("NewQueueSDKClient() error = %v", err)
+				t.Fatalf("NewFromConfig() error = %v", err)
 				return
 			}
 			result, err := client.Touch(ctx, tt.args.id)
@@ -1680,9 +1680,9 @@ func TestQueueSDKClientList(t *testing.T) {
 			raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			client, err := NewQueueSDKClient[test.MessageData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
+			client, err := NewFromConfig[test.MessageData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
 			if err != nil {
-				t.Fatalf("NewQueueSDKClient() error = %v", err)
+				t.Fatalf("NewFromConfig() error = %v", err)
 				return
 			}
 			result, err := client.List(ctx, tt.args.size)
@@ -1762,9 +1762,9 @@ func TestQueueSDKClientListIDs(t *testing.T) {
 			raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			client, err := NewQueueSDKClient[test.MessageData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
+			client, err := NewFromConfig[test.MessageData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
 			if err != nil {
-				t.Fatalf("NewQueueSDKClient() error = %v", err)
+				t.Fatalf("NewFromConfig() error = %v", err)
 				return
 			}
 			result, err := client.ListIDs(ctx, tt.args.size)
@@ -1846,9 +1846,9 @@ func TestQueueSDKClientListExtendedIDs(t *testing.T) {
 			raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			client, err := NewQueueSDKClient[test.MessageData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
+			client, err := NewFromConfig[test.MessageData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
 			if err != nil {
-				t.Fatalf("NewQueueSDKClient() error = %v", err)
+				t.Fatalf("NewFromConfig() error = %v", err)
 				return
 			}
 			result, err := client.ListExtendedIDs(ctx, tt.args.size)
