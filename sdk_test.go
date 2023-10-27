@@ -417,7 +417,9 @@ func TestQueueSDKClientPeekUseFIFO(t *testing.T) {
 		t.Errorf("Peek() 2 error = %v, wantErr %v", err, &EmptyQueueError{})
 		return
 	}
-	err = client.Delete(ctx, result.ID)
+	_, err = client.DeleteMessage(ctx, &DeleteMessageInput{
+		ID: result.ID,
+	})
 	if err != nil {
 		t.Errorf("Done() 1 error = %v", err)
 		return
@@ -460,7 +462,9 @@ func TestQueueSDKClientPeekUseFIFO(t *testing.T) {
 		t.Errorf("Peek() 4 error = %v, wantErr %v", err, &EmptyQueueError{})
 		return
 	}
-	err = client.Delete(ctx, result.ID)
+	_, err = client.DeleteMessage(ctx, &DeleteMessageInput{
+		ID: result.ID,
+	})
 	if err != nil {
 		t.Errorf("Done() 2 error = %v", err)
 		return
@@ -503,7 +507,9 @@ func TestQueueSDKClientPeekUseFIFO(t *testing.T) {
 		t.Errorf("Peek() 6 error = %v, wantErr %v", err, &EmptyQueueError{})
 		return
 	}
-	err = client.Delete(ctx, result.ID)
+	_, err = client.DeleteMessage(ctx, &DeleteMessageInput{
+		ID: result.ID,
+	})
 	if err != nil {
 		t.Errorf("Done() 3 error = %v", err)
 		return
@@ -817,9 +823,11 @@ func TestQueueSDKClientDelete(t *testing.T) {
 				t.Fatalf("NewFromConfig() error = %v", err)
 				return
 			}
-			err = client.Delete(ctx, tt.args.id)
+			_, err = client.DeleteMessage(ctx, &DeleteMessageInput{
+				ID: tt.args.id,
+			})
 			if err != tt.want {
-				t.Errorf("Delete() error = %v, wantErr %v", err, tt.want)
+				t.Errorf("DeleteMessage() error = %v, wantErr %v", err, tt.want)
 				return
 			}
 		})

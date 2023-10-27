@@ -148,7 +148,9 @@ func (c *Consumer[T]) processMessage(ctx context.Context, msg *Message[T]) {
 		}
 		return
 	}
-	err = c.client.Delete(ctx, msg.ID)
+	_, err = c.client.DeleteMessage(ctx, &DeleteMessageInput{
+		ID: msg.ID,
+	})
 	if err != nil {
 		c.logf("DynamoMQ: Failed to delete a message. %s", err)
 		return

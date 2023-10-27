@@ -30,7 +30,7 @@ type Client[T any] interface {
 	Enqueue(ctx context.Context, id string, data T) (*EnqueueResult[T], error)
 	Peek(ctx context.Context) (*PeekResult[T], error)
 	Retry(ctx context.Context, id string) (*RetryResult[T], error)
-	Delete(ctx context.Context, id string) error
+	DeleteMessage(ctx context.Context, params *DeleteMessageInput) (*DeleteMessageOutput, error)
 	SendToDLQ(ctx context.Context, id string) (*Result, error)
 	Redrive(ctx context.Context, id string) (*Result, error)
 	Get(ctx context.Context, id string) (*Message[T], error)
@@ -323,22 +323,32 @@ func (c *client[T]) Retry(ctx context.Context, id string) (*RetryResult[T], erro
 	}, nil
 }
 
-func (c *client[T]) Delete(ctx context.Context, id string) error {
-	if id == "" {
-		return &IDNotProvidedError{}
+type DeleteMessageInput struct {
+	ID string
+}
+
+type DeleteMessageOutput struct{}
+
+func (c *client[T]) DeleteMessage(ctx context.Context, params *DeleteMessageInput) (*DeleteMessageOutput, error) {
+	if params == nil {
+		params = &DeleteMessageInput{}
+	}
+	out := &DeleteMessageOutput{}
+	if params.ID == "" {
+		return out, &IDNotProvidedError{}
 	}
 	_, err := c.dynamoDB.DeleteItem(ctx, &dynamodb.DeleteItemInput{
 		TableName: &c.tableName,
 		Key: map[string]types.AttributeValue{
 			"id": &types.AttributeValueMemberS{
-				Value: id,
+				Value: params.ID,
 			},
 		},
 	})
 	if err != nil {
-		return handleDynamoDBError(err)
+		return out, handleDynamoDBError(err)
 	}
-	return nil
+	return out, nil
 }
 
 func (c *client[T]) SendToDLQ(ctx context.Context, id string) (*Result, error) {

@@ -83,7 +83,7 @@ func (c *CLI) help(_ context.Context, _ []string) {
     > info                                        [Print all info regarding Message record: system_info and data as JSON]
     > reset                                       [Reset the system info of the current message record]
     > redrive                                     [Redrive the record to STANDARD from DLQ]
-    > delete                                      [Delete current ID]
+    > delete                                      [DeleteMessage current ID]
     > fail                                        [Simulate failed record's processing ... put back to the queue; needs to be peeked again]
     > invalid                                     [Remove record from the regular queue to dead letter queue (DLQ) for manual fix]
   > id`)
@@ -173,7 +173,9 @@ func (c *CLI) purge(ctx context.Context, _ []string) {
 	}
 	fmt.Println("List of removed IDs:")
 	for _, id := range ids {
-		err := c.Client.Delete(ctx, id)
+		_, err := c.Client.DeleteMessage(ctx, &dynamomq.DeleteMessageInput{
+			ID: id,
+		})
 		if err != nil {
 			printError(err)
 			continue
@@ -196,7 +198,9 @@ func (c *CLI) enqueueTest(ctx context.Context, _ []string) {
 			fmt.Printf("* ID: %s, error: %s\n", id, err)
 			continue
 		}
-		err = c.Client.Delete(ctx, id)
+		_, err = c.Client.DeleteMessage(ctx, &dynamomq.DeleteMessageInput{
+			ID: id,
+		})
 		if err != nil {
 			fmt.Printf("* ID: %s, error: %s\n", id, err)
 			continue
@@ -341,7 +345,10 @@ func (c *CLI) delete(ctx context.Context, _ []string) {
 		printCLIModeRestriction("`done`")
 		return
 	}
-	err := c.Client.Delete(ctx, c.Message.ID)
+	_, err := c.Client.DeleteMessage(ctx, &dynamomq.DeleteMessageInput{
+		ID: c.Message.ID,
+	})
+
 	if err != nil {
 		printError(err)
 		return
