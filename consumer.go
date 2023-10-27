@@ -98,7 +98,7 @@ var ErrConsumerClosed = errors.New("DynamoMQ: Consumer closed")
 func (c *Consumer[T]) Listen() error {
 	for {
 		ctx := context.Background()
-		r, err := c.client.Peek(ctx)
+		r, err := c.client.ReceiveMessage(ctx, &ReceiveMessageInput{})
 		if err != nil {
 			if c.shuttingDown() {
 				return ErrConsumerClosed

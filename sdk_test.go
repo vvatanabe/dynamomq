@@ -210,7 +210,7 @@ func TestQueueSDKClientPeek(t *testing.T) {
 		name     string
 		setup    func(*testing.T) (*dynamodb.Client, func())
 		sdkClock clock.Clock
-		want     *PeekResult[test.MessageData]
+		want     *ReceiveMessageOutput[test.MessageData]
 		wantErr  error
 	}{
 		{
@@ -242,7 +242,7 @@ func TestQueueSDKClientPeek(t *testing.T) {
 			sdkClock: mockClock{
 				t: time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC),
 			},
-			want: func() *PeekResult[test.MessageData] {
+			want: func() *ReceiveMessageOutput[test.MessageData] {
 				s := newTestMessageItemAsReady("B-202", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
 				err := s.StartProcessing(time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC), 0)
 				if err != nil {
@@ -250,7 +250,7 @@ func TestQueueSDKClientPeek(t *testing.T) {
 				}
 				s.Version = 2
 				s.ReceiveCount = 1
-				r := &PeekResult[test.MessageData]{
+				r := &ReceiveMessageOutput[test.MessageData]{
 					Result: &Result{
 						ID:                   s.ID,
 						Status:               s.Status,
@@ -278,7 +278,7 @@ func TestQueueSDKClientPeek(t *testing.T) {
 			sdkClock: mockClock{
 				t: time.Date(2023, 12, 1, 0, 1, 1, 0, time.UTC),
 			},
-			want: func() *PeekResult[test.MessageData] {
+			want: func() *ReceiveMessageOutput[test.MessageData] {
 				s := newTestMessageItemAsPeeked("B-202", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
 				err := s.StartProcessing(time.Date(2023, 12, 1, 0, 1, 1, 0, time.UTC), 0)
 				if err != nil {
@@ -286,7 +286,7 @@ func TestQueueSDKClientPeek(t *testing.T) {
 				}
 				s.Version = 2
 				s.ReceiveCount = 1
-				r := &PeekResult[test.MessageData]{
+				r := &ReceiveMessageOutput[test.MessageData]{
 					Result: &Result{
 						ID:                   s.ID,
 						Status:               s.Status,
@@ -329,20 +329,20 @@ func TestQueueSDKClientPeek(t *testing.T) {
 				t.Fatalf("NewFromConfig() error = %v", err)
 				return
 			}
-			result, err := client.Peek(ctx)
+			result, err := client.ReceiveMessage(ctx, &ReceiveMessageInput{})
 			if tt.wantErr != nil {
 				if err != tt.wantErr {
-					t.Errorf("Peek() error = %v, wantErr %v", err, tt.wantErr)
+					t.Errorf("ReceiveMessage() error = %v, wantErr %v", err, tt.wantErr)
 					return
 				}
 				return
 			}
 			if err != nil {
-				t.Errorf("Peek() error = %v", err)
+				t.Errorf("ReceiveMessage() error = %v", err)
 				return
 			}
 			if !reflect.DeepEqual(result, tt.want) {
-				t.Errorf("Peek() got = %v, want %v", result, tt.want)
+				t.Errorf("ReceiveMessage() got = %v, want %v", result, tt.want)
 			}
 		})
 	}
@@ -377,7 +377,7 @@ func TestQueueSDKClientPeekUseFIFO(t *testing.T) {
 		return
 	}
 
-	want1 := func() *PeekResult[test.MessageData] {
+	want1 := func() *ReceiveMessageOutput[test.MessageData] {
 		s := newTestMessageItemAsReady("A-303", time.Date(2023, 12, 1, 0, 0, 1, 0, time.UTC))
 		err := s.StartProcessing(now, 0)
 		if err != nil {
@@ -385,7 +385,7 @@ func TestQueueSDKClientPeekUseFIFO(t *testing.T) {
 		}
 		s.Version = 2
 		s.ReceiveCount = 1
-		r := &PeekResult[test.MessageData]{
+		r := &ReceiveMessageOutput[test.MessageData]{
 			Result: &Result{
 				ID:                   s.ID,
 				Status:               s.Status,
@@ -398,19 +398,19 @@ func TestQueueSDKClientPeekUseFIFO(t *testing.T) {
 		return r
 	}()
 
-	result, err := client.Peek(ctx)
+	result, err := client.ReceiveMessage(ctx, &ReceiveMessageInput{})
 	if err != nil {
-		t.Errorf("Peek() 1 error = %v", err)
+		t.Errorf("ReceiveMessage() 1 error = %v", err)
 		return
 	}
 	if !reflect.DeepEqual(result, want1) {
 		v1, _ := json.Marshal(result)
 		v2, _ := json.Marshal(want1)
-		t.Errorf("Peek() 1 got = %v, want %v", string(v1), string(v2))
+		t.Errorf("ReceiveMessage() 1 got = %v, want %v", string(v1), string(v2))
 	}
-	_, err = client.Peek(ctx)
+	_, err = client.ReceiveMessage(ctx, &ReceiveMessageInput{})
 	if !errors.Is(err, &EmptyQueueError{}) {
-		t.Errorf("Peek() 2 error = %v, wantErr %v", err, &EmptyQueueError{})
+		t.Errorf("ReceiveMessage() 2 error = %v, wantErr %v", err, &EmptyQueueError{})
 		return
 	}
 	_, err = client.DeleteMessage(ctx, &DeleteMessageInput{
@@ -421,7 +421,7 @@ func TestQueueSDKClientPeekUseFIFO(t *testing.T) {
 		return
 	}
 
-	want2 := func() *PeekResult[test.MessageData] {
+	want2 := func() *ReceiveMessageOutput[test.MessageData] {
 		s := newTestMessageItemAsReady("A-202", time.Date(2023, 12, 1, 0, 0, 2, 0, time.UTC))
 		err := s.StartProcessing(now, 0)
 		if err != nil {
@@ -429,7 +429,7 @@ func TestQueueSDKClientPeekUseFIFO(t *testing.T) {
 		}
 		s.Version = 2
 		s.ReceiveCount = 1
-		r := &PeekResult[test.MessageData]{
+		r := &ReceiveMessageOutput[test.MessageData]{
 			Result: &Result{
 				ID:                   s.ID,
 				Status:               s.Status,
@@ -442,20 +442,20 @@ func TestQueueSDKClientPeekUseFIFO(t *testing.T) {
 		return r
 	}()
 
-	result, err = client.Peek(ctx)
+	result, err = client.ReceiveMessage(ctx, &ReceiveMessageInput{})
 	if err != nil {
-		t.Errorf("Peek() 3 error = %v", err)
+		t.Errorf("ReceiveMessage() 3 error = %v", err)
 		return
 	}
 	if !reflect.DeepEqual(result, want2) {
 		v1, _ := json.Marshal(result)
 		v2, _ := json.Marshal(want2)
-		t.Errorf("Peek() 3 got = %v, want %v", string(v1), string(v2))
+		t.Errorf("ReceiveMessage() 3 got = %v, want %v", string(v1), string(v2))
 	}
 
-	_, err = client.Peek(ctx)
+	_, err = client.ReceiveMessage(ctx, &ReceiveMessageInput{})
 	if !errors.Is(err, &EmptyQueueError{}) {
-		t.Errorf("Peek() 4 error = %v, wantErr %v", err, &EmptyQueueError{})
+		t.Errorf("ReceiveMessage() 4 error = %v, wantErr %v", err, &EmptyQueueError{})
 		return
 	}
 	_, err = client.DeleteMessage(ctx, &DeleteMessageInput{
@@ -466,7 +466,7 @@ func TestQueueSDKClientPeekUseFIFO(t *testing.T) {
 		return
 	}
 
-	want3 := func() *PeekResult[test.MessageData] {
+	want3 := func() *ReceiveMessageOutput[test.MessageData] {
 		s := newTestMessageItemAsReady("A-101", time.Date(2023, 12, 1, 0, 0, 3, 0, time.UTC))
 		err := s.StartProcessing(now, 0)
 		if err != nil {
@@ -474,7 +474,7 @@ func TestQueueSDKClientPeekUseFIFO(t *testing.T) {
 		}
 		s.Version = 2
 		s.ReceiveCount = 1
-		r := &PeekResult[test.MessageData]{
+		r := &ReceiveMessageOutput[test.MessageData]{
 			Result: &Result{
 				ID:                   s.ID,
 				Status:               s.Status,
@@ -487,20 +487,20 @@ func TestQueueSDKClientPeekUseFIFO(t *testing.T) {
 		return r
 	}()
 
-	result, err = client.Peek(ctx)
+	result, err = client.ReceiveMessage(ctx, &ReceiveMessageInput{})
 	if err != nil {
-		t.Errorf("Peek() 5 error = %v", err)
+		t.Errorf("ReceiveMessage() 5 error = %v", err)
 		return
 	}
 	if !reflect.DeepEqual(result, want3) {
 		v1, _ := json.Marshal(result)
 		v2, _ := json.Marshal(want3)
-		t.Errorf("Peek() 5 got = %v, want %v", string(v1), string(v2))
+		t.Errorf("ReceiveMessage() 5 got = %v, want %v", string(v1), string(v2))
 	}
 
-	_, err = client.Peek(ctx)
+	_, err = client.ReceiveMessage(ctx, &ReceiveMessageInput{})
 	if !errors.Is(err, &EmptyQueueError{}) {
-		t.Errorf("Peek() 6 error = %v, wantErr %v", err, &EmptyQueueError{})
+		t.Errorf("ReceiveMessage() 6 error = %v, wantErr %v", err, &EmptyQueueError{})
 		return
 	}
 	_, err = client.DeleteMessage(ctx, &DeleteMessageInput{
@@ -510,9 +510,9 @@ func TestQueueSDKClientPeekUseFIFO(t *testing.T) {
 		t.Errorf("Done() 3 error = %v", err)
 		return
 	}
-	_, err = client.Peek(ctx)
+	_, err = client.ReceiveMessage(ctx, &ReceiveMessageInput{})
 	if !errors.Is(err, &EmptyQueueError{}) {
-		t.Errorf("Peek() 7 error = %v, wantErr %v", err, &EmptyQueueError{})
+		t.Errorf("ReceiveMessage() 7 error = %v, wantErr %v", err, &EmptyQueueError{})
 		return
 	}
 }
@@ -545,7 +545,7 @@ func TestQueueSDKClientPeekNotUseFIFO(t *testing.T) {
 		return
 	}
 
-	want1 := func() *PeekResult[test.MessageData] {
+	want1 := func() *ReceiveMessageOutput[test.MessageData] {
 		s := newTestMessageItemAsReady("A-303", time.Date(2023, 12, 1, 0, 0, 1, 0, time.UTC))
 		err := s.StartProcessing(now, 0)
 		if err != nil {
@@ -553,7 +553,7 @@ func TestQueueSDKClientPeekNotUseFIFO(t *testing.T) {
 		}
 		s.Version = 2
 		s.ReceiveCount = 1
-		r := &PeekResult[test.MessageData]{
+		r := &ReceiveMessageOutput[test.MessageData]{
 			Result: &Result{
 				ID:                   s.ID,
 				Status:               s.Status,
@@ -566,18 +566,18 @@ func TestQueueSDKClientPeekNotUseFIFO(t *testing.T) {
 		return r
 	}()
 
-	result, err := client.Peek(ctx)
+	result, err := client.ReceiveMessage(ctx, &ReceiveMessageInput{})
 	if err != nil {
-		t.Errorf("Peek() 1 error = %v", err)
+		t.Errorf("ReceiveMessage() 1 error = %v", err)
 		return
 	}
 	if !reflect.DeepEqual(result, want1) {
 		v1, _ := json.Marshal(result)
 		v2, _ := json.Marshal(want1)
-		t.Errorf("Peek() 1 got = %v, want %v", string(v1), string(v2))
+		t.Errorf("ReceiveMessage() 1 got = %v, want %v", string(v1), string(v2))
 	}
 
-	want2 := func() *PeekResult[test.MessageData] {
+	want2 := func() *ReceiveMessageOutput[test.MessageData] {
 		s := newTestMessageItemAsReady("A-202", time.Date(2023, 12, 1, 0, 0, 2, 0, time.UTC))
 		err := s.StartProcessing(now, 0)
 		if err != nil {
@@ -585,7 +585,7 @@ func TestQueueSDKClientPeekNotUseFIFO(t *testing.T) {
 		}
 		s.Version = 2
 		s.ReceiveCount = 1
-		r := &PeekResult[test.MessageData]{
+		r := &ReceiveMessageOutput[test.MessageData]{
 			Result: &Result{
 				ID:                   s.ID,
 				Status:               s.Status,
@@ -598,18 +598,18 @@ func TestQueueSDKClientPeekNotUseFIFO(t *testing.T) {
 		return r
 	}()
 
-	result, err = client.Peek(ctx)
+	result, err = client.ReceiveMessage(ctx, &ReceiveMessageInput{})
 	if err != nil {
-		t.Errorf("Peek() 2 error = %v", err)
+		t.Errorf("ReceiveMessage() 2 error = %v", err)
 		return
 	}
 	if !reflect.DeepEqual(result, want2) {
 		v1, _ := json.Marshal(result)
 		v2, _ := json.Marshal(want2)
-		t.Errorf("Peek() 2 got = %v, want %v", string(v1), string(v2))
+		t.Errorf("ReceiveMessage() 2 got = %v, want %v", string(v1), string(v2))
 	}
 
-	want3 := func() *PeekResult[test.MessageData] {
+	want3 := func() *ReceiveMessageOutput[test.MessageData] {
 		s := newTestMessageItemAsReady("A-101", time.Date(2023, 12, 1, 0, 0, 3, 0, time.UTC))
 		err := s.StartProcessing(now, 0)
 		if err != nil {
@@ -617,7 +617,7 @@ func TestQueueSDKClientPeekNotUseFIFO(t *testing.T) {
 		}
 		s.Version = 2
 		s.ReceiveCount = 1
-		r := &PeekResult[test.MessageData]{
+		r := &ReceiveMessageOutput[test.MessageData]{
 			Result: &Result{
 				ID:                   s.ID,
 				Status:               s.Status,
@@ -630,20 +630,20 @@ func TestQueueSDKClientPeekNotUseFIFO(t *testing.T) {
 		return r
 	}()
 
-	result, err = client.Peek(ctx)
+	result, err = client.ReceiveMessage(ctx, &ReceiveMessageInput{})
 	if err != nil {
-		t.Errorf("Peek() 3 error = %v", err)
+		t.Errorf("ReceiveMessage() 3 error = %v", err)
 		return
 	}
 	if !reflect.DeepEqual(result, want3) {
 		v1, _ := json.Marshal(result)
 		v2, _ := json.Marshal(want3)
-		t.Errorf("Peek() 3 got = %v, want %v", string(v1), string(v2))
+		t.Errorf("ReceiveMessage() 3 got = %v, want %v", string(v1), string(v2))
 	}
 
-	_, err = client.Peek(ctx)
+	_, err = client.ReceiveMessage(ctx, &ReceiveMessageInput{})
 	if !errors.Is(err, &EmptyQueueError{}) {
-		t.Errorf("Peek() 4 error = %v, wantErr %v", err, &EmptyQueueError{})
+		t.Errorf("ReceiveMessage() 4 error = %v, wantErr %v", err, &EmptyQueueError{})
 		return
 	}
 }

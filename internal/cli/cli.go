@@ -43,8 +43,8 @@ func (c *CLI) Run(ctx context.Context, command string, params []string) {
 		c.purge(ctx, params)
 	case "ls":
 		c.ls(ctx, params)
-	case "peek":
-		c.peek(ctx, params)
+	case "receive":
+		c.receive(ctx, params)
 	case "id":
 		c.id(ctx, params)
 	case "sys", "system":
@@ -76,7 +76,7 @@ func (c *CLI) help(_ context.Context, _ []string) {
   > enqueue-test | et                             [SendMessage test Message records in DynamoDB: A-101, A-202, A-303 and A-404; if already exists, it will overwrite it]
   > purge                                         [It will remove all test data from DynamoDB]
   > ls                                            [List all message IDs ... max 10 elements]
-  > peek                                          [Peek the Message from the Queue .. it will replace the current ID with the peeked one]
+  > receive                                       [ReceiveMessage the Message from the Queue .. it will replace the current ID with the peeked one]
   > id <id>                                       [Get the application object from DynamoDB by app domain ID; CLI is in the app mode, from that point on]
     > sys                                         [Show system info data in a JSON format]
     > data                                        [Print the data as JSON for the current message record]
@@ -243,19 +243,19 @@ func (c *CLI) dlq(ctx context.Context, _ []string) {
 	printMessageWithData("DLQ status:\n", stats)
 }
 
-func (c *CLI) peek(ctx context.Context, _ []string) {
+func (c *CLI) receive(ctx context.Context, _ []string) {
 	if c.Client == nil {
 		fmt.Println(needAWSMessage)
 		return
 	}
-	rr, err := c.Client.Peek(ctx)
+	rr, err := c.Client.ReceiveMessage(ctx, &dynamomq.ReceiveMessageInput{})
 	if err != nil {
-		printError(fmt.Sprintf("Peek has failed! message: %s", err))
+		printError(fmt.Sprintf("ReceiveMessage has failed! message: %s", err))
 		return
 	}
 	c.Message = rr.PeekedMessageObject
 	printMessageWithData(
-		fmt.Sprintf("Peek was successful ... record peeked is: [%s]\n", c.Message.ID),
+		fmt.Sprintf("ReceiveMessage was successful ... record peeked is: [%s]\n", c.Message.ID),
 		c.Message.GetSystemInfo())
 	stats, err := c.Client.GetQueueStats(ctx)
 	if err != nil {

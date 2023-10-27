@@ -28,7 +28,7 @@ const (
 
 type Client[T any] interface {
 	SendMessage(ctx context.Context, params *SendMessageInput[T]) (*SendMessageOutput[T], error)
-	Peek(ctx context.Context) (*PeekResult[T], error)
+	ReceiveMessage(ctx context.Context, params *ReceiveMessageInput) (*ReceiveMessageOutput[T], error)
 	Retry(ctx context.Context, id string) (*RetryResult[T], error)
 	DeleteMessage(ctx context.Context, params *DeleteMessageInput) (*DeleteMessageOutput, error)
 	MoveMessageToDLQ(ctx context.Context, params *MoveMessageToDLQInput) (*MoveMessageToDLQOutput, error)
@@ -223,12 +223,25 @@ func (c *client[T]) SendMessage(ctx context.Context, params *SendMessageInput[T]
 	}, nil
 }
 
-func (c *client[T]) Peek(ctx context.Context) (*PeekResult[T], error) {
+type ReceiveMessageInput struct {
+}
+
+// ReceiveMessageOutput represents the result for the ReceiveMessage() API call.
+type ReceiveMessageOutput[T any] struct {
+	*Result                            // Embedded type for inheritance-like behavior in Go
+	PeekFromQueueTimestamp string      `json:"queue_peek_timestamp"`
+	PeekedMessageObject    *Message[T] `json:"-"`
+}
+
+func (c *client[T]) ReceiveMessage(ctx context.Context, params *ReceiveMessageInput) (*ReceiveMessageOutput[T], error) {
+	if params == nil {
+		params = &ReceiveMessageInput{}
+	}
 	expr, err := expression.NewBuilder().
 		WithKeyCondition(expression.Key("queue_type").Equal(expression.Value(QueueTypeStandard))). // FIXME make DLQs peek-enabled.
 		Build()
 	if err != nil {
-		return nil, &BuildingExpressionError{Cause: err}
+		return &ReceiveMessageOutput[T]{}, &BuildingExpressionError{Cause: err}
 	}
 	var (
 		exclusiveStartKey map[string]types.AttributeValue
@@ -247,13 +260,13 @@ func (c *client[T]) Peek(ctx context.Context) (*PeekResult[T], error) {
 			ExclusiveStartKey:         exclusiveStartKey,
 		})
 		if err != nil {
-			return nil, handleDynamoDBError(err)
+			return &ReceiveMessageOutput[T]{}, handleDynamoDBError(err)
 		}
 		exclusiveStartKey = queryResult.LastEvaluatedKey
 		for _, itemMap := range queryResult.Items {
 			item := Message[T]{}
 			if err = attributevalue.UnmarshalMap(itemMap, &item); err != nil {
-				return nil, &UnmarshalingAttributeError{Cause: err}
+				return &ReceiveMessageOutput[T]{}, &UnmarshalingAttributeError{Cause: err}
 			}
 			isQueueSelected := item.IsQueueSelected(c.clock.Now(), visibilityTimeout)
 			if c.useFIFO && isQueueSelected {
@@ -270,7 +283,7 @@ func (c *client[T]) Peek(ctx context.Context) (*PeekResult[T], error) {
 	}
 ExitLoop:
 	if selectedItem == nil || selectedItem.StartProcessing(c.clock.Now(), visibilityTimeout) != err {
-		return nil, &EmptyQueueError{}
+		return &ReceiveMessageOutput[T]{}, &EmptyQueueError{}
 	}
 	expr, err = expression.NewBuilder().
 		WithUpdate(expression.
@@ -282,13 +295,13 @@ ExitLoop:
 		WithCondition(expression.Name("version").Equal(expression.Value(selectedItem.Version))).
 		Build()
 	if err != nil {
-		return nil, &BuildingExpressionError{Cause: err}
+		return &ReceiveMessageOutput[T]{}, &BuildingExpressionError{Cause: err}
 	}
 	peeked, err := c.updateDynamoDBItem(ctx, selectedItem.ID, &expr)
 	if err != nil {
-		return nil, err
+		return &ReceiveMessageOutput[T]{}, err
 	}
-	return &PeekResult[T]{
+	return &ReceiveMessageOutput[T]{
 		Result: &Result{
 			ID:                   peeked.ID,
 			Status:               peeked.Status,
