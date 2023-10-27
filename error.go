@@ -28,18 +28,6 @@ func (e ConditionalCheckFailedError) Error() string {
 	return fmt.Sprintf("Condition on the 'version' attribute has failed: %v", e.Cause)
 }
 
-type RecordNotConstructedError struct{}
-
-func (e RecordNotConstructedError) Error() string {
-	return "Message record not yet fully constructed .. cannot execute API."
-}
-
-type IllegalStateError struct{}
-
-func (e IllegalStateError) Error() string {
-	return "Illegal state, cannot proceed."
-}
-
 type BuildingExpressionError struct {
 	Cause error
 }
@@ -76,4 +64,14 @@ type EmptyQueueError struct{}
 
 func (e EmptyQueueError) Error() string {
 	return "Cannot proceed, queue is empty."
+}
+
+type InvalidStateTransitionError struct {
+	Msg       string
+	Operation string
+	Current   Status
+}
+
+func (e *InvalidStateTransitionError) Error() string {
+	return fmt.Sprintf("operation %s failed for status %s: %s", e.Operation, e.Current, e.Msg)
 }

@@ -91,13 +91,19 @@ func newTestMessageItemAsReady(id string, now time.Time) *Message[test.MessageDa
 
 func newTestMessageItemAsPeeked(id string, now time.Time) *Message[test.MessageData] {
 	message := NewDefaultMessage[test.MessageData](id, test.NewMessageData(id), now)
-	message.MarkAsPeeked(now)
+	err := message.MarkAsPeeked(now, 0)
+	if err != nil {
+		panic(err)
+	}
 	return message
 }
 
 func newTestMessageItemAsDLQ(id string, now time.Time) *Message[test.MessageData] {
 	message := NewDefaultMessage[test.MessageData](id, test.NewMessageData(id), now)
-	message.MarkAsDLQ(now)
+	err := message.MarkAsDLQ(now)
+	if err != nil {
+		panic(err)
+	}
 	return message
 }
 
@@ -242,7 +248,10 @@ func TestQueueSDKClientPeek(t *testing.T) {
 			},
 			want: func() *PeekResult[test.MessageData] {
 				s := newTestMessageItemAsReady("B-202", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
-				s.MarkAsPeeked(time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC))
+				err := s.MarkAsPeeked(time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC), 0)
+				if err != nil {
+					panic(err)
+				}
 				s.Version = 2
 				s.ReceiveCount = 1
 				r := &PeekResult[test.MessageData]{
@@ -275,7 +284,10 @@ func TestQueueSDKClientPeek(t *testing.T) {
 			},
 			want: func() *PeekResult[test.MessageData] {
 				s := newTestMessageItemAsPeeked("B-202", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
-				s.MarkAsPeeked(time.Date(2023, 12, 1, 0, 1, 1, 0, time.UTC))
+				err := s.MarkAsPeeked(time.Date(2023, 12, 1, 0, 1, 1, 0, time.UTC), 0)
+				if err != nil {
+					panic(err)
+				}
 				s.Version = 2
 				s.ReceiveCount = 1
 				r := &PeekResult[test.MessageData]{
@@ -371,7 +383,10 @@ func TestQueueSDKClientPeekUseFIFO(t *testing.T) {
 
 	want1 := func() *PeekResult[test.MessageData] {
 		s := newTestMessageItemAsReady("A-303", time.Date(2023, 12, 1, 0, 0, 1, 0, time.UTC))
-		s.MarkAsPeeked(now)
+		err := s.MarkAsPeeked(now, 0)
+		if err != nil {
+			panic(err)
+		}
 		s.Version = 2
 		s.ReceiveCount = 1
 		r := &PeekResult[test.MessageData]{
@@ -410,7 +425,10 @@ func TestQueueSDKClientPeekUseFIFO(t *testing.T) {
 
 	want2 := func() *PeekResult[test.MessageData] {
 		s := newTestMessageItemAsReady("A-202", time.Date(2023, 12, 1, 0, 0, 2, 0, time.UTC))
-		s.MarkAsPeeked(now)
+		err := s.MarkAsPeeked(now, 0)
+		if err != nil {
+			panic(err)
+		}
 		s.Version = 2
 		s.ReceiveCount = 1
 		r := &PeekResult[test.MessageData]{
@@ -450,7 +468,10 @@ func TestQueueSDKClientPeekUseFIFO(t *testing.T) {
 
 	want3 := func() *PeekResult[test.MessageData] {
 		s := newTestMessageItemAsReady("A-101", time.Date(2023, 12, 1, 0, 0, 3, 0, time.UTC))
-		s.MarkAsPeeked(now)
+		err := s.MarkAsPeeked(now, 0)
+		if err != nil {
+			panic(err)
+		}
 		s.Version = 2
 		s.ReceiveCount = 1
 		r := &PeekResult[test.MessageData]{
@@ -524,7 +545,10 @@ func TestQueueSDKClientPeekNotUseFIFO(t *testing.T) {
 
 	want1 := func() *PeekResult[test.MessageData] {
 		s := newTestMessageItemAsReady("A-303", time.Date(2023, 12, 1, 0, 0, 1, 0, time.UTC))
-		s.MarkAsPeeked(now)
+		err := s.MarkAsPeeked(now, 0)
+		if err != nil {
+			panic(err)
+		}
 		s.Version = 2
 		s.ReceiveCount = 1
 		r := &PeekResult[test.MessageData]{
@@ -553,7 +577,10 @@ func TestQueueSDKClientPeekNotUseFIFO(t *testing.T) {
 
 	want2 := func() *PeekResult[test.MessageData] {
 		s := newTestMessageItemAsReady("A-202", time.Date(2023, 12, 1, 0, 0, 2, 0, time.UTC))
-		s.MarkAsPeeked(now)
+		err := s.MarkAsPeeked(now, 0)
+		if err != nil {
+			panic(err)
+		}
 		s.Version = 2
 		s.ReceiveCount = 1
 		r := &PeekResult[test.MessageData]{
@@ -582,7 +609,10 @@ func TestQueueSDKClientPeekNotUseFIFO(t *testing.T) {
 
 	want3 := func() *PeekResult[test.MessageData] {
 		s := newTestMessageItemAsReady("A-101", time.Date(2023, 12, 1, 0, 0, 3, 0, time.UTC))
-		s.MarkAsPeeked(now)
+		err := s.MarkAsPeeked(now, 0)
+		if err != nil {
+			panic(err)
+		}
 		s.Version = 2
 		s.ReceiveCount = 1
 		r := &PeekResult[test.MessageData]{
@@ -663,7 +693,7 @@ func TestQueueSDKClientRetry(t *testing.T) {
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
-						Item: newTestMessageItemAsReady("A-101", time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC)).MarshalMapUnsafe(),
+						Item: newTestMessageItemAsPeeked("A-101", time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC)).MarshalMapUnsafe(),
 					},
 				)
 			},
@@ -681,8 +711,11 @@ func TestQueueSDKClientRetry(t *testing.T) {
 					Version:              2,
 				},
 				Message: func() *Message[test.MessageData] {
-					message := newTestMessageItemAsReady("A-101", time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC))
-					message.MarkAsRetry(time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC))
+					message := newTestMessageItemAsPeeked("A-101", time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC))
+					err := message.MarkAsRetry(time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC))
+					if err != nil {
+						panic(err)
+					}
 					message.Version = 2
 					return message
 				}(),
@@ -880,9 +913,12 @@ func TestQueueSDKClientSendToDLQ(t *testing.T) {
 				id: "A-101",
 			},
 			want: func() *Result {
-				s := newTestMessageItemAsDLQ("A-101",
+				s := newTestMessageItemAsReady("A-101",
 					time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
-				s.MarkAsDLQ(time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC))
+				err := s.MarkAsDLQ(time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC))
+				if err != nil {
+					panic(err)
+				}
 				s.Version = 2
 				r := &Result{
 					ID:                   s.ID,
@@ -967,39 +1003,6 @@ func TestQueueSDKClientRedrive(t *testing.T) {
 			want:    nil,
 			wantErr: &IDNotFoundError{},
 		},
-		{
-			name: "should return RecordNotConstructedError",
-			setup: func(t *testing.T) (*dynamodb.Client, func()) {
-				return setupDynamoDB(t,
-					&types.PutRequest{
-						Item: newTestMessageItemAsReady("A-101", clock.Now()).MarshalMapUnsafe(),
-					},
-				)
-			},
-			args: args{
-				id: "A-101",
-			},
-			want:    nil,
-			wantErr: &RecordNotConstructedError{},
-		},
-		{
-			name: "should return IllegalStateError",
-			setup: func(t *testing.T) (*dynamodb.Client, func()) {
-				return setupDynamoDB(t, func() *types.PutRequest {
-					msg := newTestMessageItemAsDLQ("A-101", clock.Now())
-					msg.MarkAsPeeked(clock.Now())
-					return &types.PutRequest{
-						Item: msg.MarshalMapUnsafe(),
-					}
-				}())
-			},
-			args: args{
-				id: "A-101",
-			},
-			want:    nil,
-			wantErr: &IllegalStateError{},
-		},
-
 		{
 			name: "should redrive succeeds",
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {

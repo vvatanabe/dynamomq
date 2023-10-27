@@ -91,37 +91,6 @@ func (m *Message[T]) IsDLQ() bool {
 	return m.QueueType == QueueTypeDLQ
 }
 
-func (m *Message[T]) MarkAsRetry(now time.Time) {
-	ts := clock.FormatRFC3339(now)
-	m.LastUpdatedTimestamp = ts
-	m.Status = StatusReady
-}
-
-func (m *Message[T]) MarkAsPeeked(now time.Time) {
-	ts := clock.FormatRFC3339(now)
-	m.LastUpdatedTimestamp = ts
-	m.PeekFromQueueTimestamp = ts
-	m.Status = StatusProcessing
-}
-
-func (m *Message[T]) MarkAsDLQ(now time.Time) {
-	ts := clock.FormatRFC3339(now)
-	m.QueueType = QueueTypeDLQ
-	m.Status = StatusReady
-	m.ReceiveCount = 0
-	m.LastUpdatedTimestamp = ts
-	m.AddToQueueTimestamp = ts
-	m.PeekFromQueueTimestamp = ""
-}
-
-func (m *Message[T]) MarkAsRedrive(now time.Time) {
-	ts := clock.FormatRFC3339(now)
-	m.LastUpdatedTimestamp = ts
-	m.AddToQueueTimestamp = ts
-	m.QueueType = QueueTypeStandard
-	m.Status = StatusReady
-}
-
 func (m *Message[T]) ResetSystemInfo(now time.Time) {
 	system := newDefaultSystemInfo(m.ID, now)
 	m.Status = system.Status
@@ -165,4 +134,74 @@ func (m *Message[T]) MarshalMap() (map[string]types.AttributeValue, error) {
 func (m *Message[T]) MarshalMapUnsafe() map[string]types.AttributeValue {
 	item, _ := attributevalue.MarshalMap(m)
 	return item
+}
+
+func (m *Message[T]) MarkAsRetry(now time.Time) error {
+	if m.Status != StatusProcessing {
+		return &InvalidStateTransitionError{
+			Msg:       "cannot mark as retry",
+			Operation: "MarkAsRetry",
+			Current:   m.Status,
+		}
+	}
+	ts := clock.FormatRFC3339(now)
+	m.Status = StatusReady
+	m.LastUpdatedTimestamp = ts
+	return nil
+}
+
+func (m *Message[T]) MarkAsPeeked(now time.Time, visibilityTimeout time.Duration) error {
+	if m.IsQueueSelected(now, visibilityTimeout) {
+		return &InvalidStateTransitionError{
+			Msg:       "message is currently being processed",
+			Operation: "MarkAsPeeked",
+			Current:   m.Status,
+		}
+	}
+	ts := clock.FormatRFC3339(now)
+	m.Status = StatusProcessing
+	m.LastUpdatedTimestamp = ts
+	m.PeekFromQueueTimestamp = ts
+	return nil
+}
+
+func (m *Message[T]) MarkAsDLQ(now time.Time) error {
+	if m.QueueType == QueueTypeDLQ {
+		return &InvalidStateTransitionError{
+			Msg:       "message is already in DLQ",
+			Operation: "MarkAsDLQ",
+			Current:   m.Status,
+		}
+	}
+	ts := clock.FormatRFC3339(now)
+	m.QueueType = QueueTypeDLQ
+	m.Status = StatusReady
+	m.ReceiveCount = 0
+	m.LastUpdatedTimestamp = ts
+	m.AddToQueueTimestamp = ts
+	m.PeekFromQueueTimestamp = ""
+	return nil
+}
+
+func (m *Message[T]) MarkAsRedrive(now time.Time) error {
+	if m.QueueType != QueueTypeDLQ {
+		return &InvalidStateTransitionError{
+			Msg:       "can only redrive messages from DLQ",
+			Operation: "MarkAsRedrive",
+			Current:   m.Status,
+		}
+	}
+	if m.Status != StatusReady {
+		return &InvalidStateTransitionError{
+			Msg:       "message status is not Ready",
+			Operation: "MarkAsRedrive",
+			Current:   m.Status,
+		}
+	}
+	ts := clock.FormatRFC3339(now)
+	m.QueueType = QueueTypeStandard
+	m.Status = StatusReady
+	m.LastUpdatedTimestamp = ts
+	m.AddToQueueTimestamp = ts
+	return nil
 }

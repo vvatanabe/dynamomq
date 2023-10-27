@@ -211,7 +211,7 @@ func (c *client[T]) Enqueue(ctx context.Context, id string, data T) (*EnqueueRes
 
 func (c *client[T]) Peek(ctx context.Context) (*PeekResult[T], error) {
 	expr, err := expression.NewBuilder().
-		WithKeyCondition(expression.Key("queue_type").Equal(expression.Value(QueueTypeStandard))). // FIXME
+		WithKeyCondition(expression.Key("queue_type").Equal(expression.Value(QueueTypeStandard))). // FIXME make DLQs peek-enabled.
 		Build()
 	if err != nil {
 		return nil, &BuildingExpressionError{Cause: err}
@@ -222,6 +222,7 @@ func (c *client[T]) Peek(ctx context.Context) (*PeekResult[T], error) {
 		selectedVersion      int
 		recordForPeekIsFound bool
 	)
+	visibilityTimeout := time.Duration(c.visibilityTimeoutInMinutes) * time.Minute
 	for {
 		queryResult, err := c.dynamoDB.Query(ctx, &dynamodb.QueryInput{
 			IndexName:                 aws.String(QueueingIndexName),
@@ -242,7 +243,6 @@ func (c *client[T]) Peek(ctx context.Context) (*PeekResult[T], error) {
 			if err = attributevalue.UnmarshalMap(itemMap, &item); err != nil {
 				return nil, &UnmarshalingAttributeError{Cause: err}
 			}
-			visibilityTimeout := time.Duration(c.visibilityTimeoutInMinutes) * time.Minute
 			isQueueSelected := item.IsQueueSelected(c.clock.Now(), visibilityTimeout)
 			if c.useFIFO && isQueueSelected {
 				goto ExitLoop
@@ -262,11 +262,14 @@ ExitLoop:
 	if selectedID == "" {
 		return nil, &EmptyQueueError{}
 	}
-	message, err := c.Get(ctx, selectedID)
+	message, err := c.Get(ctx, selectedID) // FIXME It may be more efficient to use items retrieved from the INDEX
 	if err != nil {
 		return nil, err
 	}
-	message.MarkAsPeeked(c.clock.Now())
+	err = message.MarkAsPeeked(c.clock.Now(), visibilityTimeout)
+	if err != nil {
+		return nil, err
+	}
 	expr, err = expression.NewBuilder().
 		WithUpdate(expression.
 			Add(expression.Name("version"), expression.Value(1)).
@@ -303,7 +306,10 @@ func (c *client[T]) Retry(ctx context.Context, id string) (*RetryResult[T], erro
 	if message == nil {
 		return nil, &IDNotFoundError{}
 	}
-	message.MarkAsRetry(c.clock.Now())
+	err = message.MarkAsRetry(c.clock.Now())
+	if err != nil {
+		return nil, err
+	}
 	expr, err := expression.NewBuilder().
 		WithUpdate(expression.
 			Add(expression.Name("version"), expression.Value(1)).
@@ -363,7 +369,10 @@ func (c *client[T]) SendToDLQ(ctx context.Context, id string) (*Result, error) {
 			Version:              message.Version,
 		}, nil
 	}
-	message.MarkAsDLQ(c.clock.Now())
+	err = message.MarkAsDLQ(c.clock.Now())
+	if err != nil {
+		return nil, err
+	}
 	expr, err := expression.NewBuilder().
 		WithUpdate(expression.
 			Add(expression.Name("version"), expression.Value(1)).
@@ -398,13 +407,10 @@ func (c *client[T]) Redrive(ctx context.Context, id string) (*Result, error) {
 	if retrieved == nil {
 		return nil, &IDNotFoundError{}
 	}
-	if retrieved.QueueType == QueueTypeStandard {
-		return nil, &RecordNotConstructedError{} // FIXME Define more appropriately named errors.
+	err = retrieved.MarkAsRedrive(c.clock.Now())
+	if err != nil {
+		return nil, err
 	}
-	if retrieved.Status == StatusProcessing {
-		return nil, &IllegalStateError{} // FIXME Define more appropriately named errors.
-	}
-	retrieved.MarkAsRedrive(c.clock.Now())
 	expr, err := expression.NewBuilder().
 		WithUpdate(expression.Add(
 			expression.Name("version"),
