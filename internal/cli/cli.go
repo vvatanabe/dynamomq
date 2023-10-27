@@ -403,7 +403,9 @@ func (c *CLI) invalid(ctx context.Context, _ []string) {
 		printCLIModeRestriction("`invalid`")
 		return
 	}
-	_, err := c.Client.SendToDLQ(ctx, c.Message.ID)
+	_, err := c.Client.MoveMessageToDLQ(ctx, &dynamomq.MoveMessageToDLQInput{
+		ID: c.Message.ID,
+	})
 	if err != nil {
 		printError(err)
 		return

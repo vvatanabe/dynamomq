@@ -835,15 +835,12 @@ func TestQueueSDKClientDelete(t *testing.T) {
 }
 
 func TestQueueSDKClientSendToDLQ(t *testing.T) {
-	type args struct {
-		id string
-	}
 	tests := []struct {
 		name     string
 		setup    func(*testing.T) (*dynamodb.Client, func())
 		sdkClock clock.Clock
-		args     args
-		want     *Result
+		args     *MoveMessageToDLQInput
+		want     *MoveMessageToDLQOutput
 		wantErr  error
 	}{
 		{
@@ -855,8 +852,8 @@ func TestQueueSDKClientSendToDLQ(t *testing.T) {
 					},
 				)
 			},
-			args: args{
-				id: "",
+			args: &MoveMessageToDLQInput{
+				ID: "",
 			},
 			want:    nil,
 			wantErr: &IDNotProvidedError{},
@@ -870,8 +867,8 @@ func TestQueueSDKClientSendToDLQ(t *testing.T) {
 					},
 				)
 			},
-			args: args{
-				id: "B-202",
+			args: &MoveMessageToDLQInput{
+				ID: "B-202",
 			},
 			want:    nil,
 			wantErr: &IDNotFoundError{},
@@ -887,13 +884,13 @@ func TestQueueSDKClientSendToDLQ(t *testing.T) {
 					},
 				)
 			},
-			args: args{
-				id: "A-101",
+			args: &MoveMessageToDLQInput{
+				ID: "A-101",
 			},
-			want: func() *Result {
+			want: func() *MoveMessageToDLQOutput {
 				s := newTestMessageItemAsDLQ("A-101",
 					time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
-				r := &Result{
+				r := &MoveMessageToDLQOutput{
 					ID:                   s.ID,
 					Status:               s.Status,
 					LastUpdatedTimestamp: s.LastUpdatedTimestamp,
@@ -917,10 +914,10 @@ func TestQueueSDKClientSendToDLQ(t *testing.T) {
 			sdkClock: mockClock{
 				t: time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC),
 			},
-			args: args{
-				id: "A-101",
+			args: &MoveMessageToDLQInput{
+				ID: "A-101",
 			},
-			want: func() *Result {
+			want: func() *MoveMessageToDLQOutput {
 				s := newTestMessageItemAsReady("A-101",
 					time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
 				err := s.MoveToDLQ(time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC))
@@ -928,7 +925,7 @@ func TestQueueSDKClientSendToDLQ(t *testing.T) {
 					panic(err)
 				}
 				s.Version = 2
-				r := &Result{
+				r := &MoveMessageToDLQOutput{
 					ID:                   s.ID,
 					Status:               s.Status,
 					LastUpdatedTimestamp: s.LastUpdatedTimestamp,
@@ -950,20 +947,20 @@ func TestQueueSDKClientSendToDLQ(t *testing.T) {
 				t.Fatalf("NewFromConfig() error = %v", err)
 				return
 			}
-			result, err := client.SendToDLQ(ctx, tt.args.id)
+			result, err := client.MoveMessageToDLQ(ctx, tt.args)
 			if tt.wantErr != nil {
 				if err != tt.wantErr {
-					t.Errorf("SendToDLQ() error = %v, wantErr %v", err, tt.wantErr)
+					t.Errorf("MoveMessageToDLQ() error = %v, wantErr %v", err, tt.wantErr)
 					return
 				}
 				return
 			}
 			if err != nil {
-				t.Errorf("SendToDLQ() error = %v", err)
+				t.Errorf("MoveMessageToDLQ() error = %v", err)
 				return
 			}
 			if !reflect.DeepEqual(result, tt.want) {
-				t.Errorf("SendToDLQ() got = %v, want %v", result, tt.want)
+				t.Errorf("MoveMessageToDLQ() got = %v, want %v", result, tt.want)
 			}
 		})
 	}

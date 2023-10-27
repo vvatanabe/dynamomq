@@ -31,7 +31,7 @@ type Client[T any] interface {
 	Peek(ctx context.Context) (*PeekResult[T], error)
 	Retry(ctx context.Context, id string) (*RetryResult[T], error)
 	DeleteMessage(ctx context.Context, params *DeleteMessageInput) (*DeleteMessageOutput, error)
-	SendToDLQ(ctx context.Context, id string) (*Result, error)
+	MoveMessageToDLQ(ctx context.Context, params *MoveMessageToDLQInput) (*MoveMessageToDLQOutput, error)
 	Redrive(ctx context.Context, id string) (*Result, error)
 	Get(ctx context.Context, id string) (*Message[T], error)
 	GetQueueStats(ctx context.Context) (*QueueStats, error)
@@ -351,17 +351,31 @@ func (c *client[T]) DeleteMessage(ctx context.Context, params *DeleteMessageInpu
 	return out, nil
 }
 
-func (c *client[T]) SendToDLQ(ctx context.Context, id string) (*Result, error) {
-	message, err := c.Get(ctx, id)
+type MoveMessageToDLQInput struct {
+	ID string
+}
+
+type MoveMessageToDLQOutput struct {
+	ID                   string `json:"id"`
+	Status               Status `json:"status"`
+	LastUpdatedTimestamp string `json:"last_updated_timestamp"`
+	Version              int    `json:"version"`
+}
+
+func (c *client[T]) MoveMessageToDLQ(ctx context.Context, params *MoveMessageToDLQInput) (*MoveMessageToDLQOutput, error) {
+	if params == nil {
+		params = &MoveMessageToDLQInput{}
+	}
+	message, err := c.Get(ctx, params.ID)
 	if err != nil {
-		return nil, err
+		return &MoveMessageToDLQOutput{}, err
 	}
 	if message == nil {
-		return nil, &IDNotFoundError{}
+		return &MoveMessageToDLQOutput{}, &IDNotFoundError{}
 	}
 	if message.IsDLQ() {
-		return &Result{
-			ID:                   id,
+		return &MoveMessageToDLQOutput{
+			ID:                   params.ID,
 			Status:               message.Status,
 			LastUpdatedTimestamp: message.LastUpdatedTimestamp,
 			Version:              message.Version,
@@ -369,7 +383,7 @@ func (c *client[T]) SendToDLQ(ctx context.Context, id string) (*Result, error) {
 	}
 	err = message.MoveToDLQ(c.clock.Now())
 	if err != nil {
-		return nil, err
+		return &MoveMessageToDLQOutput{}, err
 	}
 	expr, err := expression.NewBuilder().
 		WithUpdate(expression.
@@ -383,14 +397,14 @@ func (c *client[T]) SendToDLQ(ctx context.Context, id string) (*Result, error) {
 		WithCondition(expression.Name("version").Equal(expression.Value(message.Version))).
 		Build()
 	if err != nil {
-		return nil, &BuildingExpressionError{Cause: err}
+		return &MoveMessageToDLQOutput{}, &BuildingExpressionError{Cause: err}
 	}
-	item, err := c.updateDynamoDBItem(ctx, id, &expr)
+	item, err := c.updateDynamoDBItem(ctx, params.ID, &expr)
 	if err != nil {
-		return nil, err
+		return &MoveMessageToDLQOutput{}, err
 	}
-	return &Result{
-		ID:                   id,
+	return &MoveMessageToDLQOutput{
+		ID:                   params.ID,
 		Status:               item.Status,
 		LastUpdatedTimestamp: item.LastUpdatedTimestamp,
 		Version:              item.Version,

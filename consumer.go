@@ -140,7 +140,9 @@ func (c *Consumer[T]) processMessage(ctx context.Context, msg *Message[T]) {
 				return
 			}
 		} else {
-			_, err := c.client.SendToDLQ(ctx, msg.ID)
+			_, err := c.client.MoveMessageToDLQ(ctx, &MoveMessageToDLQInput{
+				ID: msg.ID,
+			})
 			if err != nil {
 				c.logf("DynamoMQ: Failed to send a message to DLQ. %s", err)
 				return
