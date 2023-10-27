@@ -217,10 +217,8 @@ func (c *client[T]) Peek(ctx context.Context) (*PeekResult[T], error) {
 		return nil, &BuildingExpressionError{Cause: err}
 	}
 	var (
-		exclusiveStartKey    map[string]types.AttributeValue
-		selectedID           string
-		selectedVersion      int
-		recordForPeekIsFound bool
+		exclusiveStartKey map[string]types.AttributeValue
+		selectedItem      *Message[T]
 	)
 	visibilityTimeout := time.Duration(c.visibilityTimeoutInMinutes) * time.Minute
 	for {
@@ -248,41 +246,31 @@ func (c *client[T]) Peek(ctx context.Context) (*PeekResult[T], error) {
 				goto ExitLoop
 			}
 			if !isQueueSelected {
-				selectedID = item.ID
-				selectedVersion = item.Version
-				recordForPeekIsFound = true
+				selectedItem = &item
 				break
 			}
 		}
-		if recordForPeekIsFound || exclusiveStartKey == nil {
+		if selectedItem != nil || exclusiveStartKey == nil {
 			break
 		}
 	}
 ExitLoop:
-	if selectedID == "" {
+	if selectedItem == nil || selectedItem.StartProcessing(c.clock.Now(), visibilityTimeout) != err {
 		return nil, &EmptyQueueError{}
-	}
-	message, err := c.Get(ctx, selectedID) // FIXME It may be more efficient to use items retrieved from the INDEX
-	if err != nil {
-		return nil, err
-	}
-	err = message.StartProcessing(c.clock.Now(), visibilityTimeout)
-	if err != nil {
-		return nil, err
 	}
 	expr, err = expression.NewBuilder().
 		WithUpdate(expression.
 			Add(expression.Name("version"), expression.Value(1)).
 			Add(expression.Name("receive_count"), expression.Value(1)).
-			Set(expression.Name("last_updated_timestamp"), expression.Value(message.LastUpdatedTimestamp)).
-			Set(expression.Name("queue_peek_timestamp"), expression.Value(message.PeekFromQueueTimestamp)).
-			Set(expression.Name("status"), expression.Value(message.Status))).
-		WithCondition(expression.Name("version").Equal(expression.Value(selectedVersion))).
+			Set(expression.Name("last_updated_timestamp"), expression.Value(selectedItem.LastUpdatedTimestamp)).
+			Set(expression.Name("queue_peek_timestamp"), expression.Value(selectedItem.PeekFromQueueTimestamp)).
+			Set(expression.Name("status"), expression.Value(selectedItem.Status))).
+		WithCondition(expression.Name("version").Equal(expression.Value(selectedItem.Version))).
 		Build()
 	if err != nil {
 		return nil, &BuildingExpressionError{Cause: err}
 	}
-	peeked, err := c.updateDynamoDBItem(ctx, message.ID, &expr)
+	peeked, err := c.updateDynamoDBItem(ctx, selectedItem.ID, &expr)
 	if err != nil {
 		return nil, err
 	}
