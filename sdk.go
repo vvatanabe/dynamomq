@@ -27,7 +27,7 @@ const (
 )
 
 type Client[T any] interface {
-	Enqueue(ctx context.Context, id string, data T) (*EnqueueResult[T], error)
+	SendMessage(ctx context.Context, params *SendMessageInput[T]) (*SendMessageOutput[T], error)
 	Peek(ctx context.Context) (*PeekResult[T], error)
 	Retry(ctx context.Context, id string) (*RetryResult[T], error)
 	DeleteMessage(ctx context.Context, params *DeleteMessageInput) (*DeleteMessageOutput, error)
@@ -185,20 +185,34 @@ func NewFromConfig[T any](ctx context.Context, optFns ...func(*ClientOptions)) (
 	return c, nil
 }
 
-func (c *client[T]) Enqueue(ctx context.Context, id string, data T) (*EnqueueResult[T], error) {
-	retrieved, err := c.Get(ctx, id)
+type SendMessageInput[T any] struct {
+	ID   string
+	Data T
+}
+
+// SendMessageOutput represents the result for the SendMessage() API call.
+type SendMessageOutput[T any] struct {
+	*Result             // Embedded type for inheritance-like behavior in Go
+	Message *Message[T] `json:"-"`
+}
+
+func (c *client[T]) SendMessage(ctx context.Context, params *SendMessageInput[T]) (*SendMessageOutput[T], error) {
+	if params == nil {
+		params = &SendMessageInput[T]{}
+	}
+	retrieved, err := c.Get(ctx, params.ID)
 	if err != nil {
-		return nil, err
+		return &SendMessageOutput[T]{}, err
 	}
 	if retrieved != nil {
-		return nil, &IDDuplicatedError{}
+		return &SendMessageOutput[T]{}, &IDDuplicatedError{}
 	}
-	message := NewDefaultMessage(id, data, c.clock.Now())
+	message := NewDefaultMessage(params.ID, params.Data, c.clock.Now())
 	err = c.put(ctx, message)
 	if err != nil {
-		return nil, err
+		return &SendMessageOutput[T]{}, err
 	}
-	return &EnqueueResult[T]{
+	return &SendMessageOutput[T]{
 		Result: &Result{
 			ID:                   message.ID,
 			Status:               message.Status,

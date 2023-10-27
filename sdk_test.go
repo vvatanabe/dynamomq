@@ -108,16 +108,12 @@ func newTestMessageItemAsDLQ(id string, now time.Time) *Message[test.MessageData
 }
 
 func TestQueueSDKClientEnqueue(t *testing.T) {
-	type args struct {
-		id   string
-		data test.MessageData
-	}
 	tests := []struct {
 		name     string
 		setup    func(*testing.T) (*dynamodb.Client, func())
 		sdkClock clock.Clock
-		args     args
-		want     *EnqueueResult[test.MessageData]
+		args     *SendMessageInput[test.MessageData]
+		want     *SendMessageOutput[test.MessageData]
 		wantErr  error
 	}{
 		{
@@ -129,9 +125,9 @@ func TestQueueSDKClientEnqueue(t *testing.T) {
 					},
 				)
 			},
-			args: args{
-				id:   "",
-				data: test.MessageData{},
+			args: &SendMessageInput[test.MessageData]{
+				ID:   "",
+				Data: test.MessageData{},
 			},
 			want:    nil,
 			wantErr: &IDNotProvidedError{},
@@ -145,9 +141,9 @@ func TestQueueSDKClientEnqueue(t *testing.T) {
 					},
 				)
 			},
-			args: args{
-				id:   "A-101",
-				data: test.NewMessageData("A-101"),
+			args: &SendMessageInput[test.MessageData]{
+				ID:   "A-101",
+				Data: test.NewMessageData("A-101"),
 			},
 			want:    nil,
 			wantErr: &IDDuplicatedError{},
@@ -160,11 +156,11 @@ func TestQueueSDKClientEnqueue(t *testing.T) {
 			sdkClock: mockClock{
 				t: time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC),
 			},
-			args: args{
-				id:   "A-101",
-				data: test.NewMessageData("A-101"),
+			args: &SendMessageInput[test.MessageData]{
+				ID:   "A-101",
+				Data: test.NewMessageData("A-101"),
 			},
-			want: &EnqueueResult[test.MessageData]{
+			want: &SendMessageOutput[test.MessageData]{
 				Result: &Result{
 					ID:                   "A-101",
 					Status:               StatusReady,
@@ -190,20 +186,20 @@ func TestQueueSDKClientEnqueue(t *testing.T) {
 				t.Fatalf("NewFromConfig() error = %v", err)
 				return
 			}
-			result, err := client.Enqueue(ctx, tt.args.id, tt.args.data)
+			result, err := client.SendMessage(ctx, tt.args)
 			if tt.wantErr != nil {
 				if err != tt.wantErr {
-					t.Errorf("Enqueue() error = %v, wantErr %v", err, tt.wantErr)
+					t.Errorf("SendMessage() error = %v, wantErr %v", err, tt.wantErr)
 					return
 				}
 				return
 			}
 			if err != nil {
-				t.Errorf("Enqueue() error = %v", err)
+				t.Errorf("SendMessage() error = %v", err)
 				return
 			}
 			if !reflect.DeepEqual(result, tt.want) {
-				t.Errorf("Enqueue() got = %v, want %v", result, tt.want)
+				t.Errorf("SendMessage() got = %v, want %v", result, tt.want)
 			}
 		})
 	}

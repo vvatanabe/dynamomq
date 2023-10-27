@@ -73,7 +73,7 @@ func (c *CLI) help(_ context.Context, _ []string) {
   > aws --profile --region --table --endpoint-url [Establish connection with AWS; Default profile name: 'default' and region: 'us-east-1']
   > qstat | qstats                                [Retrieves the Queue statistics (no need to be in App mode)]
   > dlq                                           [Retrieves the Dead Letter Queue (DLQ) statistics]
-  > enqueue-test | et                             [Enqueue test Message records in DynamoDB: A-101, A-202, A-303 and A-404; if already exists, it will overwrite it]
+  > enqueue-test | et                             [SendMessage test Message records in DynamoDB: A-101, A-202, A-303 and A-404; if already exists, it will overwrite it]
   > purge                                         [It will remove all test data from DynamoDB]
   > ls                                            [List all message IDs ... max 10 elements]
   > peek                                          [Peek the Message from the Queue .. it will replace the current ID with the peeked one]
@@ -189,7 +189,7 @@ func (c *CLI) enqueueTest(ctx context.Context, _ []string) {
 		fmt.Println(needAWSMessage)
 		return
 	}
-	fmt.Println("Enqueue message with IDs:")
+	fmt.Println("SendMessage message with IDs:")
 	ids := []string{"A-101", "A-202", "A-303", "A-404"}
 	for _, id := range ids {
 		message := dynamomq.NewDefaultMessage[test.MessageData](id, test.NewMessageData(id), clock.Now())
