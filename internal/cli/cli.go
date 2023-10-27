@@ -371,7 +371,9 @@ func (c *CLI) fail(ctx context.Context, _ []string) {
 		printCLIModeRestriction("`fail`")
 		return
 	}
-	_, err := c.Client.Retry(ctx, c.Message.ID)
+	_, err := c.Client.UpdateMessageAsVisible(ctx, &dynamomq.UpdateMessageAsVisibleInput{
+		ID: c.Message.ID,
+	})
 	if err != nil {
 		printError(err)
 		return

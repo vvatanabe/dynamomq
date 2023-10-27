@@ -134,9 +134,9 @@ func (c *Consumer[T]) processMessage(ctx context.Context, msg *Message[T]) {
 	err := c.messageProcessor.Process(msg)
 	if err != nil {
 		if c.shouldRetry(msg) {
-			_, err := c.client.Retry(ctx, msg.ID)
+			_, err := c.client.UpdateMessageAsVisible(ctx, &UpdateMessageAsVisibleInput{ID: msg.ID})
 			if err != nil {
-				c.logf("DynamoMQ: Failed to retry a message. %s", err)
+				c.logf("DynamoMQ: Failed to update a message as visible. %s", err)
 				return
 			}
 		} else {
@@ -144,7 +144,7 @@ func (c *Consumer[T]) processMessage(ctx context.Context, msg *Message[T]) {
 				ID: msg.ID,
 			})
 			if err != nil {
-				c.logf("DynamoMQ: Failed to send a message to DLQ. %s", err)
+				c.logf("DynamoMQ: Failed to move a message to DLQ. %s", err)
 				return
 			}
 		}

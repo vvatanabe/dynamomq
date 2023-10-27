@@ -657,7 +657,7 @@ func TestQueueSDKClientRetry(t *testing.T) {
 		setup    func(*testing.T) (*dynamodb.Client, func())
 		sdkClock clock.Clock
 		args     args
-		want     *RetryResult[test.MessageData]
+		want     *UpdateMessageAsVisibleOutput[test.MessageData]
 		wantErr  error
 	}{
 		{
@@ -705,7 +705,7 @@ func TestQueueSDKClientRetry(t *testing.T) {
 			args: args{
 				id: "A-101",
 			},
-			want: &RetryResult[test.MessageData]{
+			want: &UpdateMessageAsVisibleOutput[test.MessageData]{
 				Result: &Result{
 					ID:                   "A-101",
 					Status:               StatusReady,
@@ -735,20 +735,22 @@ func TestQueueSDKClientRetry(t *testing.T) {
 				t.Fatalf("NewFromConfig() error = %v", err)
 				return
 			}
-			result, err := client.Retry(ctx, tt.args.id)
+			result, err := client.UpdateMessageAsVisible(ctx, &UpdateMessageAsVisibleInput{
+				ID: tt.args.id,
+			})
 			if tt.wantErr != nil {
 				if err != tt.wantErr {
-					t.Errorf("Retry() error = %v, wantErr %v", err, tt.wantErr)
+					t.Errorf("UpdateMessageAsVisible() error = %v, wantErr %v", err, tt.wantErr)
 					return
 				}
 				return
 			}
 			if err != nil {
-				t.Errorf("Retry() error = %v", err)
+				t.Errorf("UpdateMessageAsVisible() error = %v", err)
 				return
 			}
 			if !reflect.DeepEqual(result, tt.want) {
-				t.Errorf("Retry() got = %v, want %v", result, tt.want)
+				t.Errorf("UpdateMessageAsVisible() got = %v, want %v", result, tt.want)
 			}
 		})
 	}

@@ -29,7 +29,7 @@ const (
 type Client[T any] interface {
 	SendMessage(ctx context.Context, params *SendMessageInput[T]) (*SendMessageOutput[T], error)
 	ReceiveMessage(ctx context.Context, params *ReceiveMessageInput) (*ReceiveMessageOutput[T], error)
-	Retry(ctx context.Context, id string) (*RetryResult[T], error)
+	UpdateMessageAsVisible(ctx context.Context, params *UpdateMessageAsVisibleInput) (*UpdateMessageAsVisibleOutput[T], error)
 	DeleteMessage(ctx context.Context, params *DeleteMessageInput) (*DeleteMessageOutput, error)
 	MoveMessageToDLQ(ctx context.Context, params *MoveMessageToDLQInput) (*MoveMessageToDLQOutput, error)
 	Redrive(ctx context.Context, id string) (*Result, error)
@@ -313,17 +313,30 @@ ExitLoop:
 	}, nil
 }
 
-func (c *client[T]) Retry(ctx context.Context, id string) (*RetryResult[T], error) {
-	message, err := c.Get(ctx, id)
+type UpdateMessageAsVisibleInput struct {
+	ID string
+}
+
+// UpdateMessageAsVisibleOutput represents the result for the UpdateMessageAsVisible() API call.
+type UpdateMessageAsVisibleOutput[T any] struct {
+	*Result             // Embedded type for inheritance-like behavior in Go
+	Message *Message[T] `json:"-"`
+}
+
+func (c *client[T]) UpdateMessageAsVisible(ctx context.Context, params *UpdateMessageAsVisibleInput) (*UpdateMessageAsVisibleOutput[T], error) {
+	if params == nil {
+		params = &UpdateMessageAsVisibleInput{}
+	}
+	message, err := c.Get(ctx, params.ID)
 	if err != nil {
-		return nil, err
+		return &UpdateMessageAsVisibleOutput[T]{}, err
 	}
 	if message == nil {
-		return nil, &IDNotFoundError{}
+		return &UpdateMessageAsVisibleOutput[T]{}, &IDNotFoundError{}
 	}
 	err = message.Ready(c.clock.Now())
 	if err != nil {
-		return nil, err
+		return &UpdateMessageAsVisibleOutput[T]{}, err
 	}
 	expr, err := expression.NewBuilder().
 		WithUpdate(expression.
@@ -333,13 +346,13 @@ func (c *client[T]) Retry(ctx context.Context, id string) (*RetryResult[T], erro
 		WithCondition(expression.Name("version").Equal(expression.Value(message.Version))).
 		Build()
 	if err != nil {
-		return nil, &BuildingExpressionError{Cause: err}
+		return &UpdateMessageAsVisibleOutput[T]{}, &BuildingExpressionError{Cause: err}
 	}
 	retried, err := c.updateDynamoDBItem(ctx, message.ID, &expr)
 	if err != nil {
-		return nil, err
+		return &UpdateMessageAsVisibleOutput[T]{}, err
 	}
-	return &RetryResult[T]{
+	return &UpdateMessageAsVisibleOutput[T]{
 		Result: &Result{
 			ID:                   retried.ID,
 			Status:               retried.Status,
