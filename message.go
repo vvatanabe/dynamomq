@@ -136,11 +136,11 @@ func (m *Message[T]) MarshalMapUnsafe() map[string]types.AttributeValue {
 	return item
 }
 
-func (m *Message[T]) MarkAsRetry(now time.Time) error {
+func (m *Message[T]) Ready(now time.Time) error {
 	if m.Status != StatusProcessing {
 		return &InvalidStateTransitionError{
-			Msg:       "cannot mark as retry",
-			Operation: "MarkAsRetry",
+			Msg:       "message is currently ready",
+			Operation: "Ready",
 			Current:   m.Status,
 		}
 	}
@@ -150,11 +150,11 @@ func (m *Message[T]) MarkAsRetry(now time.Time) error {
 	return nil
 }
 
-func (m *Message[T]) MarkAsPeeked(now time.Time, visibilityTimeout time.Duration) error {
+func (m *Message[T]) StartProcessing(now time.Time, visibilityTimeout time.Duration) error {
 	if m.IsQueueSelected(now, visibilityTimeout) {
 		return &InvalidStateTransitionError{
 			Msg:       "message is currently being processed",
-			Operation: "MarkAsPeeked",
+			Operation: "StartProcessing",
 			Current:   m.Status,
 		}
 	}
@@ -165,11 +165,11 @@ func (m *Message[T]) MarkAsPeeked(now time.Time, visibilityTimeout time.Duration
 	return nil
 }
 
-func (m *Message[T]) MarkAsDLQ(now time.Time) error {
+func (m *Message[T]) MoveToDLQ(now time.Time) error {
 	if m.QueueType == QueueTypeDLQ {
 		return &InvalidStateTransitionError{
 			Msg:       "message is already in DLQ",
-			Operation: "MarkAsDLQ",
+			Operation: "MoveToDLQ",
 			Current:   m.Status,
 		}
 	}
@@ -183,18 +183,18 @@ func (m *Message[T]) MarkAsDLQ(now time.Time) error {
 	return nil
 }
 
-func (m *Message[T]) MarkAsRedrive(now time.Time) error {
+func (m *Message[T]) RestoreFromDLQ(now time.Time) error {
 	if m.QueueType != QueueTypeDLQ {
 		return &InvalidStateTransitionError{
 			Msg:       "can only redrive messages from DLQ",
-			Operation: "MarkAsRedrive",
+			Operation: "RestoreFromDLQ",
 			Current:   m.Status,
 		}
 	}
 	if m.Status != StatusReady {
 		return &InvalidStateTransitionError{
-			Msg:       "message status is not Ready",
-			Operation: "MarkAsRedrive",
+			Msg:       "can only redrive messages from READY",
+			Operation: "RestoreFromDLQ",
 			Current:   m.Status,
 		}
 	}

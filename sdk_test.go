@@ -91,7 +91,7 @@ func newTestMessageItemAsReady(id string, now time.Time) *Message[test.MessageDa
 
 func newTestMessageItemAsPeeked(id string, now time.Time) *Message[test.MessageData] {
 	message := NewDefaultMessage[test.MessageData](id, test.NewMessageData(id), now)
-	err := message.MarkAsPeeked(now, 0)
+	err := message.StartProcessing(now, 0)
 	if err != nil {
 		panic(err)
 	}
@@ -100,7 +100,7 @@ func newTestMessageItemAsPeeked(id string, now time.Time) *Message[test.MessageD
 
 func newTestMessageItemAsDLQ(id string, now time.Time) *Message[test.MessageData] {
 	message := NewDefaultMessage[test.MessageData](id, test.NewMessageData(id), now)
-	err := message.MarkAsDLQ(now)
+	err := message.MoveToDLQ(now)
 	if err != nil {
 		panic(err)
 	}
@@ -248,7 +248,7 @@ func TestQueueSDKClientPeek(t *testing.T) {
 			},
 			want: func() *PeekResult[test.MessageData] {
 				s := newTestMessageItemAsReady("B-202", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
-				err := s.MarkAsPeeked(time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC), 0)
+				err := s.StartProcessing(time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC), 0)
 				if err != nil {
 					panic(err)
 				}
@@ -284,7 +284,7 @@ func TestQueueSDKClientPeek(t *testing.T) {
 			},
 			want: func() *PeekResult[test.MessageData] {
 				s := newTestMessageItemAsPeeked("B-202", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
-				err := s.MarkAsPeeked(time.Date(2023, 12, 1, 0, 1, 1, 0, time.UTC), 0)
+				err := s.StartProcessing(time.Date(2023, 12, 1, 0, 1, 1, 0, time.UTC), 0)
 				if err != nil {
 					panic(err)
 				}
@@ -383,7 +383,7 @@ func TestQueueSDKClientPeekUseFIFO(t *testing.T) {
 
 	want1 := func() *PeekResult[test.MessageData] {
 		s := newTestMessageItemAsReady("A-303", time.Date(2023, 12, 1, 0, 0, 1, 0, time.UTC))
-		err := s.MarkAsPeeked(now, 0)
+		err := s.StartProcessing(now, 0)
 		if err != nil {
 			panic(err)
 		}
@@ -425,7 +425,7 @@ func TestQueueSDKClientPeekUseFIFO(t *testing.T) {
 
 	want2 := func() *PeekResult[test.MessageData] {
 		s := newTestMessageItemAsReady("A-202", time.Date(2023, 12, 1, 0, 0, 2, 0, time.UTC))
-		err := s.MarkAsPeeked(now, 0)
+		err := s.StartProcessing(now, 0)
 		if err != nil {
 			panic(err)
 		}
@@ -468,7 +468,7 @@ func TestQueueSDKClientPeekUseFIFO(t *testing.T) {
 
 	want3 := func() *PeekResult[test.MessageData] {
 		s := newTestMessageItemAsReady("A-101", time.Date(2023, 12, 1, 0, 0, 3, 0, time.UTC))
-		err := s.MarkAsPeeked(now, 0)
+		err := s.StartProcessing(now, 0)
 		if err != nil {
 			panic(err)
 		}
@@ -545,7 +545,7 @@ func TestQueueSDKClientPeekNotUseFIFO(t *testing.T) {
 
 	want1 := func() *PeekResult[test.MessageData] {
 		s := newTestMessageItemAsReady("A-303", time.Date(2023, 12, 1, 0, 0, 1, 0, time.UTC))
-		err := s.MarkAsPeeked(now, 0)
+		err := s.StartProcessing(now, 0)
 		if err != nil {
 			panic(err)
 		}
@@ -577,7 +577,7 @@ func TestQueueSDKClientPeekNotUseFIFO(t *testing.T) {
 
 	want2 := func() *PeekResult[test.MessageData] {
 		s := newTestMessageItemAsReady("A-202", time.Date(2023, 12, 1, 0, 0, 2, 0, time.UTC))
-		err := s.MarkAsPeeked(now, 0)
+		err := s.StartProcessing(now, 0)
 		if err != nil {
 			panic(err)
 		}
@@ -609,7 +609,7 @@ func TestQueueSDKClientPeekNotUseFIFO(t *testing.T) {
 
 	want3 := func() *PeekResult[test.MessageData] {
 		s := newTestMessageItemAsReady("A-101", time.Date(2023, 12, 1, 0, 0, 3, 0, time.UTC))
-		err := s.MarkAsPeeked(now, 0)
+		err := s.StartProcessing(now, 0)
 		if err != nil {
 			panic(err)
 		}
@@ -712,7 +712,7 @@ func TestQueueSDKClientRetry(t *testing.T) {
 				},
 				Message: func() *Message[test.MessageData] {
 					message := newTestMessageItemAsPeeked("A-101", time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC))
-					err := message.MarkAsRetry(time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC))
+					err := message.Ready(time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC))
 					if err != nil {
 						panic(err)
 					}
@@ -915,7 +915,7 @@ func TestQueueSDKClientSendToDLQ(t *testing.T) {
 			want: func() *Result {
 				s := newTestMessageItemAsReady("A-101",
 					time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC))
-				err := s.MarkAsDLQ(time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC))
+				err := s.MoveToDLQ(time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC))
 				if err != nil {
 					panic(err)
 				}

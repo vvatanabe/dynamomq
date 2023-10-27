@@ -266,7 +266,7 @@ ExitLoop:
 	if err != nil {
 		return nil, err
 	}
-	err = message.MarkAsPeeked(c.clock.Now(), visibilityTimeout)
+	err = message.StartProcessing(c.clock.Now(), visibilityTimeout)
 	if err != nil {
 		return nil, err
 	}
@@ -306,7 +306,7 @@ func (c *client[T]) Retry(ctx context.Context, id string) (*RetryResult[T], erro
 	if message == nil {
 		return nil, &IDNotFoundError{}
 	}
-	err = message.MarkAsRetry(c.clock.Now())
+	err = message.Ready(c.clock.Now())
 	if err != nil {
 		return nil, err
 	}
@@ -369,7 +369,7 @@ func (c *client[T]) SendToDLQ(ctx context.Context, id string) (*Result, error) {
 			Version:              message.Version,
 		}, nil
 	}
-	err = message.MarkAsDLQ(c.clock.Now())
+	err = message.MoveToDLQ(c.clock.Now())
 	if err != nil {
 		return nil, err
 	}
@@ -407,7 +407,7 @@ func (c *client[T]) Redrive(ctx context.Context, id string) (*Result, error) {
 	if retrieved == nil {
 		return nil, &IDNotFoundError{}
 	}
-	err = retrieved.MarkAsRedrive(c.clock.Now())
+	err = retrieved.RestoreFromDLQ(c.clock.Now())
 	if err != nil {
 		return nil, err
 	}
