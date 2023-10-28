@@ -82,7 +82,7 @@ func (c *CLI) help(_ context.Context, _ []string) {
     > data                                        [Print the data as JSON for the current message record]
     > info                                        [Print all info regarding Message record: system_info and data as JSON]
     > reset                                       [Reset the system info of the current message record]
-    > redrive                                     [Redrive the record to STANDARD from DLQ]
+    > redrive                                     [RedriveMessage the record to STANDARD from DLQ]
     > delete                                      [DeleteMessage current ID]
     > fail                                        [Simulate failed record's processing ... put back to the queue; needs to be peeked again]
     > invalid                                     [Remove record from the regular queue to dead letter queue (DLQ) for manual fix]
@@ -328,7 +328,9 @@ func (c *CLI) redrive(ctx context.Context, _ []string) {
 		printCLIModeRestriction("`redrive`")
 		return
 	}
-	result, err := c.Client.Redrive(ctx, c.Message.ID)
+	result, err := c.Client.RedriveMessage(ctx, &dynamomq.RedriveMessageInput{
+		ID: c.Message.ID,
+	})
 	if err != nil {
 		printError(err)
 		return

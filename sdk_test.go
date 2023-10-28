@@ -973,7 +973,7 @@ func TestQueueSDKClientRedrive(t *testing.T) {
 		setup    func(*testing.T) (*dynamodb.Client, func())
 		sdkClock clock.Clock
 		args     args
-		want     *Result
+		want     *RedriveMessageOutput
 		wantErr  error
 	}{
 		{
@@ -1021,7 +1021,7 @@ func TestQueueSDKClientRedrive(t *testing.T) {
 			args: args{
 				id: "A-101",
 			},
-			want: &Result{
+			want: &RedriveMessageOutput{
 				ID:                   "A-101",
 				Status:               StatusReady,
 				LastUpdatedTimestamp: clock.FormatRFC3339(time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC)),
@@ -1040,20 +1040,22 @@ func TestQueueSDKClientRedrive(t *testing.T) {
 				t.Fatalf("NewFromConfig() error = %v", err)
 				return
 			}
-			result, err := client.Redrive(ctx, tt.args.id)
+			result, err := client.RedriveMessage(ctx, &RedriveMessageInput{
+				ID: tt.args.id,
+			})
 			if tt.wantErr != nil {
 				if err != tt.wantErr {
-					t.Errorf("Redrive() error = %v, wantErr %v", err, tt.wantErr)
+					t.Errorf("RedriveMessage() error = %v, wantErr %v", err, tt.wantErr)
 					return
 				}
 				return
 			}
 			if err != nil {
-				t.Errorf("Redrive() error = %v", err)
+				t.Errorf("RedriveMessage() error = %v", err)
 				return
 			}
 			if !reflect.DeepEqual(result, tt.want) {
-				t.Errorf("Redrive() got = %v, want %v", result, tt.want)
+				t.Errorf("RedriveMessage() got = %v, want %v", result, tt.want)
 			}
 		})
 	}

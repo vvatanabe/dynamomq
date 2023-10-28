@@ -32,7 +32,7 @@ type Client[T any] interface {
 	UpdateMessageAsVisible(ctx context.Context, params *UpdateMessageAsVisibleInput) (*UpdateMessageAsVisibleOutput[T], error)
 	DeleteMessage(ctx context.Context, params *DeleteMessageInput) (*DeleteMessageOutput, error)
 	MoveMessageToDLQ(ctx context.Context, params *MoveMessageToDLQInput) (*MoveMessageToDLQOutput, error)
-	Redrive(ctx context.Context, id string) (*Result, error)
+	RedriveMessage(ctx context.Context, params *RedriveMessageInput) (*RedriveMessageOutput, error)
 	Get(ctx context.Context, id string) (*Message[T], error)
 	GetQueueStats(ctx context.Context) (*QueueStats, error)
 	GetDLQStats(ctx context.Context) (*DLQStats, error)
@@ -451,17 +451,31 @@ func (c *client[T]) MoveMessageToDLQ(ctx context.Context, params *MoveMessageToD
 	}, nil
 }
 
-func (c *client[T]) Redrive(ctx context.Context, id string) (*Result, error) {
-	retrieved, err := c.Get(ctx, id)
+type RedriveMessageInput struct {
+	ID string
+}
+
+type RedriveMessageOutput struct {
+	ID                   string `json:"id"`
+	Status               Status `json:"status"`
+	LastUpdatedTimestamp string `json:"last_updated_timestamp"`
+	Version              int    `json:"version"`
+}
+
+func (c *client[T]) RedriveMessage(ctx context.Context, params *RedriveMessageInput) (*RedriveMessageOutput, error) {
+	if params == nil {
+		params = &RedriveMessageInput{}
+	}
+	retrieved, err := c.Get(ctx, params.ID)
 	if err != nil {
-		return nil, err
+		return &RedriveMessageOutput{}, err
 	}
 	if retrieved == nil {
-		return nil, &IDNotFoundError{}
+		return &RedriveMessageOutput{}, &IDNotFoundError{}
 	}
 	err = retrieved.RestoreFromDLQ(c.clock.Now())
 	if err != nil {
-		return nil, err
+		return &RedriveMessageOutput{}, err
 	}
 	expr, err := expression.NewBuilder().
 		WithUpdate(expression.Add(
@@ -486,11 +500,11 @@ func (c *client[T]) Redrive(ctx context.Context, id string) (*Result, error) {
 	if err != nil {
 		return nil, &BuildingExpressionError{Cause: err}
 	}
-	updated, err := c.updateDynamoDBItem(ctx, id, &expr)
+	updated, err := c.updateDynamoDBItem(ctx, params.ID, &expr)
 	if err != nil {
-		return nil, err
+		return &RedriveMessageOutput{}, err
 	}
-	return &Result{
+	return &RedriveMessageOutput{
 		ID:                   updated.ID,
 		Status:               updated.Status,
 		LastUpdatedTimestamp: updated.LastUpdatedTimestamp,
