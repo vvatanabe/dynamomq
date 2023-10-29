@@ -107,7 +107,7 @@ func newTestMessageItemAsDLQ(id string, now time.Time) *Message[test.MessageData
 	return message
 }
 
-func TestQueueSDKClientEnqueue(t *testing.T) {
+func TestDynamoMQClientSendMessage(t *testing.T) {
 	tests := []struct {
 		name     string
 		setup    func(*testing.T) (*dynamodb.Client, func())
@@ -205,7 +205,7 @@ func TestQueueSDKClientEnqueue(t *testing.T) {
 	}
 }
 
-func TestQueueSDKClientPeek(t *testing.T) {
+func TestDynamoMQClientReceiveMessage(t *testing.T) {
 	tests := []struct {
 		name     string
 		setup    func(*testing.T) (*dynamodb.Client, func())
@@ -348,7 +348,7 @@ func TestQueueSDKClientPeek(t *testing.T) {
 	}
 }
 
-func TestQueueSDKClientPeekUseFIFO(t *testing.T) {
+func TestDynamoMQClientReceiveMessageUseFIFO(t *testing.T) {
 	raw, clean := setupDynamoDB(t,
 		&types.PutRequest{
 			Item: newTestMessageItemAsReady("A-101", time.Date(2023, 12, 1, 0, 0, 3, 0, time.UTC)).MarshalMapUnsafe(),
@@ -517,7 +517,7 @@ func TestQueueSDKClientPeekUseFIFO(t *testing.T) {
 	}
 }
 
-func TestQueueSDKClientPeekNotUseFIFO(t *testing.T) {
+func TestDynamoMQClientReceiveMessageNotUseFIFO(t *testing.T) {
 	raw, clean := setupDynamoDB(t,
 		&types.PutRequest{
 			Item: newTestMessageItemAsReady("A-101", time.Date(2023, 12, 1, 0, 0, 3, 0, time.UTC)).MarshalMapUnsafe(),
@@ -648,7 +648,7 @@ func TestQueueSDKClientPeekNotUseFIFO(t *testing.T) {
 	}
 }
 
-func TestQueueSDKClientRetry(t *testing.T) {
+func TestDynamoMQClientUpdateMessageAsVisible(t *testing.T) {
 	type args struct {
 		id string
 	}
@@ -756,7 +756,7 @@ func TestQueueSDKClientRetry(t *testing.T) {
 	}
 }
 
-func TestQueueSDKClientDelete(t *testing.T) {
+func TestDynamoMQClientDeleteMessage(t *testing.T) {
 	type args struct {
 		id string
 	}
@@ -832,7 +832,7 @@ func TestQueueSDKClientDelete(t *testing.T) {
 	}
 }
 
-func TestQueueSDKClientSendToDLQ(t *testing.T) {
+func TestDynamoMQClientMoveMessageToDLQ(t *testing.T) {
 	tests := []struct {
 		name     string
 		setup    func(*testing.T) (*dynamodb.Client, func())
@@ -964,7 +964,7 @@ func TestQueueSDKClientSendToDLQ(t *testing.T) {
 	}
 }
 
-func TestQueueSDKClientRedrive(t *testing.T) {
+func TestDynamoMQClientRedriveMessage(t *testing.T) {
 	type args struct {
 		id string
 	}
@@ -1061,7 +1061,7 @@ func TestQueueSDKClientRedrive(t *testing.T) {
 	}
 }
 
-func TestQueueSDKClientGetQueueStats(t *testing.T) {
+func TestDynamoMQClientGetQueueStats(t *testing.T) {
 	tests := []struct {
 		name  string
 		setup func(*testing.T) (*dynamodb.Client, func())
@@ -1164,7 +1164,7 @@ func TestQueueSDKClientGetQueueStats(t *testing.T) {
 	}
 }
 
-func TestQueueSDKClientGetDLQStats(t *testing.T) {
+func TestDynamoMQClientGetDLQStats(t *testing.T) {
 	tests := []struct {
 		name  string
 		setup func(*testing.T) (*dynamodb.Client, func())
@@ -1243,7 +1243,7 @@ func TestQueueSDKClientGetDLQStats(t *testing.T) {
 	}
 }
 
-func TestQueueSDKClientGet(t *testing.T) {
+func TestDynamoMQClientGetMessage(t *testing.T) {
 
 	type args struct {
 		id string
@@ -1332,7 +1332,7 @@ func TestQueueSDKClientGet(t *testing.T) {
 	}
 }
 
-func TestQueueSDKClientPut(t *testing.T) {
+func TestDynamoMQClientReplaceMessage(t *testing.T) {
 
 	type args struct {
 		message *Message[test.MessageData]
@@ -1431,7 +1431,7 @@ func TestQueueSDKClientPut(t *testing.T) {
 	}
 }
 
-func TestQueueSDKClientList(t *testing.T) {
+func TestDynamoMQClientListMessages(t *testing.T) {
 	type args struct {
 		size int32
 	}
