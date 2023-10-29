@@ -39,7 +39,6 @@ type Client[T any] interface {
 	ListMessages(ctx context.Context, params *ListMessagesInput) (*ListMessagesOutput[T], error)
 
 	Put(ctx context.Context, message *Message[T]) error
-	Upsert(ctx context.Context, message *Message[T]) error
 	Touch(ctx context.Context, id string) (*Result, error)
 	GetDynamodbClient() *dynamodb.Client
 }
@@ -741,30 +740,6 @@ func (c *client[T]) Put(ctx context.Context, message *Message[T]) error {
 		if err != nil {
 			return handleDynamoDBError(err)
 		}
-	}
-	return c.put(ctx, message)
-}
-
-// Upsert attempts to update an existing Message object in a DynamoDB table or inserts it
-// if it doesn't exist. It uses the PutImpl method to perform this upsert operation.
-// If an entry with the same ID exists, the method will update it.
-//
-// Parameters:
-//   - ctx: Context used for timeout, cancellation, and value sharing for the operation.
-//   - message: The Message object to be upserted.
-//
-// Returns:
-//   - error: Returns an error if one occurs, otherwise, it returns nil on successful upsert.
-func (c *client[T]) Upsert(ctx context.Context, message *Message[T]) error {
-	retrieved, err := c.GetMessage(ctx, &GetMessageInput{
-		ID: message.ID,
-	})
-	if err != nil {
-		return err
-	}
-	if retrieved.Message != nil {
-		retrieved.Message.Update(message, c.clock.Now())
-		message = retrieved.Message
 	}
 	return c.put(ctx, message)
 }

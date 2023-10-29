@@ -108,21 +108,6 @@ func (m *Message[T]) Touch(now time.Time) {
 	m.LastUpdatedTimestamp = ts
 }
 
-func (m *Message[T]) Update(message *Message[T], now time.Time) {
-	formatted := clock.FormatRFC3339(now)
-	nextVersion := m.Version + 1
-
-	m.Data = message.Data
-	m.Status = message.Status
-	m.QueueType = message.QueueType
-	m.ReceiveCount = message.ReceiveCount
-	m.CreationTimestamp = message.CreationTimestamp
-	m.LastUpdatedTimestamp = formatted
-	m.AddToQueueTimestamp = message.AddToQueueTimestamp
-	m.PeekFromQueueTimestamp = message.PeekFromQueueTimestamp
-	m.Version = nextVersion
-}
-
 func (m *Message[T]) MarshalMap() (map[string]types.AttributeValue, error) {
 	item, err := attributevalue.MarshalMap(m)
 	if err != nil {
