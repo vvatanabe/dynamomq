@@ -1699,23 +1699,25 @@ func TestQueueSDKClientList(t *testing.T) {
 				t.Fatalf("NewFromConfig() error = %v", err)
 				return
 			}
-			result, err := client.List(ctx, tt.args.size)
+			result, err := client.ListMessages(ctx, &ListMessagesInput{
+				Size: tt.args.size,
+			})
 			if tt.wantErr != nil {
 				if err != tt.wantErr {
-					t.Errorf("List() error = %v, wantErr %v", err, tt.wantErr)
+					t.Errorf("ListMessages() error = %v, wantErr %v", err, tt.wantErr)
 					return
 				}
 				return
 			}
 			if err != nil {
-				t.Errorf("List() error = %v", err)
+				t.Errorf("ListMessages() error = %v", err)
 				return
 			}
-			sort.Slice(result, func(i, j int) bool {
-				return result[i].LastUpdatedTimestamp < result[j].LastUpdatedTimestamp
+			sort.Slice(result.Messages, func(i, j int) bool {
+				return result.Messages[i].LastUpdatedTimestamp < result.Messages[j].LastUpdatedTimestamp
 			})
-			if !reflect.DeepEqual(result, tt.want) {
-				t.Errorf("List() got = %v, want %v", result, tt.want)
+			if !reflect.DeepEqual(result.Messages, tt.want) {
+				t.Errorf("ListMessages() got = %v, want %v", result, tt.want)
 			}
 		})
 	}

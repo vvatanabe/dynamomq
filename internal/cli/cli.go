@@ -75,7 +75,7 @@ func (c *CLI) help(_ context.Context, _ []string) {
   > dlq                                           [Retrieves the Dead Letter Queue (DLQ) statistics]
   > enqueue-test | et                             [SendMessage test Message records in DynamoDB: A-101, A-202, A-303 and A-404; if already exists, it will overwrite it]
   > purge                                         [It will remove all test data from DynamoDB]
-  > ls                                            [List all message IDs ... max 10 elements]
+  > ls                                            [ListMessages all message IDs ... max 10 elements]
   > receive                                       [ReceiveMessage the Message from the Queue .. it will replace the current ID with the peeked one]
   > id <id>                                       [GetMessage the application object from DynamoDB by app domain ID; CLI is in the app mode, from that point on]
     > sys                                         [Show system info data in a JSON format]
@@ -142,17 +142,17 @@ func (c *CLI) ls(ctx context.Context, _ []string) {
 		fmt.Println(needAWSMessage)
 		return
 	}
-	messages, err := c.Client.List(ctx, 10)
+	out, err := c.Client.ListMessages(ctx, &dynamomq.ListMessagesInput{Size: 10})
 	if err != nil {
 		printError(err)
 		return
 	}
-	if len(messages) == 0 {
+	if len(out.Messages) == 0 {
 		fmt.Println("Message table is empty!")
 		return
 	}
-	fmt.Println("List of first 10 IDs:")
-	for _, m := range messages {
+	fmt.Println("ListMessages of first 10 IDs:")
+	for _, m := range out.Messages {
 		fmt.Printf("* ID: %s, status: %s", m.ID, m.Status)
 	}
 }
@@ -162,17 +162,17 @@ func (c *CLI) purge(ctx context.Context, _ []string) {
 		fmt.Println(needAWSMessage)
 		return
 	}
-	messages, err := c.Client.List(ctx, 10)
+	out, err := c.Client.ListMessages(ctx, &dynamomq.ListMessagesInput{Size: 10})
 	if err != nil {
 		printError(err)
 		return
 	}
-	if len(messages) == 0 {
+	if len(out.Messages) == 0 {
 		fmt.Println("Message table is empty ... nothing to remove!")
 		return
 	}
-	fmt.Println("List of removed IDs:")
-	for _, m := range messages {
+	fmt.Println("ListMessages of removed IDs:")
+	for _, m := range out.Messages {
 		_, err := c.Client.DeleteMessage(ctx, &dynamomq.DeleteMessageInput{
 			ID: m.ID,
 		})

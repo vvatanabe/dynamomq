@@ -36,7 +36,7 @@ type Client[T any] interface {
 	GetMessage(ctx context.Context, params *GetMessageInput) (*GetMessageOutput[T], error)
 	GetQueueStats(ctx context.Context, params *GetQueueStatsInput) (*GetQueueStatsOutput, error)
 	GetDLQStats(ctx context.Context, params *GetDLQStatsInput) (*GetDLQStatsOutput, error)
-	List(ctx context.Context, size int32) ([]*Message[T], error)
+	ListMessages(ctx context.Context, params *ListMessagesInput) (*ListMessagesOutput[T], error)
 
 	Put(ctx context.Context, message *Message[T]) error
 	Upsert(ctx context.Context, message *Message[T]) error
@@ -687,6 +687,33 @@ func (c *client[T]) GetMessage(ctx context.Context, params *GetMessageInput) (*G
 	}, nil
 }
 
+type ListMessagesInput struct {
+	Size int32
+}
+
+type ListMessagesOutput[T any] struct {
+	Messages []*Message[T]
+}
+
+func (c *client[T]) ListMessages(ctx context.Context, params *ListMessagesInput) (*ListMessagesOutput[T], error) {
+	if params == nil {
+		params = &ListMessagesInput{}
+	}
+	output, err := c.dynamoDB.Scan(ctx, &dynamodb.ScanInput{
+		TableName: &c.tableName,
+		Limit:     aws.Int32(params.Size),
+	})
+	if err != nil {
+		return &ListMessagesOutput[T]{}, handleDynamoDBError(err)
+	}
+	var messages []*Message[T]
+	err = attributevalue.UnmarshalListOfMaps(output.Items, &messages)
+	if err != nil {
+		return &ListMessagesOutput[T]{}, &UnmarshalingAttributeError{Cause: err}
+	}
+	return &ListMessagesOutput[T]{Messages: messages}, nil
+}
+
 // Put stores a given Message object in a DynamoDB table using the PutImpl method.
 // The object is stored in the table with its specified ID, creating a new entry if it
 // doesn't exist. If an entry with the same ID exists, the method will delete it.
@@ -806,33 +833,6 @@ func (c *client[T]) Touch(ctx context.Context, id string) (*Result, error) {
 		LastUpdatedTimestamp: item.LastUpdatedTimestamp,
 		Version:              item.Version,
 	}, nil
-}
-
-// List retrieves a list of Messages from the DynamoDB table up to the given size.
-// The function constructs a DynamoDB scan with specific projection expressions and
-// returns the list of found messages.
-//
-// Parameters:
-//   - ctx: The context to use for the request.
-//   - size: The maximum number of items to retrieve.
-//
-// Returns:
-//   - A slice of pointers to Message if found.
-//   - error if there's any issue in the operation.
-func (c *client[T]) List(ctx context.Context, size int32) ([]*Message[T], error) {
-	output, err := c.dynamoDB.Scan(ctx, &dynamodb.ScanInput{
-		TableName: &c.tableName,
-		Limit:     aws.Int32(size),
-	})
-	if err != nil {
-		return nil, handleDynamoDBError(err)
-	}
-	var messages []*Message[T]
-	err = attributevalue.UnmarshalListOfMaps(output.Items, &messages)
-	if err != nil {
-		return nil, &UnmarshalingAttributeError{Cause: err}
-	}
-	return messages, nil
 }
 
 func (c *client[T]) GetDynamodbClient() *dynamodb.Client {
