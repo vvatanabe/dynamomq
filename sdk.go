@@ -35,7 +35,7 @@ type Client[T any] interface {
 	RedriveMessage(ctx context.Context, params *RedriveMessageInput) (*RedriveMessageOutput, error)
 	GetMessage(ctx context.Context, params *GetMessageInput) (*GetMessageOutput[T], error)
 	GetQueueStats(ctx context.Context, params *GetQueueStatsInput) (*GetQueueStatsOutput, error)
-	GetDLQStats(ctx context.Context) (*DLQStats, error)
+	GetDLQStats(ctx context.Context, params *GetDLQStatsInput) (*GetDLQStatsOutput, error)
 	List(ctx context.Context, size int32) ([]*Message[T], error)
 	ListIDs(ctx context.Context, size int32) ([]string, error)
 	ListExtendedIDs(ctx context.Context, size int32) ([]string, error)
@@ -594,27 +594,23 @@ func (c *client[T]) GetQueueStats(ctx context.Context, params *GetQueueStatsInpu
 	}, nil
 }
 
-// GetDLQStats retrieves statistics about the current state of the Dead Letter Queue (DLQ).
-//
-// The function queries the DynamoDB table to fetch records that are currently in the DLQ.
-// It calculates the total number of records in the DLQ and provides the IDs of the first 100 records.
-//
-// Parameters:
-//
-//	ctx: The context for the request, used for timeout and cancellation.
-//
-// Returns:
-//   - A pointer to a DLQStats object containing the calculated statistics.
-//   - An error if there's any issue querying the database or processing the results.
-//
-// Note: The function uses pagination to query the DynamoDB table and will continue querying
-// until all records have been fetched or an error occurs.
-func (c *client[T]) GetDLQStats(ctx context.Context) (*DLQStats, error) {
+type GetDLQStatsInput struct{}
+
+// GetDLQStatsOutput represents the structure to store DLQ depth statistics.
+type GetDLQStatsOutput struct {
+	First100IDsInQueue []string `json:"first_100_IDs_in_queue"`
+	TotalRecordsInDLQ  int      `json:"total_records_in_DLQ"`
+}
+
+func (c *client[T]) GetDLQStats(ctx context.Context, params *GetDLQStatsInput) (*GetDLQStatsOutput, error) {
+	if params == nil {
+		params = &GetDLQStatsInput{}
+	}
 	expr, err := expression.NewBuilder().
 		WithKeyCondition(expression.KeyEqual(expression.Key("queue_type"), expression.Value(QueueTypeDLQ))).
 		Build()
 	if err != nil {
-		return nil, &BuildingExpressionError{Cause: err}
+		return &GetDLQStatsOutput{}, &BuildingExpressionError{Cause: err}
 	}
 	var totalDLQSize int
 	var lastEvaluatedKey map[string]types.AttributeValue
@@ -631,7 +627,7 @@ func (c *client[T]) GetDLQStats(ctx context.Context) (*DLQStats, error) {
 			ExclusiveStartKey:         lastEvaluatedKey,
 		})
 		if err != nil {
-			return nil, handleDynamoDBError(err)
+			return &GetDLQStatsOutput{}, handleDynamoDBError(err)
 		}
 		lastEvaluatedKey = resp.LastEvaluatedKey
 		for _, itemMap := range resp.Items {
@@ -640,7 +636,7 @@ func (c *client[T]) GetDLQStats(ctx context.Context) (*DLQStats, error) {
 				item := Message[T]{}
 				err := attributevalue.UnmarshalMap(itemMap, &item)
 				if err != nil {
-					return nil, &UnmarshalingAttributeError{Cause: err}
+					return &GetDLQStatsOutput{}, &UnmarshalingAttributeError{Cause: err}
 				}
 				listBANs = append(listBANs, item.ID)
 			}
@@ -649,7 +645,7 @@ func (c *client[T]) GetDLQStats(ctx context.Context) (*DLQStats, error) {
 			break
 		}
 	}
-	return &DLQStats{
+	return &GetDLQStatsOutput{
 		First100IDsInQueue: listBANs,
 		TotalRecordsInDLQ:  totalDLQSize,
 	}, nil
@@ -949,10 +945,4 @@ type Result struct {
 	Status               Status `json:"status"`
 	LastUpdatedTimestamp string `json:"last_updated_timestamp"`
 	Version              int    `json:"version"`
-}
-
-// DLQStats represents the structure to store DLQ depth statistics.
-type DLQStats struct {
-	First100IDsInQueue []string `json:"first_100_IDs_in_queue"`
-	TotalRecordsInDLQ  int      `json:"total_records_in_DLQ"`
 }

@@ -1168,7 +1168,7 @@ func TestQueueSDKClientGetDLQStats(t *testing.T) {
 	tests := []struct {
 		name  string
 		setup func(*testing.T) (*dynamodb.Client, func())
-		want  *DLQStats
+		want  *GetDLQStatsOutput
 	}{
 		{
 			name: "empty items",
@@ -1185,7 +1185,7 @@ func TestQueueSDKClientGetDLQStats(t *testing.T) {
 					},
 				)
 			},
-			want: &DLQStats{
+			want: &GetDLQStatsOutput{
 				First100IDsInQueue: []string{},
 				TotalRecordsInDLQ:  0,
 			},
@@ -1214,7 +1214,7 @@ func TestQueueSDKClientGetDLQStats(t *testing.T) {
 					},
 				)
 			},
-			want: &DLQStats{
+			want: &GetDLQStatsOutput{
 				First100IDsInQueue: []string{"D-404", "E-505", "F-606"},
 				TotalRecordsInDLQ:  3,
 			},
@@ -1231,7 +1231,7 @@ func TestQueueSDKClientGetDLQStats(t *testing.T) {
 				t.Fatalf("NewFromConfig() error = %v", err)
 				return
 			}
-			got, err := client.GetDLQStats(ctx)
+			got, err := client.GetDLQStats(ctx, &GetDLQStatsInput{})
 			if err != nil {
 				t.Errorf("GetDLQStats() error = %v", err)
 				return

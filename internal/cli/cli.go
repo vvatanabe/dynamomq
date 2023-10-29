@@ -235,7 +235,7 @@ func (c *CLI) dlq(ctx context.Context, _ []string) {
 		fmt.Println(needAWSMessage)
 		return
 	}
-	stats, err := c.Client.GetDLQStats(ctx)
+	stats, err := c.Client.GetDLQStats(ctx, &dynamomq.GetDLQStatsInput{})
 	if err != nil {
 		printError(err)
 		return
