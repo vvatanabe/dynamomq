@@ -39,7 +39,6 @@ type Client[T any] interface {
 	ListMessages(ctx context.Context, params *ListMessagesInput) (*ListMessagesOutput[T], error)
 
 	Put(ctx context.Context, message *Message[T]) error
-	Touch(ctx context.Context, id string) (*Result, error)
 	GetDynamodbClient() *dynamodb.Client
 }
 
@@ -757,57 +756,6 @@ func (c *client[T]) put(ctx context.Context, message *Message[T]) error {
 		return handleDynamoDBError(err)
 	}
 	return nil
-}
-
-// Touch updates the 'last_updated_timestamp' of a given item identified by its 'id'
-// and increments its 'version' by 1 in the DynamoDB table.
-// It uses optimistic locking based on the item's 'version' to ensure that updates
-// are not conflicting with other concurrent updates.
-//
-// Parameters:
-// ctx: The context for this operation. It can be used to time out or cancel the operation.
-// id: The identifier of the item to update.
-//
-// Returns:
-// *Result: A result object that contains updated values and status of the operation.
-// - If the given 'id' does not exist, the 'ReturnValue' of the result will be set to 'ReturnStatusFailedIDNotFound'.
-// - If the operation succeeds in updating the item, the 'ReturnValue' will be set to 'ReturnStatusSUCCESS'.
-// - If there is an error while updating in DynamoDB, the 'ReturnValue' will be set to 'ReturnStatusFailedDynamoError'.
-// error: An error object indicating any error that occurred during the operation.
-// - If there's an error while building the DynamoDB expression, this error is returned.
-// - If there's an error unmarshalling the DynamoDB response, this error is returned.
-// Otherwise, if the operation succeeds, the error will be 'nil'.
-func (c *client[T]) Touch(ctx context.Context, id string) (*Result, error) {
-	retrieved, err := c.GetMessage(ctx, &GetMessageInput{
-		ID: id,
-	})
-	if err != nil {
-		return nil, err
-	}
-	if retrieved.Message == nil {
-		return nil, &IDNotFoundError{}
-	}
-	message := retrieved.Message
-	message.Touch(c.clock.Now())
-	expr, err := expression.NewBuilder().
-		WithUpdate(expression.
-			Add(expression.Name("version"), expression.Value(1)).
-			Set(expression.Name("last_updated_timestamp"), expression.Value(message.LastUpdatedTimestamp))).
-		WithCondition(expression.Name("version").Equal(expression.Value(message.Version))).
-		Build()
-	if err != nil {
-		return nil, &BuildingExpressionError{Cause: err}
-	}
-	item, err := c.updateDynamoDBItem(ctx, id, &expr)
-	if err != nil {
-		return nil, err
-	}
-	return &Result{
-		ID:                   id,
-		Status:               item.Status,
-		LastUpdatedTimestamp: item.LastUpdatedTimestamp,
-		Version:              item.Version,
-	}, nil
 }
 
 func (c *client[T]) GetDynamodbClient() *dynamodb.Client {
