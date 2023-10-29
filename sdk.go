@@ -37,8 +37,7 @@ type Client[T any] interface {
 	GetQueueStats(ctx context.Context, params *GetQueueStatsInput) (*GetQueueStatsOutput, error)
 	GetDLQStats(ctx context.Context, params *GetDLQStatsInput) (*GetDLQStatsOutput, error)
 	ListMessages(ctx context.Context, params *ListMessagesInput) (*ListMessagesOutput[T], error)
-
-	Put(ctx context.Context, message *Message[T]) error
+	ReplaceMessage(ctx context.Context, params *ReplaceMessageInput[T]) (*ReplaceMessageOutput, error)
 	GetDynamodbClient() *dynamodb.Client
 }
 
@@ -712,35 +711,37 @@ func (c *client[T]) ListMessages(ctx context.Context, params *ListMessagesInput)
 	return &ListMessagesOutput[T]{Messages: messages}, nil
 }
 
-// Put stores a given Message object in a DynamoDB table using the PutImpl method.
-// The object is stored in the table with its specified ID, creating a new entry if it
-// doesn't exist. If an entry with the same ID exists, the method will delete it.
-//
-// Parameters:
-//   - ctx: Context used for timeout, cancellation, and value sharing for the operation.
-//   - message: The Message object to be stored.
-//
-// Returns:
-//   - error: Returns an error if one occurs, otherwise, it returns nil on successful storage.
-func (c *client[T]) Put(ctx context.Context, message *Message[T]) error {
+type ReplaceMessageInput[T any] struct {
+	Message *Message[T]
+}
+
+type ReplaceMessageOutput struct {
+}
+
+func (c *client[T]) ReplaceMessage(ctx context.Context, params *ReplaceMessageInput[T]) (*ReplaceMessageOutput, error) {
+	if params == nil {
+		params = &ReplaceMessageInput[T]{
+			Message: &Message[T]{},
+		}
+	}
 	retrieved, err := c.GetMessage(ctx, &GetMessageInput{
-		ID: message.ID,
+		ID: params.Message.ID,
 	})
 	if err != nil {
-		return err
+		return &ReplaceMessageOutput{}, err
 	}
 	if retrieved.Message != nil {
 		_, err := c.dynamoDB.DeleteItem(ctx, &dynamodb.DeleteItemInput{
 			TableName: aws.String(c.tableName),
 			Key: map[string]types.AttributeValue{
-				"id": &types.AttributeValueMemberS{Value: message.ID},
+				"id": &types.AttributeValueMemberS{Value: params.Message.ID},
 			},
 		})
 		if err != nil {
-			return handleDynamoDBError(err)
+			return &ReplaceMessageOutput{}, handleDynamoDBError(err)
 		}
 	}
-	return c.put(ctx, message)
+	return &ReplaceMessageOutput{}, c.put(ctx, params.Message)
 }
 
 func (c *client[T]) put(ctx context.Context, message *Message[T]) error {

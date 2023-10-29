@@ -1403,16 +1403,18 @@ func TestQueueSDKClientPut(t *testing.T) {
 				t.Fatalf("NewFromConfig() error = %v", err)
 				return
 			}
-			err = client.Put(ctx, tt.args.message)
+			_, err = client.ReplaceMessage(ctx, &ReplaceMessageInput[test.MessageData]{
+				Message: tt.args.message,
+			})
 			if tt.wantErr != nil {
 				if err != tt.wantErr {
-					t.Errorf("Put() error = %v, wantErr %v", err, tt.wantErr)
+					t.Errorf("ReplaceMessage() error = %v, wantErr %v", err, tt.wantErr)
 					return
 				}
 				return
 			}
 			if err != nil {
-				t.Errorf("Put() error = %v", err)
+				t.Errorf("ReplaceMessage() error = %v", err)
 				return
 			}
 			got, err := client.GetMessage(ctx, &GetMessageInput{

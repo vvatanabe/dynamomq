@@ -314,7 +314,9 @@ func (c *CLI) reset(ctx context.Context, _ []string) {
 		return
 	}
 	c.Message.ResetSystemInfo(clock.Now())
-	err := c.Client.Put(ctx, c.Message)
+	_, err := c.Client.ReplaceMessage(ctx, &dynamomq.ReplaceMessageInput[any]{
+		Message: c.Message,
+	})
 	if err != nil {
 		printError(err)
 		return
@@ -393,7 +395,7 @@ func (c *CLI) fail(ctx context.Context, _ []string) {
 		return
 	}
 	c.Message = retrieved.Message
-	fmt.Printf("Processing for ID [%s] has failed! Put the record back to the queue!\n", c.Message.ID)
+	fmt.Printf("Processing for ID [%s] has failed! ReplaceMessage the record back to the queue!\n", c.Message.ID)
 	stats, err := c.Client.GetQueueStats(ctx, &dynamomq.GetQueueStatsInput{})
 	if err != nil {
 		printError(err)
