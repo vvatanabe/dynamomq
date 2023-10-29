@@ -142,18 +142,18 @@ func (c *CLI) ls(ctx context.Context, _ []string) {
 		fmt.Println(needAWSMessage)
 		return
 	}
-	ids, err := c.Client.ListExtendedIDs(ctx, 10)
+	messages, err := c.Client.List(ctx, 10)
 	if err != nil {
 		printError(err)
 		return
 	}
-	if len(ids) == 0 {
+	if len(messages) == 0 {
 		fmt.Println("Message table is empty!")
 		return
 	}
 	fmt.Println("List of first 10 IDs:")
-	for _, id := range ids {
-		fmt.Printf("* %s\n", id)
+	for _, m := range messages {
+		fmt.Printf("* ID: %s, status: %s", m.ID, m.Status)
 	}
 }
 
@@ -162,25 +162,25 @@ func (c *CLI) purge(ctx context.Context, _ []string) {
 		fmt.Println(needAWSMessage)
 		return
 	}
-	ids, err := c.Client.ListIDs(ctx, 10)
+	messages, err := c.Client.List(ctx, 10)
 	if err != nil {
 		printError(err)
 		return
 	}
-	if len(ids) == 0 {
+	if len(messages) == 0 {
 		fmt.Println("Message table is empty ... nothing to remove!")
 		return
 	}
 	fmt.Println("List of removed IDs:")
-	for _, id := range ids {
+	for _, m := range messages {
 		_, err := c.Client.DeleteMessage(ctx, &dynamomq.DeleteMessageInput{
-			ID: id,
+			ID: m.ID,
 		})
 		if err != nil {
 			printError(err)
 			continue
 		}
-		fmt.Printf("* ID: %s\n", id)
+		fmt.Printf("* ID: %s\n", m.ID)
 	}
 }
 

@@ -37,8 +37,6 @@ type Client[T any] interface {
 	GetQueueStats(ctx context.Context, params *GetQueueStatsInput) (*GetQueueStatsOutput, error)
 	GetDLQStats(ctx context.Context, params *GetDLQStatsInput) (*GetDLQStatsOutput, error)
 	List(ctx context.Context, size int32) ([]*Message[T], error)
-	ListIDs(ctx context.Context, size int32) ([]string, error)
-	ListExtendedIDs(ctx context.Context, size int32) ([]string, error)
 
 	Put(ctx context.Context, message *Message[T]) error
 	Upsert(ctx context.Context, message *Message[T]) error
@@ -835,57 +833,6 @@ func (c *client[T]) List(ctx context.Context, size int32) ([]*Message[T], error)
 		return nil, &UnmarshalingAttributeError{Cause: err}
 	}
 	return messages, nil
-}
-
-// ListIDs retrieves a list of IDs from the Message items in the DynamoDB table
-// up to the given size. It uses the List function to retrieve the messages and
-// then extracts the IDs from them.
-//
-// Parameters:
-//   - ctx: The context to use for the request.
-//   - size: The maximum number of IDs to retrieve.
-//
-// Returns:
-//   - A slice of string IDs if found.
-//   - error if there's any issue in the operation.
-func (c *client[T]) ListIDs(ctx context.Context, size int32) ([]string, error) {
-	messages, err := c.List(ctx, size)
-	if err != nil {
-		return nil, err
-	}
-
-	ids := make([]string, len(messages))
-	for i, s := range messages {
-		ids[i] = s.ID
-	}
-
-	return ids, nil
-}
-
-// ListExtendedIDs retrieves a list of extended IDs (formatted as "ID - status: STATUS")
-// from the Message items in the DynamoDB table up to the given size.
-// It uses the List function to retrieve the messages and then constructs
-// the extended ID strings from them.
-//
-// Parameters:
-//   - ctx: The context to use for the request.
-//   - size: The maximum number of extended IDs to retrieve.
-//
-// Returns:
-//   - A slice of extended ID strings if found.
-//   - error if there's any issue in the operation.
-func (c *client[T]) ListExtendedIDs(ctx context.Context, size int32) ([]string, error) {
-	messages, err := c.List(ctx, size)
-	if err != nil {
-		return nil, err
-	}
-
-	extendedIDs := make([]string, len(messages))
-	for i, s := range messages {
-		extendedIDs[i] = fmt.Sprintf("ID: %s, status: %s", s.ID, s.Status)
-	}
-
-	return extendedIDs, nil
 }
 
 func (c *client[T]) GetDynamodbClient() *dynamodb.Client {
