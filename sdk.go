@@ -34,7 +34,7 @@ type Client[T any] interface {
 	MoveMessageToDLQ(ctx context.Context, params *MoveMessageToDLQInput) (*MoveMessageToDLQOutput, error)
 	RedriveMessage(ctx context.Context, params *RedriveMessageInput) (*RedriveMessageOutput, error)
 	GetMessage(ctx context.Context, params *GetMessageInput) (*GetMessageOutput[T], error)
-	GetQueueStats(ctx context.Context) (*QueueStats, error)
+	GetQueueStats(ctx context.Context, params *GetQueueStatsInput) (*GetQueueStatsOutput, error)
 	GetDLQStats(ctx context.Context) (*DLQStats, error)
 	List(ctx context.Context, size int32) ([]*Message[T], error)
 	ListIDs(ctx context.Context, size int32) ([]string, error)
@@ -523,30 +523,26 @@ func (c *client[T]) RedriveMessage(ctx context.Context, params *RedriveMessageIn
 	}, nil
 }
 
-// GetQueueStats retrieves statistics about the current state of the queue.
-//
-// The function queries the DynamoDB table to fetch records that are currently queued.
-// It calculates the total number of records in the queue, the number of records that are
-// currently being processed, and the number of records that have not yet started processing.
-// Additionally, it provides the IDs of the first 100 records in the queue and the IDs of the
-// first 100 records that are currently being processed.
-//
-// Parameters:
-//
-//	ctx: The context for the request, used for timeout and cancellation.
-//
-// Returns:
-//   - A pointer to a QueueStats object containing the calculated statistics.
-//   - An error if there's any issue querying the database or processing the results.
-//
-// Note: The function uses pagination to query the DynamoDB table and will continue querying
-// until all records have been fetched or an error occurs.
-func (c *client[T]) GetQueueStats(ctx context.Context) (*QueueStats, error) {
+type GetQueueStatsInput struct{}
+
+// GetQueueStatsOutput represents the structure to store Queue depth statistics.
+type GetQueueStatsOutput struct {
+	First100IDsInQueue         []string `json:"first_100_IDs_in_queue"`
+	First100SelectedIDsInQueue []string `json:"first_100_selected_IDs_in_queue"`
+	TotalRecordsInQueue        int      `json:"total_records_in_queue"`
+	TotalRecordsInProcessing   int      `json:"total_records_in_queue_selected_for_processing"`
+	TotalRecordsNotStarted     int      `json:"total_records_in_queue_pending_for_processing"`
+}
+
+func (c *client[T]) GetQueueStats(ctx context.Context, params *GetQueueStatsInput) (*GetQueueStatsOutput, error) {
+	if params == nil {
+		params = &GetQueueStatsInput{}
+	}
 	expr, err := expression.NewBuilder().
 		WithKeyCondition(expression.KeyEqual(expression.Key("queue_type"), expression.Value(QueueTypeStandard))).
 		Build()
 	if err != nil {
-		return nil, &BuildingExpressionError{Cause: err}
+		return &GetQueueStatsOutput{}, &BuildingExpressionError{Cause: err}
 	}
 	var totalQueueSize int
 	var exclusiveStartKey map[string]types.AttributeValue
@@ -565,7 +561,7 @@ func (c *client[T]) GetQueueStats(ctx context.Context) (*QueueStats, error) {
 			ExclusiveStartKey:         exclusiveStartKey,
 		})
 		if err != nil {
-			return nil, handleDynamoDBError(err)
+			return &GetQueueStatsOutput{}, handleDynamoDBError(err)
 		}
 		exclusiveStartKey = queryOutput.LastEvaluatedKey
 		for _, itemMap := range queryOutput.Items {
@@ -573,7 +569,7 @@ func (c *client[T]) GetQueueStats(ctx context.Context) (*QueueStats, error) {
 			item := Message[T]{}
 			err := attributevalue.UnmarshalMap(itemMap, &item)
 			if err != nil {
-				return nil, &UnmarshalingAttributeError{Cause: err}
+				return &GetQueueStatsOutput{}, &UnmarshalingAttributeError{Cause: err}
 			}
 			if item.Status == StatusProcessing {
 				peekedRecords++
@@ -589,7 +585,7 @@ func (c *client[T]) GetQueueStats(ctx context.Context) (*QueueStats, error) {
 			break
 		}
 	}
-	return &QueueStats{
+	return &GetQueueStatsOutput{
 		TotalRecordsInProcessing:   peekedRecords,
 		TotalRecordsInQueue:        totalQueueSize,
 		TotalRecordsNotStarted:     totalQueueSize - peekedRecords,
@@ -953,15 +949,6 @@ type Result struct {
 	Status               Status `json:"status"`
 	LastUpdatedTimestamp string `json:"last_updated_timestamp"`
 	Version              int    `json:"version"`
-}
-
-// QueueStats represents the structure to store Queue depth statistics.
-type QueueStats struct {
-	First100IDsInQueue         []string `json:"first_100_IDs_in_queue"`
-	First100SelectedIDsInQueue []string `json:"first_100_selected_IDs_in_queue"`
-	TotalRecordsInQueue        int      `json:"total_records_in_queue"`
-	TotalRecordsInProcessing   int      `json:"total_records_in_queue_selected_for_processing"`
-	TotalRecordsNotStarted     int      `json:"total_records_in_queue_pending_for_processing"`
 }
 
 // DLQStats represents the structure to store DLQ depth statistics.

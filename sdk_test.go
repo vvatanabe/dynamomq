@@ -1065,14 +1065,14 @@ func TestQueueSDKClientGetQueueStats(t *testing.T) {
 	tests := []struct {
 		name  string
 		setup func(*testing.T) (*dynamodb.Client, func())
-		want  *QueueStats
+		want  *GetQueueStatsOutput
 	}{
 		{
 			name: "empty items",
 			setup: func(t *testing.T) (*dynamodb.Client, func()) {
 				return setupDynamoDB(t)
 			},
-			want: &QueueStats{
+			want: &GetQueueStatsOutput{
 				First100IDsInQueue:         []string{},
 				First100SelectedIDsInQueue: []string{},
 				TotalRecordsInQueue:        0,
@@ -1089,7 +1089,7 @@ func TestQueueSDKClientGetQueueStats(t *testing.T) {
 					},
 				)
 			},
-			want: &QueueStats{
+			want: &GetQueueStatsOutput{
 				First100IDsInQueue:         []string{"A-101"},
 				First100SelectedIDsInQueue: []string{},
 				TotalRecordsInQueue:        1,
@@ -1106,7 +1106,7 @@ func TestQueueSDKClientGetQueueStats(t *testing.T) {
 					},
 				)
 			},
-			want: &QueueStats{
+			want: &GetQueueStatsOutput{
 				First100IDsInQueue:         []string{"A-101"},
 				First100SelectedIDsInQueue: []string{"A-101"},
 				TotalRecordsInQueue:        1,
@@ -1132,7 +1132,7 @@ func TestQueueSDKClientGetQueueStats(t *testing.T) {
 					},
 				)
 			},
-			want: &QueueStats{
+			want: &GetQueueStatsOutput{
 				First100IDsInQueue:         []string{"A-101", "B-202", "C-303", "D-404"},
 				First100SelectedIDsInQueue: []string{"C-303", "D-404"},
 				TotalRecordsInQueue:        4,
@@ -1152,7 +1152,7 @@ func TestQueueSDKClientGetQueueStats(t *testing.T) {
 				t.Fatalf("NewFromConfig() error = %v", err)
 				return
 			}
-			got, err := client.GetQueueStats(ctx)
+			got, err := client.GetQueueStats(ctx, &GetQueueStatsInput{})
 			if err != nil {
 				t.Errorf("GetQueueStats() error = %v", err)
 				return

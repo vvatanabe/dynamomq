@@ -222,7 +222,7 @@ func (c *CLI) qstat(ctx context.Context, _ []string) {
 		fmt.Println(needAWSMessage)
 		return
 	}
-	stats, err := c.Client.GetQueueStats(ctx)
+	stats, err := c.Client.GetQueueStats(ctx, &dynamomq.GetQueueStatsInput{})
 	if err != nil {
 		printError(err)
 		return
@@ -257,7 +257,7 @@ func (c *CLI) receive(ctx context.Context, _ []string) {
 	printMessageWithData(
 		fmt.Sprintf("ReceiveMessage was successful ... record peeked is: [%s]\n", c.Message.ID),
 		c.Message.GetSystemInfo())
-	stats, err := c.Client.GetQueueStats(ctx)
+	stats, err := c.Client.GetQueueStats(ctx, &dynamomq.GetQueueStatsInput{})
 	if err != nil {
 		printError(err)
 		return
@@ -359,7 +359,7 @@ func (c *CLI) delete(ctx context.Context, _ []string) {
 		return
 	}
 	fmt.Printf("Processing for ID [%s] is deleted successfully! Remove from the queue!\n", c.Message.ID)
-	stats, err := c.Client.GetQueueStats(ctx)
+	stats, err := c.Client.GetQueueStats(ctx, &dynamomq.GetQueueStatsInput{})
 	if err != nil {
 		printError(err)
 		return
@@ -394,7 +394,7 @@ func (c *CLI) fail(ctx context.Context, _ []string) {
 	}
 	c.Message = retrieved.Message
 	fmt.Printf("Processing for ID [%s] has failed! Put the record back to the queue!\n", c.Message.ID)
-	stats, err := c.Client.GetQueueStats(ctx)
+	stats, err := c.Client.GetQueueStats(ctx, &dynamomq.GetQueueStatsInput{})
 	if err != nil {
 		printError(err)
 		return
@@ -419,7 +419,7 @@ func (c *CLI) invalid(ctx context.Context, _ []string) {
 		return
 	}
 	fmt.Printf("Processing for ID [%s] has failed .. invalid data! Send record to DLQ!\n", c.Message.ID)
-	stats, err := c.Client.GetQueueStats(ctx)
+	stats, err := c.Client.GetQueueStats(ctx, &dynamomq.GetQueueStatsInput{})
 	if err != nil {
 		printError(err)
 		return
