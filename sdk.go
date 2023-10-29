@@ -33,7 +33,7 @@ type Client[T any] interface {
 	DeleteMessage(ctx context.Context, params *DeleteMessageInput) (*DeleteMessageOutput, error)
 	MoveMessageToDLQ(ctx context.Context, params *MoveMessageToDLQInput) (*MoveMessageToDLQOutput, error)
 	RedriveMessage(ctx context.Context, params *RedriveMessageInput) (*RedriveMessageOutput, error)
-	Get(ctx context.Context, id string) (*Message[T], error)
+	GetMessage(ctx context.Context, params *GetMessageInput) (*GetMessageOutput[T], error)
 	GetQueueStats(ctx context.Context) (*QueueStats, error)
 	GetDLQStats(ctx context.Context) (*DLQStats, error)
 	List(ctx context.Context, size int32) ([]*Message[T], error)
@@ -200,11 +200,13 @@ func (c *client[T]) SendMessage(ctx context.Context, params *SendMessageInput[T]
 	if params == nil {
 		params = &SendMessageInput[T]{}
 	}
-	retrieved, err := c.Get(ctx, params.ID)
+	retrieved, err := c.GetMessage(ctx, &GetMessageInput{
+		ID: params.ID,
+	})
 	if err != nil {
 		return &SendMessageOutput[T]{}, err
 	}
-	if retrieved != nil {
+	if retrieved.Message != nil {
 		return &SendMessageOutput[T]{}, &IDDuplicatedError{}
 	}
 	message := NewDefaultMessage(params.ID, params.Data, c.clock.Now())
@@ -327,13 +329,16 @@ func (c *client[T]) UpdateMessageAsVisible(ctx context.Context, params *UpdateMe
 	if params == nil {
 		params = &UpdateMessageAsVisibleInput{}
 	}
-	message, err := c.Get(ctx, params.ID)
+	retrieved, err := c.GetMessage(ctx, &GetMessageInput{
+		ID: params.ID,
+	})
 	if err != nil {
 		return &UpdateMessageAsVisibleOutput[T]{}, err
 	}
-	if message == nil {
+	if retrieved.Message == nil {
 		return &UpdateMessageAsVisibleOutput[T]{}, &IDNotFoundError{}
 	}
+	message := retrieved.Message
 	err = message.Ready(c.clock.Now())
 	if err != nil {
 		return &UpdateMessageAsVisibleOutput[T]{}, err
@@ -406,13 +411,16 @@ func (c *client[T]) MoveMessageToDLQ(ctx context.Context, params *MoveMessageToD
 	if params == nil {
 		params = &MoveMessageToDLQInput{}
 	}
-	message, err := c.Get(ctx, params.ID)
+	retrieved, err := c.GetMessage(ctx, &GetMessageInput{
+		ID: params.ID,
+	})
 	if err != nil {
 		return &MoveMessageToDLQOutput{}, err
 	}
-	if message == nil {
+	if retrieved.Message == nil {
 		return &MoveMessageToDLQOutput{}, &IDNotFoundError{}
 	}
+	message := retrieved.Message
 	if message.IsDLQ() {
 		return &MoveMessageToDLQOutput{
 			ID:                   params.ID,
@@ -466,14 +474,17 @@ func (c *client[T]) RedriveMessage(ctx context.Context, params *RedriveMessageIn
 	if params == nil {
 		params = &RedriveMessageInput{}
 	}
-	retrieved, err := c.Get(ctx, params.ID)
+	retrieved, err := c.GetMessage(ctx, &GetMessageInput{
+		ID: params.ID,
+	})
 	if err != nil {
 		return &RedriveMessageOutput{}, err
 	}
-	if retrieved == nil {
+	if retrieved.Message == nil {
 		return &RedriveMessageOutput{}, &IDNotFoundError{}
 	}
-	err = retrieved.RestoreFromDLQ(c.clock.Now())
+	message := retrieved.Message
+	err = message.RestoreFromDLQ(c.clock.Now())
 	if err != nil {
 		return &RedriveMessageOutput{}, err
 	}
@@ -483,19 +494,19 @@ func (c *client[T]) RedriveMessage(ctx context.Context, params *RedriveMessageIn
 			expression.Value(1),
 		).Set(
 			expression.Name("queue_type"),
-			expression.Value(retrieved.QueueType),
+			expression.Value(message.QueueType),
 		).Set(
 			expression.Name("status"),
-			expression.Value(retrieved.Status),
+			expression.Value(message.Status),
 		).Set(
 			expression.Name("last_updated_timestamp"),
-			expression.Value(retrieved.LastUpdatedTimestamp),
+			expression.Value(message.LastUpdatedTimestamp),
 		).Set(
 			expression.Name("queue_add_timestamp"),
-			expression.Value(retrieved.AddToQueueTimestamp),
+			expression.Value(message.AddToQueueTimestamp),
 		)).
 		WithCondition(expression.Name("version").
-			Equal(expression.Value(retrieved.Version))).
+			Equal(expression.Value(message.Version))).
 		Build()
 	if err != nil {
 		return nil, &BuildingExpressionError{Cause: err}
@@ -648,43 +659,42 @@ func (c *client[T]) GetDLQStats(ctx context.Context) (*DLQStats, error) {
 	}, nil
 }
 
-// Get retrieves a message record from the database by its ID.
-//
-// If the provided 'id' is empty, it returns nil and an error indicating that
-// the ID is not provided.
-//
-// Parameters:
-//   - ctx (context.Context): The context for the request.
-//   - id (string): The unique identifier of the message record to retrieve.
-//
-// Returns:
-//   - (*Message): A pointer to the retrieved message record.
-//   - (error): An error if any occurred during the retrieval process, including
-//     if the 'id' is empty, the database query fails, or unmarshaling the response
-//     fails.
-func (c *client[T]) Get(ctx context.Context, id string) (*Message[T], error) {
-	if id == "" {
-		return nil, &IDNotProvidedError{}
+type GetMessageInput struct {
+	ID string
+}
+
+type GetMessageOutput[T any] struct {
+	Message *Message[T]
+}
+
+func (c *client[T]) GetMessage(ctx context.Context, params *GetMessageInput) (*GetMessageOutput[T], error) {
+	if params == nil {
+		params = &GetMessageInput{}
+	}
+	if params.ID == "" {
+		return &GetMessageOutput[T]{}, &IDNotProvidedError{}
 	}
 	resp, err := c.dynamoDB.GetItem(ctx, &dynamodb.GetItemInput{
 		Key: map[string]types.AttributeValue{
-			"id": &types.AttributeValueMemberS{Value: id},
+			"id": &types.AttributeValueMemberS{Value: params.ID},
 		},
 		TableName:      aws.String(c.tableName),
 		ConsistentRead: aws.Bool(true),
 	})
 	if err != nil {
-		return nil, handleDynamoDBError(err)
+		return &GetMessageOutput[T]{}, handleDynamoDBError(err)
 	}
 	if resp.Item == nil {
-		return nil, nil
+		return &GetMessageOutput[T]{}, nil
 	}
 	item := Message[T]{}
 	err = attributevalue.UnmarshalMap(resp.Item, &item)
 	if err != nil {
-		return nil, &UnmarshalingAttributeError{Cause: err}
+		return &GetMessageOutput[T]{}, &UnmarshalingAttributeError{Cause: err}
 	}
-	return &item, nil
+	return &GetMessageOutput[T]{
+		Message: &item,
+	}, nil
 }
 
 // Put stores a given Message object in a DynamoDB table using the PutImpl method.
@@ -698,11 +708,13 @@ func (c *client[T]) Get(ctx context.Context, id string) (*Message[T], error) {
 // Returns:
 //   - error: Returns an error if one occurs, otherwise, it returns nil on successful storage.
 func (c *client[T]) Put(ctx context.Context, message *Message[T]) error {
-	retrieved, err := c.Get(ctx, message.ID)
+	retrieved, err := c.GetMessage(ctx, &GetMessageInput{
+		ID: message.ID,
+	})
 	if err != nil {
 		return err
 	}
-	if retrieved != nil {
+	if retrieved.Message != nil {
 		_, err := c.dynamoDB.DeleteItem(ctx, &dynamodb.DeleteItemInput{
 			TableName: aws.String(c.tableName),
 			Key: map[string]types.AttributeValue{
@@ -727,13 +739,15 @@ func (c *client[T]) Put(ctx context.Context, message *Message[T]) error {
 // Returns:
 //   - error: Returns an error if one occurs, otherwise, it returns nil on successful upsert.
 func (c *client[T]) Upsert(ctx context.Context, message *Message[T]) error {
-	retrieved, err := c.Get(ctx, message.ID)
+	retrieved, err := c.GetMessage(ctx, &GetMessageInput{
+		ID: message.ID,
+	})
 	if err != nil {
 		return err
 	}
-	if retrieved != nil {
-		retrieved.Update(message, c.clock.Now())
-		message = retrieved
+	if retrieved.Message != nil {
+		retrieved.Message.Update(message, c.clock.Now())
+		message = retrieved.Message
 	}
 	return c.put(ctx, message)
 }
@@ -772,13 +786,16 @@ func (c *client[T]) put(ctx context.Context, message *Message[T]) error {
 // - If there's an error unmarshalling the DynamoDB response, this error is returned.
 // Otherwise, if the operation succeeds, the error will be 'nil'.
 func (c *client[T]) Touch(ctx context.Context, id string) (*Result, error) {
-	message, err := c.Get(ctx, id)
+	retrieved, err := c.GetMessage(ctx, &GetMessageInput{
+		ID: id,
+	})
 	if err != nil {
 		return nil, err
 	}
-	if message == nil {
+	if retrieved.Message == nil {
 		return nil, &IDNotFoundError{}
 	}
+	message := retrieved.Message
 	message.Touch(c.clock.Now())
 	expr, err := expression.NewBuilder().
 		WithUpdate(expression.

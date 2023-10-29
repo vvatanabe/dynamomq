@@ -1315,16 +1315,18 @@ func TestQueueSDKClientGet(t *testing.T) {
 				t.Fatalf("NewFromConfig() error = %v", err)
 				return
 			}
-			got, err := client.Get(ctx, tt.args.id)
+			got, err := client.GetMessage(ctx, &GetMessageInput{
+				ID: tt.args.id,
+			})
 			if tt.wantErr != nil {
 				if err != tt.wantErr {
-					t.Errorf("Get() error = %v, wantErr %v", err, tt.wantErr)
+					t.Errorf("GetMessage() error = %v, wantErr %v", err, tt.wantErr)
 					return
 				}
 				return
 			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("Get() got = %v, want %v", got, tt.want)
+			if !reflect.DeepEqual(got.Message, tt.want) {
+				t.Errorf("GetMessage() got = %v, want %v", got, tt.want)
 			}
 		})
 	}
@@ -1413,13 +1415,15 @@ func TestQueueSDKClientPut(t *testing.T) {
 				t.Errorf("Put() error = %v", err)
 				return
 			}
-			message, err := client.Get(ctx, tt.args.message.ID)
+			got, err := client.GetMessage(ctx, &GetMessageInput{
+				ID: tt.args.message.ID,
+			})
 			if err != nil {
-				t.Errorf("Get() error = %v", err)
+				t.Errorf("GetMessage() error = %v", err)
 				return
 			}
-			if !reflect.DeepEqual(message, tt.want) {
-				t.Errorf("Get() got = %v, want %v", message, tt.want)
+			if !reflect.DeepEqual(got.Message, tt.want) {
+				t.Errorf("GetMessage() got = %v, want %v", got.Message, tt.want)
 			}
 		})
 	}
@@ -1515,13 +1519,15 @@ func TestQueueSDKClientUpsert(t *testing.T) {
 				t.Errorf("Upsert() error = %v", err)
 				return
 			}
-			message, err := client.Get(ctx, tt.args.message.ID)
+			got, err := client.GetMessage(ctx, &GetMessageInput{
+				ID: tt.args.message.ID,
+			})
 			if err != nil {
-				t.Errorf("Get() error = %v", err)
+				t.Errorf("GetMessage() error = %v", err)
 				return
 			}
-			if !reflect.DeepEqual(message, tt.want) {
-				t.Errorf("Get() got = %v, want %v", message, tt.want)
+			if !reflect.DeepEqual(got.Message, tt.want) {
+				t.Errorf("GetMessage() got = %v, want %v", got.Message, tt.want)
 			}
 		})
 	}

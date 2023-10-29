@@ -77,7 +77,7 @@ func (c *CLI) help(_ context.Context, _ []string) {
   > purge                                         [It will remove all test data from DynamoDB]
   > ls                                            [List all message IDs ... max 10 elements]
   > receive                                       [ReceiveMessage the Message from the Queue .. it will replace the current ID with the peeked one]
-  > id <id>                                       [Get the application object from DynamoDB by app domain ID; CLI is in the app mode, from that point on]
+  > id <id>                                       [GetMessage the application object from DynamoDB by app domain ID; CLI is in the app mode, from that point on]
     > sys                                         [Show system info data in a JSON format]
     > data                                        [Print the data as JSON for the current message record]
     > info                                        [Print all info regarding Message record: system_info and data as JSON]
@@ -277,15 +277,18 @@ func (c *CLI) id(ctx context.Context, params []string) {
 	}
 	id := params[0]
 	var err error
-	c.Message, err = c.Client.Get(ctx, id)
+	retrieved, err := c.Client.GetMessage(ctx, &dynamomq.GetMessageInput{
+		ID: id,
+	})
 	if err != nil {
 		printError(err)
 		return
 	}
-	if c.Message == nil {
+	if retrieved.Message == nil {
 		printError(fmt.Sprintf("Message's [%s] not found!", id))
 		return
 	}
+	c.Message = retrieved.Message
 	printMessageWithData(fmt.Sprintf("Message's [%s] record dump:\n", id), c.Message)
 }
 
@@ -380,15 +383,16 @@ func (c *CLI) fail(ctx context.Context, _ []string) {
 		printError(err)
 		return
 	}
-	c.Message, err = c.Client.Get(ctx, c.Message.ID)
+	retrieved, err := c.Client.GetMessage(ctx, &dynamomq.GetMessageInput{ID: c.Message.ID})
 	if err != nil {
 		printError(err)
 		return
 	}
-	if c.Message == nil {
+	if retrieved.Message == nil {
 		printError(fmt.Sprintf("Message's [%s] not found!", c.Message.ID))
 		return
 	}
+	c.Message = retrieved.Message
 	fmt.Printf("Processing for ID [%s] has failed! Put the record back to the queue!\n", c.Message.ID)
 	stats, err := c.Client.GetQueueStats(ctx)
 	if err != nil {
