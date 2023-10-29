@@ -103,11 +103,6 @@ func (m *Message[T]) ResetSystemInfo(now time.Time) {
 	m.PeekFromQueueTimestamp = system.PeekFromQueueTimestamp
 }
 
-func (m *Message[T]) Touch(now time.Time) {
-	ts := clock.FormatRFC3339(now)
-	m.LastUpdatedTimestamp = ts
-}
-
 func (m *Message[T]) MarshalMap() (map[string]types.AttributeValue, error) {
 	item, err := attributevalue.MarshalMap(m)
 	if err != nil {
