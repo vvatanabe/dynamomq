@@ -18,21 +18,15 @@ const (
 )
 
 type CLI struct {
-	Region             string
-	BaseEndpoint       string
-	CredentialsProfile string
-	TableName          string
-
-	Client  dynamomq.Client[any]
-	Message *dynamomq.Message[any]
+	TableName string
+	Client    dynamomq.Client[any]
+	Message   *dynamomq.Message[any]
 }
 
 func (c *CLI) Run(ctx context.Context, command string, params []string) {
 	switch command {
 	case "h", "?", "help":
 		c.help(ctx, params)
-	case "aws":
-		c.aws(ctx, params)
 	case "qstat", "qstats":
 		c.qstat(ctx, params)
 	case "dlq":
@@ -70,7 +64,6 @@ func (c *CLI) Run(ctx context.Context, command string, params []string) {
 
 func (c *CLI) help(_ context.Context, _ []string) {
 	fmt.Println(`... this is CLI HELP!
-  > aws --profile --region --table --endpoint-url [Establish connection with AWS; Default profile name: 'default' and region: 'us-east-1']
   > qstat | qstats                                [Retrieves the Queue statistics (no need to be in App mode)]
   > dlq                                           [Retrieves the Dead Letter Queue (DLQ) statistics]
   > enqueue-test | et                             [SendMessage test Message records in DynamoDB: A-101, A-202, A-303 and A-404; if already exists, it will overwrite it]
@@ -87,54 +80,6 @@ func (c *CLI) help(_ context.Context, _ []string) {
     > fail                                        [Simulate failed record's processing ... put back to the queue; needs to be peeked again]
     > invalid                                     [Remove record from the regular queue to dead letter queue (DLQ) for manual fix]
   > id`)
-}
-
-func (c *CLI) aws(ctx context.Context, params []string) {
-	if len(params) == 0 {
-		printError("aws --profile --region --table --endpoint-url [Establish connection with AWS; Default profile: 'default' and region: 'us-east-1']")
-		return
-	}
-	profile, region, table, endpoint := parseParams(params)
-	if region != "" {
-		c.Region = region
-	}
-	if table != "" {
-		c.TableName = table
-	}
-	if profile != "" {
-		c.CredentialsProfile = profile
-	}
-	if endpoint != "" {
-		c.BaseEndpoint = endpoint
-	}
-	client, err := dynamomq.NewFromConfig[any](ctx,
-		dynamomq.WithAWSRegion(c.Region),
-		dynamomq.WithAWSCredentialsProfileName(profile),
-		dynamomq.WithTableName(c.TableName),
-		dynamomq.WithAWSBaseEndpoint(c.BaseEndpoint))
-	if err != nil {
-		fmt.Printf(" ... AWS session could not be established!: %v\n", err)
-	} else {
-		c.Client = client
-		fmt.Println(" ... AWS session is properly established!")
-	}
-}
-
-func parseParams(params []string) (profile, region, table, endpoint string) {
-	// Map to store parsed values
-	for i := 0; i < len(params)-1; i++ {
-		switch params[i] {
-		case "--profile", "-profile":
-			profile = params[i+1]
-		case "--region", "-region":
-			region = params[i+1]
-		case "--table", "-table":
-			table = params[i+1]
-		case "--endpoint-url", "-endpoint-url":
-			endpoint = params[i+1]
-		}
-	}
-	return
 }
 
 func (c *CLI) ls(ctx context.Context, _ []string) {

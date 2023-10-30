@@ -8,9 +8,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/vvatanabe/dynamomq/internal/cli"
-
+	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/vvatanabe/dynamomq"
+	"github.com/vvatanabe/dynamomq/internal/cli"
 )
 
 func main() {
@@ -24,24 +24,24 @@ func main() {
 	fmt.Println("")
 
 	executionPath, _ := os.Getwd()
-	fmt.Printf("current directory is: [%s]\n", executionPath)
-
-	region := flag.String("region", dynamomq.AwsRegionDefault, "AWS region")
-	credentialsProfile := flag.String("profile", dynamomq.AwsProfileDefault, "AWS credentials profile")
 	tableName := flag.String("table", dynamomq.DefaultTableName, "AWS DynamoDB table name")
 	endpoint := flag.String("endpoint-url", "", "AWS DynamoDB base endpoint url")
 
 	flag.Parse()
 
-	fmt.Printf("profile is: [%s]\n", *credentialsProfile)
-	fmt.Printf("region is: [%s]\n", *region)
+	cfg, err := config.LoadDefaultConfig(context.Background())
+	if err != nil {
+		fmt.Printf("failed to load aws config: %s\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("current dir is: [%s]\n", executionPath)
+	fmt.Printf("region is: [%s]\n", cfg.Region)
 	fmt.Printf("table is: [%s]\n", *tableName)
 	fmt.Printf("endpoint is: [%s]\n", *endpoint)
 	fmt.Println("")
 
-	client, err := dynamomq.NewFromConfig[any](context.Background(),
-		dynamomq.WithAWSRegion(*region),
-		dynamomq.WithAWSCredentialsProfileName(*credentialsProfile),
+	client, err := dynamomq.NewFromConfig[any](cfg,
 		dynamomq.WithTableName(*tableName),
 		dynamomq.WithAWSBaseEndpoint(*endpoint))
 	if err != nil {
@@ -51,11 +51,9 @@ func main() {
 	}
 
 	c := cli.CLI{
-		Region:             *region,
-		CredentialsProfile: *credentialsProfile,
-		TableName:          *tableName,
-		Client:             client,
-		Message:            nil,
+		TableName: *tableName,
+		Client:    client,
+		Message:   nil,
 	}
 
 	// 1. Create a Scanner using the InputStream available.

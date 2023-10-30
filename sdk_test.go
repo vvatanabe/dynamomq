@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
@@ -29,7 +30,7 @@ func (m mockClock) Now() time.Time {
 func withClock(clock clock.Clock) func(s *ClientOptions) {
 	return func(s *ClientOptions) {
 		if clock != nil {
-			s.clock = clock
+			s.Clock = clock
 		}
 	}
 }
@@ -181,7 +182,12 @@ func TestDynamoMQClientSendMessage(t *testing.T) {
 			raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			client, err := NewFromConfig[test.MessageData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock))
+			cfg, err := config.LoadDefaultConfig(ctx)
+			if err != nil {
+				t.Fatalf("failed to load aws config: %s\n", err)
+				return
+			}
+			client, err := NewFromConfig[test.MessageData](cfg, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock))
 			if err != nil {
 				t.Fatalf("NewFromConfig() error = %v", err)
 				return
@@ -324,7 +330,12 @@ func TestDynamoMQClientReceiveMessage(t *testing.T) {
 			raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			client, err := NewFromConfig[test.MessageData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
+			cfg, err := config.LoadDefaultConfig(ctx)
+			if err != nil {
+				t.Fatalf("failed to load aws config: %s\n", err)
+				return
+			}
+			client, err := NewFromConfig[test.MessageData](cfg, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
 			if err != nil {
 				t.Fatalf("NewFromConfig() error = %v", err)
 				return
@@ -365,7 +376,12 @@ func TestDynamoMQClientReceiveMessageUseFIFO(t *testing.T) {
 	now := time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC)
 
 	ctx := context.Background()
-	client, err := NewFromConfig[test.MessageData](ctx,
+	cfg, err := config.LoadDefaultConfig(ctx)
+	if err != nil {
+		t.Fatalf("failed to load aws config: %s\n", err)
+		return
+	}
+	client, err := NewFromConfig[test.MessageData](cfg,
 		WithAWSDynamoDBClient(raw),
 		withClock(mockClock{
 			t: now,
@@ -534,7 +550,12 @@ func TestDynamoMQClientReceiveMessageNotUseFIFO(t *testing.T) {
 	now := time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC)
 
 	ctx := context.Background()
-	client, err := NewFromConfig[test.MessageData](ctx,
+	cfg, err := config.LoadDefaultConfig(ctx)
+	if err != nil {
+		t.Fatalf("failed to load aws config: %s\n", err)
+		return
+	}
+	client, err := NewFromConfig[test.MessageData](cfg,
 		WithAWSDynamoDBClient(raw),
 		withClock(mockClock{
 			t: now,
@@ -730,7 +751,12 @@ func TestDynamoMQClientUpdateMessageAsVisible(t *testing.T) {
 			raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			client, err := NewFromConfig[test.MessageData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
+			cfg, err := config.LoadDefaultConfig(ctx)
+			if err != nil {
+				t.Fatalf("failed to load aws config: %s\n", err)
+				return
+			}
+			client, err := NewFromConfig[test.MessageData](cfg, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
 			if err != nil {
 				t.Fatalf("NewFromConfig() error = %v", err)
 				return
@@ -816,7 +842,12 @@ func TestDynamoMQClientDeleteMessage(t *testing.T) {
 			raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			client, err := NewFromConfig[test.MessageData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
+			cfg, err := config.LoadDefaultConfig(ctx)
+			if err != nil {
+				t.Fatalf("failed to load aws config: %s\n", err)
+				return
+			}
+			client, err := NewFromConfig[test.MessageData](cfg, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
 			if err != nil {
 				t.Fatalf("NewFromConfig() error = %v", err)
 				return
@@ -940,7 +971,12 @@ func TestDynamoMQClientMoveMessageToDLQ(t *testing.T) {
 			raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			client, err := NewFromConfig[test.MessageData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
+			cfg, err := config.LoadDefaultConfig(ctx)
+			if err != nil {
+				t.Fatalf("failed to load aws config: %s\n", err)
+				return
+			}
+			client, err := NewFromConfig[test.MessageData](cfg, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
 			if err != nil {
 				t.Fatalf("NewFromConfig() error = %v", err)
 				return
@@ -1035,7 +1071,12 @@ func TestDynamoMQClientRedriveMessage(t *testing.T) {
 			raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			client, err := NewFromConfig[test.MessageData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
+			cfg, err := config.LoadDefaultConfig(ctx)
+			if err != nil {
+				t.Fatalf("failed to load aws config: %s\n", err)
+				return
+			}
+			client, err := NewFromConfig[test.MessageData](cfg, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
 			if err != nil {
 				t.Fatalf("NewFromConfig() error = %v", err)
 				return
@@ -1147,7 +1188,12 @@ func TestDynamoMQClientGetQueueStats(t *testing.T) {
 			raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			client, err := NewFromConfig[test.MessageData](ctx, WithAWSDynamoDBClient(raw))
+			cfg, err := config.LoadDefaultConfig(ctx)
+			if err != nil {
+				t.Fatalf("failed to load aws config: %s\n", err)
+				return
+			}
+			client, err := NewFromConfig[test.MessageData](cfg, WithAWSDynamoDBClient(raw))
 			if err != nil {
 				t.Fatalf("NewFromConfig() error = %v", err)
 				return
@@ -1226,7 +1272,12 @@ func TestDynamoMQClientGetDLQStats(t *testing.T) {
 			raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			client, err := NewFromConfig[test.MessageData](ctx, WithAWSDynamoDBClient(raw))
+			cfg, err := config.LoadDefaultConfig(ctx)
+			if err != nil {
+				t.Fatalf("failed to load aws config: %s\n", err)
+				return
+			}
+			client, err := NewFromConfig[test.MessageData](cfg, WithAWSDynamoDBClient(raw))
 			if err != nil {
 				t.Fatalf("NewFromConfig() error = %v", err)
 				return
@@ -1310,7 +1361,12 @@ func TestDynamoMQClientGetMessage(t *testing.T) {
 			raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			client, err := NewFromConfig[test.MessageData](ctx, WithAWSDynamoDBClient(raw))
+			cfg, err := config.LoadDefaultConfig(ctx)
+			if err != nil {
+				t.Fatalf("failed to load aws config: %s\n", err)
+				return
+			}
+			client, err := NewFromConfig[test.MessageData](cfg, WithAWSDynamoDBClient(raw))
 			if err != nil {
 				t.Fatalf("NewFromConfig() error = %v", err)
 				return
@@ -1398,7 +1454,12 @@ func TestDynamoMQClientReplaceMessage(t *testing.T) {
 			raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			client, err := NewFromConfig[test.MessageData](ctx, WithAWSDynamoDBClient(raw))
+			cfg, err := config.LoadDefaultConfig(ctx)
+			if err != nil {
+				t.Fatalf("failed to load aws config: %s\n", err)
+				return
+			}
+			client, err := NewFromConfig[test.MessageData](cfg, WithAWSDynamoDBClient(raw))
 			if err != nil {
 				t.Fatalf("NewFromConfig() error = %v", err)
 				return
@@ -1487,7 +1548,12 @@ func TestDynamoMQClientListMessages(t *testing.T) {
 			raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			client, err := NewFromConfig[test.MessageData](ctx, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
+			cfg, err := config.LoadDefaultConfig(ctx)
+			if err != nil {
+				t.Fatalf("failed to load aws config: %s\n", err)
+				return
+			}
+			client, err := NewFromConfig[test.MessageData](cfg, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
 			if err != nil {
 				t.Fatalf("NewFromConfig() error = %v", err)
 				return

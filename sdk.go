@@ -3,13 +3,9 @@ package dynamomq
 import (
 	"context"
 	"errors"
-	"fmt"
-	"os"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/expression"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
@@ -18,10 +14,8 @@ import (
 )
 
 const (
-	AwsRegionDefault                  = "us-east-1"
-	AwsProfileDefault                 = "default"
 	DefaultTableName                  = "dynamo-mq-table"
-	QueueingIndexName                 = "dynamo-mq-index-queue_type-queue_add_timestamp"
+	DefaultQueueingIndexName          = "dynamo-mq-index-queue_type-queue_add_timestamp"
 	DefaultRetryMaxAttempts           = 10
 	DefaultVisibilityTimeoutInMinutes = 1
 )
@@ -41,143 +35,92 @@ type Client[T any] interface {
 	GetDynamodbClient() *dynamodb.Client
 }
 
-type client[T any] struct {
-	dynamoDB *dynamodb.Client
+type ClientOptions struct {
+	DynamoDB                   *dynamodb.Client
+	TableName                  string
+	VisibilityTimeoutInMinutes int
+	MaximumReceives            int
+	UseFIFO                    bool
+	Clock                      clock.Clock
 
-	tableName                 string
-	awsRegion                 string
-	awsCredentialsProfileName string
-	baseEndpoint              string
-	credentialsProvider       aws.CredentialsProvider
-
-	retryMaxAttempts           int
-	visibilityTimeoutInMinutes int
-	maximumReceives            int
-	useFIFO                    bool
-
-	clock clock.Clock
+	BaseEndpoint     string
+	RetryMaxAttempts int
 }
 
-type ClientOptions struct {
-	tableName                  string
-	awsRegion                  string
-	awsCredentialsProfileName  string
-	credentialsProvider        aws.CredentialsProvider
-	baseEndpoint               string
-	retryMaxAttempts           int
-	visibilityTimeoutInMinutes int
-	maximumReceives            int
-	useFIFO                    bool
-	dynamoDB                   *dynamodb.Client
-	clock                      clock.Clock
+func WithAWSDynamoDBClient(client *dynamodb.Client) func(*ClientOptions) {
+	return func(s *ClientOptions) {
+		s.DynamoDB = client
+	}
 }
 
 func WithTableName(tableName string) func(*ClientOptions) {
 	return func(s *ClientOptions) {
-		s.tableName = tableName
-	}
-}
-
-func WithAWSRegion(awsRegion string) func(*ClientOptions) {
-	return func(s *ClientOptions) {
-		s.awsRegion = awsRegion
-	}
-}
-
-func WithAWSCredentialsProfileName(awsCredentialsProfileName string) func(*ClientOptions) {
-	return func(s *ClientOptions) {
-		s.awsCredentialsProfileName = awsCredentialsProfileName
-	}
-}
-
-func WithAWSCredentialsProvider(credentialsProvider aws.CredentialsProvider) func(*ClientOptions) {
-	return func(s *ClientOptions) {
-		s.credentialsProvider = credentialsProvider
-	}
-}
-
-func WithAWSBaseEndpoint(baseEndpoint string) func(*ClientOptions) {
-	return func(s *ClientOptions) {
-		s.baseEndpoint = baseEndpoint
-	}
-}
-
-func WithAWSRetryMaxAttempts(retryMaxAttempts int) func(*ClientOptions) {
-	return func(s *ClientOptions) {
-		s.retryMaxAttempts = retryMaxAttempts
+		s.TableName = tableName
 	}
 }
 
 func WithAWSVisibilityTimeout(minutes int) func(*ClientOptions) {
 	return func(s *ClientOptions) {
-		s.visibilityTimeoutInMinutes = minutes
+		s.VisibilityTimeoutInMinutes = minutes
 	}
 }
 
 func WithUseFIFO(useFIFO bool) func(*ClientOptions) {
 	return func(s *ClientOptions) {
-		s.useFIFO = useFIFO
+		s.UseFIFO = useFIFO
 	}
 }
 
-func WithAWSDynamoDBClient(client *dynamodb.Client) func(*ClientOptions) {
+func WithAWSBaseEndpoint(baseEndpoint string) func(*ClientOptions) {
 	return func(s *ClientOptions) {
-		s.dynamoDB = client
+		s.BaseEndpoint = baseEndpoint
 	}
 }
 
-func NewFromConfig[T any](ctx context.Context, optFns ...func(*ClientOptions)) (Client[T], error) {
+func WithAWSRetryMaxAttempts(retryMaxAttempts int) func(*ClientOptions) {
+	return func(s *ClientOptions) {
+		s.RetryMaxAttempts = retryMaxAttempts
+	}
+}
+
+func NewFromConfig[T any](cfg aws.Config, optFns ...func(*ClientOptions)) (Client[T], error) {
 	o := &ClientOptions{
-		tableName:                  DefaultTableName,
-		awsRegion:                  AwsRegionDefault,
-		awsCredentialsProfileName:  AwsProfileDefault,
-		retryMaxAttempts:           DefaultRetryMaxAttempts,
-		visibilityTimeoutInMinutes: DefaultVisibilityTimeoutInMinutes,
-		useFIFO:                    false,
-		clock:                      &clock.RealClock{},
+		TableName:                  DefaultTableName,
+		RetryMaxAttempts:           DefaultRetryMaxAttempts,
+		VisibilityTimeoutInMinutes: DefaultVisibilityTimeoutInMinutes,
+		UseFIFO:                    false,
+		Clock:                      &clock.RealClock{},
 	}
 	for _, opt := range optFns {
 		opt(o)
 	}
 	c := &client[T]{
-		tableName:                  o.tableName,
-		awsRegion:                  o.awsRegion,
-		awsCredentialsProfileName:  o.awsCredentialsProfileName,
-		credentialsProvider:        o.credentialsProvider,
-		baseEndpoint:               o.baseEndpoint,
-		retryMaxAttempts:           o.retryMaxAttempts,
-		visibilityTimeoutInMinutes: o.visibilityTimeoutInMinutes,
-		maximumReceives:            o.maximumReceives,
-		useFIFO:                    o.useFIFO,
-		dynamoDB:                   o.dynamoDB,
-		clock:                      o.clock,
+		tableName:                  o.TableName,
+		visibilityTimeoutInMinutes: o.VisibilityTimeoutInMinutes,
+		maximumReceives:            o.MaximumReceives,
+		useFIFO:                    o.UseFIFO,
+		dynamoDB:                   o.DynamoDB,
+		clock:                      o.Clock,
 	}
 	if c.dynamoDB != nil {
 		return c, nil
 	}
-	if c.credentialsProvider == nil {
-		accessKey := os.Getenv("AWS_ACCESS_KEY_ID")
-		secretKey := os.Getenv("AWS_SECRET_ACCESS_KEY")
-		sessionToken := os.Getenv("AWS_SESSION_TOKEN")
-		creds := credentials.NewStaticCredentialsProvider(accessKey, secretKey, sessionToken)
-		c.credentialsProvider = &creds
-	}
-	cfg, err := config.LoadDefaultConfig(
-		ctx,
-		config.WithRegion(c.awsRegion),
-		config.WithCredentialsProvider(c.credentialsProvider),
-		config.WithSharedConfigProfile(c.awsCredentialsProfileName),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load aws config: %w", err)
-	}
 	c.dynamoDB = dynamodb.NewFromConfig(cfg, func(options *dynamodb.Options) {
-		options.RetryMaxAttempts = c.retryMaxAttempts
-		if c.baseEndpoint != "" {
-			options.BaseEndpoint = aws.String(c.baseEndpoint)
+		options.RetryMaxAttempts = o.RetryMaxAttempts
+		if o.BaseEndpoint != "" {
+			options.BaseEndpoint = aws.String(o.BaseEndpoint)
 		}
 	})
 	return c, nil
+}
+
+type client[T any] struct {
+	dynamoDB                   *dynamodb.Client
+	tableName                  string
+	visibilityTimeoutInMinutes int
+	maximumReceives            int
+	useFIFO                    bool
+	clock                      clock.Clock
 }
 
 type SendMessageInput[T any] struct {
@@ -247,7 +190,7 @@ func (c *client[T]) ReceiveMessage(ctx context.Context, params *ReceiveMessageIn
 	visibilityTimeout := time.Duration(c.visibilityTimeoutInMinutes) * time.Minute
 	for {
 		queryResult, err := c.dynamoDB.Query(ctx, &dynamodb.QueryInput{
-			IndexName:                 aws.String(QueueingIndexName),
+			IndexName:                 aws.String(DefaultQueueingIndexName),
 			TableName:                 aws.String(c.tableName),
 			KeyConditionExpression:    expr.KeyCondition(),
 			ExpressionAttributeNames:  expr.Names(),
@@ -546,7 +489,7 @@ func (c *client[T]) GetQueueStats(ctx context.Context, params *GetQueueStatsInpu
 	processingIDs := make([]string, 0)
 	for {
 		queryOutput, err := c.dynamoDB.Query(ctx, &dynamodb.QueryInput{
-			IndexName:                 aws.String(QueueingIndexName),
+			IndexName:                 aws.String(DefaultQueueingIndexName),
 			TableName:                 aws.String(c.tableName),
 			ExpressionAttributeNames:  expr.Names(),
 			KeyConditionExpression:    expr.KeyCondition(),
@@ -612,7 +555,7 @@ func (c *client[T]) GetDLQStats(ctx context.Context, params *GetDLQStatsInput) (
 	listBANs := make([]string, 0)
 	for {
 		resp, err := c.dynamoDB.Query(ctx, &dynamodb.QueryInput{
-			IndexName:                 aws.String(QueueingIndexName),
+			IndexName:                 aws.String(DefaultQueueingIndexName),
 			TableName:                 aws.String(c.tableName),
 			ExpressionAttributeNames:  expr.Names(),
 			ExpressionAttributeValues: expr.Values(),
