@@ -21,7 +21,7 @@ type SystemInfo struct {
 }
 
 func newDefaultSystemInfo(id string, now time.Time) *SystemInfo {
-	ts := clock.FormatRFC3339(now)
+	ts := clock.FormatRFC3339Nano(now)
 	return &SystemInfo{
 		ID:                     id,
 		Status:                 StatusReady,
@@ -82,7 +82,7 @@ func (m *Message[T]) IsQueueSelected(now time.Time, visibilityTimeout time.Durat
 	if m.Status != StatusProcessing {
 		return false
 	}
-	peekUTCTimestamp := clock.RFC3339ToUnixMilli(m.PeekFromQueueTimestamp)
+	peekUTCTimestamp := clock.RFC3339NanoToUnixMilli(m.PeekFromQueueTimestamp)
 	timeDifference := now.UnixMilli() - peekUTCTimestamp
 	return timeDifference <= visibilityTimeout.Milliseconds()
 }
@@ -124,7 +124,7 @@ func (m *Message[T]) Ready(now time.Time) error {
 			Current:   m.Status,
 		}
 	}
-	ts := clock.FormatRFC3339(now)
+	ts := clock.FormatRFC3339Nano(now)
 	m.Status = StatusReady
 	m.LastUpdatedTimestamp = ts
 	return nil
@@ -138,7 +138,7 @@ func (m *Message[T]) StartProcessing(now time.Time, visibilityTimeout time.Durat
 			Current:   m.Status,
 		}
 	}
-	ts := clock.FormatRFC3339(now)
+	ts := clock.FormatRFC3339Nano(now)
 	m.Status = StatusProcessing
 	m.LastUpdatedTimestamp = ts
 	m.PeekFromQueueTimestamp = ts
@@ -153,7 +153,7 @@ func (m *Message[T]) MoveToDLQ(now time.Time) error {
 			Current:   m.Status,
 		}
 	}
-	ts := clock.FormatRFC3339(now)
+	ts := clock.FormatRFC3339Nano(now)
 	m.QueueType = QueueTypeDLQ
 	m.Status = StatusReady
 	m.ReceiveCount = 0
@@ -178,7 +178,7 @@ func (m *Message[T]) RestoreFromDLQ(now time.Time) error {
 			Current:   m.Status,
 		}
 	}
-	ts := clock.FormatRFC3339(now)
+	ts := clock.FormatRFC3339Nano(now)
 	m.QueueType = QueueTypeStandard
 	m.Status = StatusReady
 	m.LastUpdatedTimestamp = ts

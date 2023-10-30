@@ -164,7 +164,7 @@ func TestDynamoMQClientSendMessage(t *testing.T) {
 				Result: &Result{
 					ID:                   "A-101",
 					Status:               StatusReady,
-					LastUpdatedTimestamp: clock.FormatRFC3339(time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC)),
+					LastUpdatedTimestamp: clock.FormatRFC3339Nano(time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC)),
 					Version:              1,
 				},
 				Message: func() *Message[test.MessageData] {
@@ -709,7 +709,7 @@ func TestDynamoMQClientUpdateMessageAsVisible(t *testing.T) {
 				Result: &Result{
 					ID:                   "A-101",
 					Status:               StatusReady,
-					LastUpdatedTimestamp: clock.FormatRFC3339(time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC)),
+					LastUpdatedTimestamp: clock.FormatRFC3339Nano(time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC)),
 					Version:              2,
 				},
 				Message: func() *Message[test.MessageData] {
@@ -1024,7 +1024,7 @@ func TestDynamoMQClientRedriveMessage(t *testing.T) {
 			want: &RedriveMessageOutput{
 				ID:                   "A-101",
 				Status:               StatusReady,
-				LastUpdatedTimestamp: clock.FormatRFC3339(time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC)),
+				LastUpdatedTimestamp: clock.FormatRFC3339Nano(time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC)),
 				Version:              2,
 			},
 		},

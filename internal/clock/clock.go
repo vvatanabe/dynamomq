@@ -6,12 +6,12 @@ func Now() time.Time {
 	return time.Now().UTC()
 }
 
-func FormatRFC3339(now time.Time) string {
-	return now.UTC().Format(time.RFC3339)
+func FormatRFC3339Nano(now time.Time) string {
+	return now.UTC().Format(time.RFC3339Nano)
 }
 
-func RFC3339ToUnixMilli(rfc3339Date string) int64 {
-	t, _ := time.Parse(time.RFC3339, rfc3339Date)
+func RFC3339NanoToUnixMilli(rfc3339NanoDate string) int64 {
+	t, _ := time.Parse(time.RFC3339Nano, rfc3339NanoDate)
 	return t.UnixMilli()
 }
 
