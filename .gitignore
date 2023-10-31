@@ -7,7 +7,6 @@
 *.dll
 *.so
 *.dylib
-dynamomq
 
 # Test binary, built with `go test -c`
 *.test

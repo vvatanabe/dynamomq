@@ -1,9 +1,15 @@
-package cli
+package cmd
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"strings"
+
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/spf13/cobra"
 
 	"github.com/vvatanabe/dynamomq"
 
@@ -13,17 +19,142 @@ import (
 	"github.com/vvatanabe/dynamomq/internal/test"
 )
 
+var flgs = &Flags{}
+
+var rootCmd = &cobra.Command{
+	Use:   "dynamomq",
+	Short: "dynamomq is a tool for implementing message queueing with Amazon DynamoDB in Go",
+	Long: `dynamomq is a tool for implementing message queueing with Amazon DynamoDB in Go.
+
+Environment Variables:
+  * AWS_REGION
+  * AWS_PROFILE
+  * AWS_ACCESS_KEY_ID
+  * AWS_SECRET_ACCESS_KEY
+  * AWS_SESSION_TOKEN
+  refs: https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-envvars.html
+`,
+	Version: "",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		defer fmt.Printf("... Interactive is ending\n\n\n")
+
+		fmt.Println("===========================================================")
+		fmt.Println(">> Welcome to DynamoMQ CLI! [INTERACTIVE MODE]")
+		fmt.Println("===========================================================")
+		fmt.Println("for help, enter one of the following: ? or h or help")
+		fmt.Println("all commands in CLIs need to be typed in lowercase")
+		fmt.Println("")
+
+		ctx := context.Background()
+		cfg, err := config.LoadDefaultConfig(ctx)
+		if err != nil {
+			return fmt.Errorf("Failed to load aws config: %s\n", err)
+		}
+
+		fmt.Printf("AWSRegion: %s\n", cfg.Region)
+		fmt.Printf("TableName: %s\n", flgs.TableName)
+		fmt.Printf("EndpointURL: %s\n", flgs.EndpointURL)
+		fmt.Println("")
+
+		client, err := dynamomq.NewFromConfig[any](cfg,
+			dynamomq.WithTableName(flgs.TableName),
+			dynamomq.WithAWSBaseEndpoint(flgs.EndpointURL))
+		if err != nil {
+			return fmt.Errorf("... AWS session could not be established!: %v\n", err)
+		}
+		fmt.Println("... AWS session is properly established!")
+
+		c := Interactive{
+			TableName: flgs.TableName,
+			Client:    client,
+			Message:   nil,
+		}
+
+		// 1. Create a Scanner using the InputStream available.
+		scanner := bufio.NewScanner(os.Stdin)
+
+		for {
+			// 2. Don't forget to prompt the user
+			if c.Message != nil {
+				fmt.Printf("\nID <%s> >> Enter command: ", c.Message.ID)
+			} else {
+				fmt.Print("\n>> Enter command: ")
+			}
+
+			// 3. Use the Scanner to read a line of text from the user.
+			scanned := scanner.Scan()
+			if !scanned {
+				break
+			}
+
+			input := scanner.Text()
+			if input == "" {
+				continue
+			}
+
+			command, params := parseInput(input)
+			switch command {
+			case "":
+				continue
+			case "quit", "q":
+				return nil
+			default:
+				// 4. Now, you can do anything with the input string that you need to.
+				// Like, output it to the user.
+				c.Run(context.Background(), command, params)
+			}
+		}
+		return nil
+	},
+}
+
+func parseInput(input string) (command string, params []string) {
+	input = strings.TrimSpace(input)
+	arr := strings.Fields(input)
+
+	if len(arr) == 0 {
+		return "", nil
+	}
+
+	command = strings.ToLower(arr[0])
+
+	if len(arr) > 1 {
+		params = make([]string, len(arr)-1)
+		for i := 1; i < len(arr); i++ {
+			params[i-1] = strings.TrimSpace(arr[i])
+		}
+	}
+	return command, params
+}
+
+func Execute() {
+	if err := rootCmd.Execute(); err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+}
+
+type Flags struct {
+	TableName   string
+	EndpointURL string
+}
+
+func init() {
+	rootCmd.Flags().StringVar(&flgs.TableName, "table-name", dynamomq.DefaultTableName, "The name of the table to contain the item.")
+	rootCmd.Flags().StringVar(&flgs.EndpointURL, "endpoint-url", "", "Override command's default URL with the given URL.")
+}
+
 const (
 	needAWSMessage = "Need first to run 'aws' command"
 )
 
-type CLI struct {
+type Interactive struct {
 	TableName string
 	Client    dynamomq.Client[any]
 	Message   *dynamomq.Message[any]
 }
 
-func (c *CLI) Run(ctx context.Context, command string, params []string) {
+func (c *Interactive) Run(ctx context.Context, command string, params []string) {
 	switch command {
 	case "h", "?", "help":
 		c.help(ctx, params)
@@ -62,15 +193,15 @@ func (c *CLI) Run(ctx context.Context, command string, params []string) {
 	}
 }
 
-func (c *CLI) help(_ context.Context, _ []string) {
-	fmt.Println(`... this is CLI HELP!
+func (c *Interactive) help(_ context.Context, _ []string) {
+	fmt.Println(`... this is Interactive HELP!
   > qstat | qstats                                [Retrieves the Queue statistics (no need to be in App mode)]
   > dlq                                           [Retrieves the Dead Letter Queue (DLQ) statistics]
   > enqueue-test | et                             [SendMessage test Message records in DynamoDB: A-101, A-202, A-303 and A-404; if already exists, it will overwrite it]
   > purge                                         [It will remove all test data from DynamoDB]
   > ls                                            [ListMessages all message IDs ... max 10 elements]
   > receive                                       [ReceiveMessage the Message from the Queue .. it will replace the current ID with the peeked one]
-  > id <id>                                       [GetMessage the application object from DynamoDB by app domain ID; CLI is in the app mode, from that point on]
+  > id <id>                                       [GetMessage the application object from DynamoDB by app domain ID; Interactive is in the app mode, from that point on]
     > sys                                         [Show system info data in a JSON format]
     > data                                        [Print the data as JSON for the current message record]
     > info                                        [Print all info regarding Message record: system_info and data as JSON]
@@ -82,18 +213,14 @@ func (c *CLI) help(_ context.Context, _ []string) {
   > id`)
 }
 
-func (c *CLI) ls(ctx context.Context, _ []string) {
-	if c.Client == nil {
-		fmt.Println(needAWSMessage)
-		return
-	}
+func (c *Interactive) ls(ctx context.Context, _ []string) {
 	out, err := c.Client.ListMessages(ctx, &dynamomq.ListMessagesInput{Size: 10})
 	if err != nil {
 		printError(err)
 		return
 	}
 	if len(out.Messages) == 0 {
-		fmt.Println("Message table is empty!")
+		fmt.Println("Queue is empty!")
 		return
 	}
 	fmt.Println("ListMessages of first 10 IDs:")
@@ -102,11 +229,7 @@ func (c *CLI) ls(ctx context.Context, _ []string) {
 	}
 }
 
-func (c *CLI) purge(ctx context.Context, _ []string) {
-	if c.Client == nil {
-		fmt.Println(needAWSMessage)
-		return
-	}
+func (c *Interactive) purge(ctx context.Context, _ []string) {
 	out, err := c.Client.ListMessages(ctx, &dynamomq.ListMessagesInput{Size: 10})
 	if err != nil {
 		printError(err)
@@ -129,11 +252,7 @@ func (c *CLI) purge(ctx context.Context, _ []string) {
 	}
 }
 
-func (c *CLI) enqueueTest(ctx context.Context, _ []string) {
-	if c.Client == nil {
-		fmt.Println(needAWSMessage)
-		return
-	}
+func (c *Interactive) enqueueTest(ctx context.Context, _ []string) {
 	fmt.Println("SendMessage message with IDs:")
 	ids := []string{"A-101", "A-202", "A-303", "A-404"}
 	for _, id := range ids {
@@ -162,11 +281,7 @@ func (c *CLI) enqueueTest(ctx context.Context, _ []string) {
 	}
 }
 
-func (c *CLI) qstat(ctx context.Context, _ []string) {
-	if c.Client == nil {
-		fmt.Println(needAWSMessage)
-		return
-	}
+func (c *Interactive) qstat(ctx context.Context, _ []string) {
 	stats, err := c.Client.GetQueueStats(ctx, &dynamomq.GetQueueStatsInput{})
 	if err != nil {
 		printError(err)
@@ -175,11 +290,7 @@ func (c *CLI) qstat(ctx context.Context, _ []string) {
 	printMessageWithData("Queue status:\n", stats)
 }
 
-func (c *CLI) dlq(ctx context.Context, _ []string) {
-	if c.Client == nil {
-		fmt.Println(needAWSMessage)
-		return
-	}
+func (c *Interactive) dlq(ctx context.Context, _ []string) {
 	stats, err := c.Client.GetDLQStats(ctx, &dynamomq.GetDLQStatsInput{})
 	if err != nil {
 		printError(err)
@@ -188,11 +299,7 @@ func (c *CLI) dlq(ctx context.Context, _ []string) {
 	printMessageWithData("DLQ status:\n", stats)
 }
 
-func (c *CLI) receive(ctx context.Context, _ []string) {
-	if c.Client == nil {
-		fmt.Println(needAWSMessage)
-		return
-	}
+func (c *Interactive) receive(ctx context.Context, _ []string) {
 	rr, err := c.Client.ReceiveMessage(ctx, &dynamomq.ReceiveMessageInput{})
 	if err != nil {
 		printError(fmt.Sprintf("ReceiveMessage has failed! message: %s", err))
@@ -210,14 +317,10 @@ func (c *CLI) receive(ctx context.Context, _ []string) {
 	printMessageWithData("Queue stats:\n", stats)
 }
 
-func (c *CLI) id(ctx context.Context, params []string) {
+func (c *Interactive) id(ctx context.Context, params []string) {
 	if len(params) == 0 {
 		c.Message = nil
-		fmt.Println("Going back to standard CLI mode!")
-		return
-	}
-	if c.Client == nil {
-		fmt.Println(needAWSMessage)
+		fmt.Println("Going back to standard Interactive mode!")
 		return
 	}
 	id := params[0]
@@ -237,11 +340,7 @@ func (c *CLI) id(ctx context.Context, params []string) {
 	printMessageWithData(fmt.Sprintf("Message's [%s] record dump:\n", id), c.Message)
 }
 
-func (c *CLI) system(_ context.Context, _ []string) {
-	if c.Client == nil {
-		fmt.Println(needAWSMessage)
-		return
-	}
+func (c *Interactive) system(_ context.Context, _ []string) {
 	if c.Message == nil {
 		printCLIModeRestriction("`system` or `sys`")
 		return
@@ -249,11 +348,7 @@ func (c *CLI) system(_ context.Context, _ []string) {
 	printMessageWithData("ID's system info:\n", c.Message.GetSystemInfo())
 }
 
-func (c *CLI) reset(ctx context.Context, _ []string) {
-	if c.Client == nil {
-		fmt.Println(needAWSMessage)
-		return
-	}
+func (c *Interactive) reset(ctx context.Context, _ []string) {
 	if c.Message == nil {
 		printCLIModeRestriction("`reset`")
 		return
@@ -269,11 +364,7 @@ func (c *CLI) reset(ctx context.Context, _ []string) {
 	printMessageWithData("Reset system info:\n", c.Message.GetSystemInfo())
 }
 
-func (c *CLI) redrive(ctx context.Context, _ []string) {
-	if c.Client == nil {
-		fmt.Println(needAWSMessage)
-		return
-	}
+func (c *Interactive) redrive(ctx context.Context, _ []string) {
 	if c.Message == nil {
 		printCLIModeRestriction("`redrive`")
 		return
@@ -288,11 +379,7 @@ func (c *CLI) redrive(ctx context.Context, _ []string) {
 	printMessageWithData("Ready system info:\n", result)
 }
 
-func (c *CLI) delete(ctx context.Context, _ []string) {
-	if c.Client == nil {
-		fmt.Println(needAWSMessage)
-		return
-	}
+func (c *Interactive) delete(ctx context.Context, _ []string) {
 	if c.Message == nil {
 		printCLIModeRestriction("`done`")
 		return
@@ -314,11 +401,7 @@ func (c *CLI) delete(ctx context.Context, _ []string) {
 	printMessageWithData("Queue status:\n", stats)
 }
 
-func (c *CLI) fail(ctx context.Context, _ []string) {
-	if c.Client == nil {
-		fmt.Println(needAWSMessage)
-		return
-	}
+func (c *Interactive) fail(ctx context.Context, _ []string) {
 	if c.Message == nil {
 		printCLIModeRestriction("`fail`")
 		return
@@ -349,11 +432,7 @@ func (c *CLI) fail(ctx context.Context, _ []string) {
 	printMessageWithData("Queue status:\n", stats)
 }
 
-func (c *CLI) invalid(ctx context.Context, _ []string) {
-	if c.Client == nil {
-		fmt.Println(needAWSMessage)
-		return
-	}
+func (c *Interactive) invalid(ctx context.Context, _ []string) {
 	if c.Message == nil {
 		printCLIModeRestriction("`invalid`")
 		return
@@ -374,11 +453,7 @@ func (c *CLI) invalid(ctx context.Context, _ []string) {
 	printMessageWithData("Queue status:\n", stats)
 }
 
-func (c *CLI) data(_ context.Context, _ []string) {
-	if c.Client == nil {
-		fmt.Println(needAWSMessage)
-		return
-	}
+func (c *Interactive) data(_ context.Context, _ []string) {
 	if c.Message == nil {
 		printCLIModeRestriction("`data`")
 		return
@@ -386,11 +461,7 @@ func (c *CLI) data(_ context.Context, _ []string) {
 	printMessageWithData("Data info:\n", c.Message.Data)
 }
 
-func (c *CLI) info(_ context.Context, _ []string) {
-	if c.Client == nil {
-		fmt.Println(needAWSMessage)
-		return
-	}
+func (c *Interactive) info(_ context.Context, _ []string) {
 	if c.Message == nil {
 		printCLIModeRestriction("`info`")
 		return
@@ -416,7 +487,7 @@ func marshalIndent(v any) ([]byte, error) {
 }
 
 func printCLIModeRestriction(command string) {
-	printError(fmt.Sprintf("%s command can be only used in the CLI's App mode. Call first `id <record-id>", command))
+	printError(fmt.Sprintf("%s command can be only used in the Interactive's App mode. Call first `id <record-id>", command))
 }
 
 func printError(err any) {
