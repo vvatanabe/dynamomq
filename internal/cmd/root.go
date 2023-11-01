@@ -44,7 +44,7 @@ Environment Variables:
 		fmt.Println("")
 
 		ctx := context.Background()
-		client, cfg, err := createDynamoMQClient[any](ctx, flgs.TableName, flgs.EndpointURL)
+		client, cfg, err := createDynamoMQClient[any](ctx, flgs)
 		if err != nil {
 			return fmt.Errorf("... %v\n", err)
 		}
@@ -100,14 +100,15 @@ Environment Variables:
 	},
 }
 
-func createDynamoMQClient[T any](ctx context.Context, tableName, endpointURL string) (dynamomq.Client[T], aws.Config, error) {
+func createDynamoMQClient[T any](ctx context.Context, flags *Flags) (dynamomq.Client[T], aws.Config, error) {
 	cfg, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
 		return nil, cfg, fmt.Errorf("failed to load aws config: %s", err)
 	}
 	client, err := dynamomq.NewFromConfig[T](cfg,
-		dynamomq.WithTableName(tableName),
-		dynamomq.WithAWSBaseEndpoint(endpointURL))
+		dynamomq.WithTableName(flags.TableName),
+		dynamomq.WithQueueingIndexName(flags.QueueingIndexName),
+		dynamomq.WithAWSBaseEndpoint(flags.EndpointURL))
 	if err != nil {
 		return nil, cfg, fmt.Errorf("AWS session could not be established!: %v", err)
 	}

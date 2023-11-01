@@ -38,6 +38,7 @@ type Client[T any] interface {
 type ClientOptions struct {
 	DynamoDB                   *dynamodb.Client
 	TableName                  string
+	QueueingIndexName          string
 	VisibilityTimeoutInMinutes int
 	MaximumReceives            int
 	UseFIFO                    bool
@@ -56,6 +57,12 @@ func WithAWSDynamoDBClient(client *dynamodb.Client) func(*ClientOptions) {
 func WithTableName(tableName string) func(*ClientOptions) {
 	return func(s *ClientOptions) {
 		s.TableName = tableName
+	}
+}
+
+func WithQueueingIndexName(queueingIndexName string) func(*ClientOptions) {
+	return func(s *ClientOptions) {
+		s.QueueingIndexName = queueingIndexName
 	}
 }
 
@@ -86,6 +93,7 @@ func WithAWSRetryMaxAttempts(retryMaxAttempts int) func(*ClientOptions) {
 func NewFromConfig[T any](cfg aws.Config, optFns ...func(*ClientOptions)) (Client[T], error) {
 	o := &ClientOptions{
 		TableName:                  DefaultTableName,
+		QueueingIndexName:          DefaultQueueingIndexName,
 		RetryMaxAttempts:           DefaultRetryMaxAttempts,
 		VisibilityTimeoutInMinutes: DefaultVisibilityTimeoutInMinutes,
 		UseFIFO:                    false,
@@ -96,6 +104,7 @@ func NewFromConfig[T any](cfg aws.Config, optFns ...func(*ClientOptions)) (Clien
 	}
 	c := &client[T]{
 		tableName:                  o.TableName,
+		queueingIndexName:          o.QueueingIndexName,
 		visibilityTimeoutInMinutes: o.VisibilityTimeoutInMinutes,
 		maximumReceives:            o.MaximumReceives,
 		useFIFO:                    o.UseFIFO,
@@ -117,6 +126,7 @@ func NewFromConfig[T any](cfg aws.Config, optFns ...func(*ClientOptions)) (Clien
 type client[T any] struct {
 	dynamoDB                   *dynamodb.Client
 	tableName                  string
+	queueingIndexName          string
 	visibilityTimeoutInMinutes int
 	maximumReceives            int
 	useFIFO                    bool
@@ -190,7 +200,7 @@ func (c *client[T]) ReceiveMessage(ctx context.Context, params *ReceiveMessageIn
 	visibilityTimeout := time.Duration(c.visibilityTimeoutInMinutes) * time.Minute
 	for {
 		queryResult, err := c.dynamoDB.Query(ctx, &dynamodb.QueryInput{
-			IndexName:                 aws.String(DefaultQueueingIndexName),
+			IndexName:                 aws.String(c.queueingIndexName),
 			TableName:                 aws.String(c.tableName),
 			KeyConditionExpression:    expr.KeyCondition(),
 			ExpressionAttributeNames:  expr.Names(),
@@ -489,7 +499,7 @@ func (c *client[T]) GetQueueStats(ctx context.Context, params *GetQueueStatsInpu
 	processingIDs := make([]string, 0)
 	for {
 		queryOutput, err := c.dynamoDB.Query(ctx, &dynamodb.QueryInput{
-			IndexName:                 aws.String(DefaultQueueingIndexName),
+			IndexName:                 aws.String(c.queueingIndexName),
 			TableName:                 aws.String(c.tableName),
 			ExpressionAttributeNames:  expr.Names(),
 			KeyConditionExpression:    expr.KeyCondition(),
@@ -555,7 +565,7 @@ func (c *client[T]) GetDLQStats(ctx context.Context, params *GetDLQStatsInput) (
 	listBANs := make([]string, 0)
 	for {
 		resp, err := c.dynamoDB.Query(ctx, &dynamodb.QueryInput{
-			IndexName:                 aws.String(DefaultQueueingIndexName),
+			IndexName:                 aws.String(c.queueingIndexName),
 			TableName:                 aws.String(c.tableName),
 			ExpressionAttributeNames:  expr.Names(),
 			ExpressionAttributeValues: expr.Values(),

@@ -14,7 +14,7 @@ var qstatCmd = &cobra.Command{
 	Long:  `Retrieves the Queue statistics.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx := context.Background()
-		client, _, err := createDynamoMQClient[any](ctx, flgs.TableName, flgs.EndpointURL)
+		client, _, err := createDynamoMQClient[any](ctx, flgs)
 		if err != nil {
 			return fmt.Errorf("... %v\n", err)
 		}
