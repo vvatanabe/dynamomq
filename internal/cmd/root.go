@@ -19,8 +19,6 @@ import (
 	"github.com/vvatanabe/dynamomq/internal/test"
 )
 
-var flgs = &Flags{}
-
 var rootCmd = &cobra.Command{
 	Use:   "dynamomq",
 	Short: "dynamomq is a tool for implementing message queueing with Amazon DynamoDB in Go",
@@ -46,23 +44,17 @@ Environment Variables:
 		fmt.Println("")
 
 		ctx := context.Background()
-		cfg, err := config.LoadDefaultConfig(ctx)
+		client, cfg, err := createDynamoMQClient[any](ctx, flgs.TableName, flgs.EndpointURL)
 		if err != nil {
-			return fmt.Errorf("Failed to load aws config: %s\n", err)
+			return fmt.Errorf("... %v\n", err)
 		}
+
+		fmt.Println("... AWS session is properly established!")
 
 		fmt.Printf("AWSRegion: %s\n", cfg.Region)
 		fmt.Printf("TableName: %s\n", flgs.TableName)
 		fmt.Printf("EndpointURL: %s\n", flgs.EndpointURL)
 		fmt.Println("")
-
-		client, err := dynamomq.NewFromConfig[any](cfg,
-			dynamomq.WithTableName(flgs.TableName),
-			dynamomq.WithAWSBaseEndpoint(flgs.EndpointURL))
-		if err != nil {
-			return fmt.Errorf("... AWS session could not be established!: %v\n", err)
-		}
-		fmt.Println("... AWS session is properly established!")
 
 		c := Interactive{
 			TableName: flgs.TableName,
@@ -108,6 +100,20 @@ Environment Variables:
 	},
 }
 
+func createDynamoMQClient[T any](ctx context.Context, tableName, endpointURL string) (dynamomq.Client[T], aws.Config, error) {
+	cfg, err := config.LoadDefaultConfig(ctx)
+	if err != nil {
+		return nil, cfg, fmt.Errorf("failed to load aws config: %s", err)
+	}
+	client, err := dynamomq.NewFromConfig[T](cfg,
+		dynamomq.WithTableName(tableName),
+		dynamomq.WithAWSBaseEndpoint(endpointURL))
+	if err != nil {
+		return nil, cfg, fmt.Errorf("AWS session could not be established!: %v", err)
+	}
+	return client, cfg, nil
+}
+
 func parseInput(input string) (command string, params []string) {
 	input = strings.TrimSpace(input)
 	arr := strings.Fields(input)
@@ -134,19 +140,11 @@ func Execute() {
 	}
 }
 
-type Flags struct {
-	TableName   string
-	EndpointURL string
-}
-
 func init() {
-	rootCmd.Flags().StringVar(&flgs.TableName, "table-name", dynamomq.DefaultTableName, "The name of the table to contain the item.")
-	rootCmd.Flags().StringVar(&flgs.EndpointURL, "endpoint-url", "", "Override command's default URL with the given URL.")
+	rootCmd.Flags().StringVar(&flgs.TableName, flagMap.TableName.Name, flagMap.TableName.Value, flagMap.TableName.Usage)
+	rootCmd.Flags().StringVar(&flgs.QueueingIndexName, flagMap.QueueingIndexName.Name, flagMap.QueueingIndexName.Value, flagMap.QueueingIndexName.Usage)
+	rootCmd.Flags().StringVar(&flgs.EndpointURL, flagMap.EndpointURL.Name, flagMap.EndpointURL.Value, flagMap.EndpointURL.Usage)
 }
-
-const (
-	needAWSMessage = "Need first to run 'aws' command"
-)
 
 type Interactive struct {
 	TableName string
