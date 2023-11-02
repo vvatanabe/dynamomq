@@ -8,6 +8,8 @@ type Flags struct {
 	TableName         string
 	QueueingIndexName string
 	EndpointURL       string
+
+	ID string
 }
 
 var flagMap = FlagMap{
@@ -26,6 +28,11 @@ var flagMap = FlagMap{
 		Usage: "Override command's default URL with the given URL.",
 		Value: "",
 	},
+	ID: FlagSet[string]{
+		Name:  "id",
+		Usage: "Message ID in queue.",
+		Value: "",
+	},
 }
 
 type FlagSet[T any] struct {
@@ -38,4 +45,5 @@ type FlagMap struct {
 	TableName         FlagSet[string]
 	QueueingIndexName FlagSet[string]
 	EndpointURL       FlagSet[string]
+	ID                FlagSet[string]
 }
