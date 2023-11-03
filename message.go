@@ -8,18 +8,6 @@ import (
 	"github.com/vvatanabe/dynamomq/internal/clock"
 )
 
-type SystemInfo struct {
-	ID                     string    `json:"id" dynamodbav:"id"`
-	Status                 Status    `json:"status" dynamodbav:"status"`
-	ReceiveCount           int       `json:"receive_count" dynamodbav:"receive_count"`
-	QueueType              QueueType `json:"queue_type" dynamodbav:"queue_type"`
-	Version                int       `json:"version" dynamodbav:"version"`
-	CreationTimestamp      string    `json:"creation_timestamp" dynamodbav:"creation_timestamp"`
-	LastUpdatedTimestamp   string    `json:"last_updated_timestamp" dynamodbav:"last_updated_timestamp"`
-	AddToQueueTimestamp    string    `json:"queue_add_timestamp" dynamodbav:"queue_add_timestamp"`
-	PeekFromQueueTimestamp string    `json:"queue_peek_timestamp" dynamodbav:"queue_peek_timestamp"`
-}
-
 func newDefaultSystemInfo(id string, now time.Time) *SystemInfo {
 	ts := clock.FormatRFC3339Nano(now)
 	return &SystemInfo{
@@ -35,7 +23,19 @@ func newDefaultSystemInfo(id string, now time.Time) *SystemInfo {
 	}
 }
 
-func NewDefaultMessage[T any](id string, data T, now time.Time) *Message[T] {
+type SystemInfo struct {
+	ID                     string    `json:"id" dynamodbav:"id"`
+	Status                 Status    `json:"status" dynamodbav:"status"`
+	ReceiveCount           int       `json:"receive_count" dynamodbav:"receive_count"`
+	QueueType              QueueType `json:"queue_type" dynamodbav:"queue_type"`
+	Version                int       `json:"version" dynamodbav:"version"`
+	CreationTimestamp      string    `json:"creation_timestamp" dynamodbav:"creation_timestamp"`
+	LastUpdatedTimestamp   string    `json:"last_updated_timestamp" dynamodbav:"last_updated_timestamp"`
+	AddToQueueTimestamp    string    `json:"queue_add_timestamp" dynamodbav:"queue_add_timestamp"`
+	PeekFromQueueTimestamp string    `json:"queue_peek_timestamp" dynamodbav:"queue_peek_timestamp"`
+}
+
+func NewMessage[T any](id string, data T, now time.Time) *Message[T] {
 	system := newDefaultSystemInfo(id, now)
 	return &Message[T]{
 		ID:                     id,
@@ -78,19 +78,6 @@ func (m *Message[T]) GetSystemInfo() *SystemInfo {
 	}
 }
 
-func (m *Message[T]) IsQueueSelected(now time.Time, visibilityTimeout time.Duration) bool {
-	if m.Status != StatusProcessing {
-		return false
-	}
-	peekUTCTimestamp := clock.RFC3339NanoToUnixMilli(m.PeekFromQueueTimestamp)
-	timeDifference := now.UnixMilli() - peekUTCTimestamp
-	return timeDifference <= visibilityTimeout.Milliseconds()
-}
-
-func (m *Message[T]) IsDLQ() bool {
-	return m.QueueType == QueueTypeDLQ
-}
-
 func (m *Message[T]) ResetSystemInfo(now time.Time) {
 	system := newDefaultSystemInfo(m.ID, now)
 	m.Status = system.Status
@@ -111,16 +98,29 @@ func (m *Message[T]) MarshalMap() (map[string]types.AttributeValue, error) {
 	return item, nil
 }
 
-func (m *Message[T]) MarshalMapUnsafe() map[string]types.AttributeValue {
-	item, _ := attributevalue.MarshalMap(m)
+func (m *Message[T]) marshalMapUnsafe() map[string]types.AttributeValue {
+	item, _ := m.MarshalMap()
 	return item
 }
 
-func (m *Message[T]) Ready(now time.Time) error {
+func (m *Message[T]) isQueueSelected(now time.Time, visibilityTimeout time.Duration) bool {
+	if m.Status != StatusProcessing {
+		return false
+	}
+	peekUTCTimestamp := clock.RFC3339NanoToUnixMilli(m.PeekFromQueueTimestamp)
+	timeDifference := now.UnixMilli() - peekUTCTimestamp
+	return timeDifference <= visibilityTimeout.Milliseconds()
+}
+
+func (m *Message[T]) isDLQ() bool {
+	return m.QueueType == QueueTypeDLQ
+}
+
+func (m *Message[T]) markAsReady(now time.Time) error {
 	if m.Status != StatusProcessing {
 		return &InvalidStateTransitionError{
 			Msg:       "message is currently ready",
-			Operation: "Ready",
+			Operation: "mark as ready",
 			Current:   m.Status,
 		}
 	}
@@ -130,11 +130,11 @@ func (m *Message[T]) Ready(now time.Time) error {
 	return nil
 }
 
-func (m *Message[T]) StartProcessing(now time.Time, visibilityTimeout time.Duration) error {
-	if m.IsQueueSelected(now, visibilityTimeout) {
+func (m *Message[T]) markAsProcessing(now time.Time, visibilityTimeout time.Duration) error {
+	if m.isQueueSelected(now, visibilityTimeout) {
 		return &InvalidStateTransitionError{
 			Msg:       "message is currently being processed",
-			Operation: "StartProcessing",
+			Operation: "mark as processing",
 			Current:   m.Status,
 		}
 	}
@@ -145,11 +145,11 @@ func (m *Message[T]) StartProcessing(now time.Time, visibilityTimeout time.Durat
 	return nil
 }
 
-func (m *Message[T]) MoveToDLQ(now time.Time) error {
+func (m *Message[T]) markAsMovedToDLQ(now time.Time) error {
 	if m.QueueType == QueueTypeDLQ {
 		return &InvalidStateTransitionError{
 			Msg:       "message is already in DLQ",
-			Operation: "MoveToDLQ",
+			Operation: "mark as moved to DLQ",
 			Current:   m.Status,
 		}
 	}
@@ -163,18 +163,18 @@ func (m *Message[T]) MoveToDLQ(now time.Time) error {
 	return nil
 }
 
-func (m *Message[T]) RestoreFromDLQ(now time.Time) error {
+func (m *Message[T]) markAsRestoredFromDLQ(now time.Time) error {
 	if m.QueueType != QueueTypeDLQ {
 		return &InvalidStateTransitionError{
 			Msg:       "can only redrive messages from DLQ",
-			Operation: "RestoreFromDLQ",
+			Operation: "mark as restored from DLQ",
 			Current:   m.Status,
 		}
 	}
 	if m.Status != StatusReady {
 		return &InvalidStateTransitionError{
 			Msg:       "can only redrive messages from READY",
-			Operation: "RestoreFromDLQ",
+			Operation: "mark as restored from DLQ",
 			Current:   m.Status,
 		}
 	}

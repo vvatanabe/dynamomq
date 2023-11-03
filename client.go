@@ -157,7 +157,7 @@ func (c *client[T]) SendMessage(ctx context.Context, params *SendMessageInput[T]
 	if retrieved.Message != nil {
 		return &SendMessageOutput[T]{}, &IDDuplicatedError{}
 	}
-	message := NewDefaultMessage(params.ID, params.Data, c.clock.Now())
+	message := NewMessage(params.ID, params.Data, c.clock.Now())
 	err = c.put(ctx, message)
 	if err != nil {
 		return &SendMessageOutput[T]{}, err
@@ -222,7 +222,7 @@ func (c *client[T]) ReceiveMessage(ctx context.Context, params *ReceiveMessageIn
 			if err = attributevalue.UnmarshalMap(itemMap, &item); err != nil {
 				return &ReceiveMessageOutput[T]{}, &UnmarshalingAttributeError{Cause: err}
 			}
-			isQueueSelected := item.IsQueueSelected(c.clock.Now(), visibilityTimeout)
+			isQueueSelected := item.isQueueSelected(c.clock.Now(), visibilityTimeout)
 			if c.useFIFO && isQueueSelected {
 				goto ExitLoop
 			}
@@ -236,7 +236,7 @@ func (c *client[T]) ReceiveMessage(ctx context.Context, params *ReceiveMessageIn
 		}
 	}
 ExitLoop:
-	if selectedItem == nil || selectedItem.StartProcessing(c.clock.Now(), visibilityTimeout) != err {
+	if selectedItem == nil || selectedItem.markAsProcessing(c.clock.Now(), visibilityTimeout) != err {
 		return &ReceiveMessageOutput[T]{}, &EmptyQueueError{}
 	}
 	expr, err = expression.NewBuilder().
@@ -291,7 +291,7 @@ func (c *client[T]) UpdateMessageAsVisible(ctx context.Context, params *UpdateMe
 		return &UpdateMessageAsVisibleOutput[T]{}, &IDNotFoundError{}
 	}
 	message := retrieved.Message
-	err = message.Ready(c.clock.Now())
+	err = message.markAsReady(c.clock.Now())
 	if err != nil {
 		return &UpdateMessageAsVisibleOutput[T]{}, err
 	}
@@ -373,7 +373,7 @@ func (c *client[T]) MoveMessageToDLQ(ctx context.Context, params *MoveMessageToD
 		return &MoveMessageToDLQOutput{}, &IDNotFoundError{}
 	}
 	message := retrieved.Message
-	if message.IsDLQ() {
+	if message.isDLQ() {
 		return &MoveMessageToDLQOutput{
 			ID:                   params.ID,
 			Status:               message.Status,
@@ -381,7 +381,7 @@ func (c *client[T]) MoveMessageToDLQ(ctx context.Context, params *MoveMessageToD
 			Version:              message.Version,
 		}, nil
 	}
-	err = message.MoveToDLQ(c.clock.Now())
+	err = message.markAsMovedToDLQ(c.clock.Now())
 	if err != nil {
 		return &MoveMessageToDLQOutput{}, err
 	}
@@ -436,7 +436,7 @@ func (c *client[T]) RedriveMessage(ctx context.Context, params *RedriveMessageIn
 		return &RedriveMessageOutput{}, &IDNotFoundError{}
 	}
 	message := retrieved.Message
-	err = message.RestoreFromDLQ(c.clock.Now())
+	err = message.markAsRestoredFromDLQ(c.clock.Now())
 	if err != nil {
 		return &RedriveMessageOutput{}, err
 	}

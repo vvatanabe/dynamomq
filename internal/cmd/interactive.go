@@ -119,7 +119,7 @@ func (c *Interactive) enqueueTest(ctx context.Context, _ []string) {
 	fmt.Println("SendMessage message with IDs:")
 	ids := []string{"A-101", "A-202", "A-303", "A-404"}
 	for _, id := range ids {
-		message := dynamomq.NewDefaultMessage[test.MessageData](id, test.NewMessageData(id), clock.Now())
+		message := dynamomq.NewMessage[test.MessageData](id, test.NewMessageData(id), clock.Now())
 		item, err := message.MarshalMap()
 		if err != nil {
 			fmt.Printf("* ID: %s, error: %s\n", id, err)
