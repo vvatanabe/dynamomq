@@ -1,4 +1,6 @@
-# DynamoMQ
+<p align="center">
+  <img width="460" height="300" src="https://cacoo.com/diagrams/DjoA2pSKnhCghTYM-192C1.png">
+</p>
 
 Implementing priority queueing with Amazon DynamoDB in Go.
 
