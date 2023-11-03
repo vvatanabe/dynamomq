@@ -174,6 +174,7 @@ func (c *client[T]) SendMessage(ctx context.Context, params *SendMessageInput[T]
 }
 
 type ReceiveMessageInput struct {
+	QueueType QueueType
 }
 
 // ReceiveMessageOutput represents the result for the ReceiveMessage() API call.
@@ -187,8 +188,11 @@ func (c *client[T]) ReceiveMessage(ctx context.Context, params *ReceiveMessageIn
 	if params == nil {
 		params = &ReceiveMessageInput{}
 	}
+	if params.QueueType == "" {
+		params.QueueType = QueueTypeStandard
+	}
 	expr, err := expression.NewBuilder().
-		WithKeyCondition(expression.Key("queue_type").Equal(expression.Value(QueueTypeStandard))). // FIXME make DLQs peek-enabled.
+		WithKeyCondition(expression.Key("queue_type").Equal(expression.Value(params.QueueType))).
 		Build()
 	if err != nil {
 		return &ReceiveMessageOutput[T]{}, &BuildingExpressionError{Cause: err}

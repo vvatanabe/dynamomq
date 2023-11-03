@@ -13,6 +13,7 @@ import (
 const (
 	defaultPollingInterval = time.Second * 10
 	defaultMaximumReceives = 0 // unlimited
+	defaultQueueType       = QueueTypeStandard
 )
 
 func WithPollingInterval(pollingInterval time.Duration) func(o *ConsumerOptions) {
@@ -24,6 +25,12 @@ func WithPollingInterval(pollingInterval time.Duration) func(o *ConsumerOptions)
 func WithMaximumReceives(maximumReceives int) func(o *ConsumerOptions) {
 	return func(o *ConsumerOptions) {
 		o.MaximumReceives = maximumReceives
+	}
+}
+
+func WithQueueType(queueType QueueType) func(o *ConsumerOptions) {
+	return func(o *ConsumerOptions) {
+		o.QueueType = queueType
 	}
 }
 
@@ -42,6 +49,7 @@ func WithOnShutdown(onShutdown []func()) func(o *ConsumerOptions) {
 type ConsumerOptions struct {
 	PollingInterval time.Duration
 	MaximumReceives int
+	QueueType       QueueType
 	// errorLog specifies an optional logger for errors accepting
 	// connections, unexpected behavior from handlers, and
 	// underlying FileSystem errors.
@@ -54,6 +62,7 @@ func NewConsumer[T any](client Client[T], processor MessageProcessor[T], opts ..
 	o := &ConsumerOptions{
 		PollingInterval: defaultPollingInterval,
 		MaximumReceives: defaultMaximumReceives,
+		QueueType:       defaultQueueType,
 	}
 	for _, opt := range opts {
 		opt(o)
@@ -63,6 +72,7 @@ func NewConsumer[T any](client Client[T], processor MessageProcessor[T], opts ..
 		messageProcessor: processor,
 		pollingInterval:  o.PollingInterval,
 		maximumReceives:  o.MaximumReceives,
+		queueType:        o.QueueType,
 		errorLog:         o.ErrorLog,
 		onShutdown:       o.OnShutdown,
 		inShutdown:       0,
@@ -83,6 +93,7 @@ type Consumer[T any] struct {
 
 	pollingInterval time.Duration
 	maximumReceives int
+	queueType       QueueType
 	errorLog        *log.Logger
 	onShutdown      []func()
 
@@ -98,7 +109,9 @@ var ErrConsumerClosed = errors.New("DynamoMQ: Consumer closed")
 func (c *Consumer[T]) Listen() error {
 	for {
 		ctx := context.Background()
-		r, err := c.client.ReceiveMessage(ctx, &ReceiveMessageInput{})
+		r, err := c.client.ReceiveMessage(ctx, &ReceiveMessageInput{
+			QueueType: c.queueType,
+		})
 		if err != nil {
 			if c.shuttingDown() {
 				return ErrConsumerClosed
@@ -140,12 +153,23 @@ func (c *Consumer[T]) processMessage(ctx context.Context, msg *Message[T]) {
 				return
 			}
 		} else {
-			_, err := c.client.MoveMessageToDLQ(ctx, &MoveMessageToDLQInput{
-				ID: msg.ID,
-			})
-			if err != nil {
-				c.logf("DynamoMQ: Failed to move a message to DLQ. %s", err)
-				return
+			switch c.queueType {
+			case QueueTypeStandard:
+				_, err := c.client.MoveMessageToDLQ(ctx, &MoveMessageToDLQInput{
+					ID: msg.ID,
+				})
+				if err != nil {
+					c.logf("DynamoMQ: Failed to move a message to DLQ. %s", err)
+					return
+				}
+			case QueueTypeDLQ:
+				_, err := c.client.DeleteMessage(ctx, &DeleteMessageInput{
+					ID: msg.ID,
+				})
+				if err != nil {
+					c.logf("DynamoMQ: Failed to delete a message. %s", err)
+					return
+				}
 			}
 		}
 		return
