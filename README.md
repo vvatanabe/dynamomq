@@ -8,6 +8,19 @@ Implementing message queueing with Amazon DynamoDB in Go.
 
 This project is actively under development, but it is currently in version 0. Please be aware that the public API and exported methods may undergo changes.
 
+## Features
+
+- [x] **Redelivery**: Redeliver messages that have not completed successfully for a specified number of times.
+- [x] **Concurrent Execution**: Process concurrently using multiple goroutines.
+- [x] **Dead Letter Queue**: Move messages that exceed the maximum number of redeliveries to the dead letter queue.
+- [x] **Graceful Shutdown**: Complete processing of messages before shutting down the consumer process.
+- [x] **FIFO (First In, First Out)**: Retrieve messages from the message queue on a first-in, first-out basis.
+- [x] **Consumer Process Scaling**: Scale out by running multiple consumer processes without duplicating message retrieval from the same message queue.
+- [ ] **Deduplication**: Deduplication messages within the message queue.
+- [ ] **Randomized Exponential Backoff**: Prevent overlapping redelivery timing.
+- [ ] **Batch Message Processing**: Send and delete multiple messages in bulk to/from the message queue.
+- [ ] **Message Compression**
+
 ## Installation
 
 Requires Go version 1.21 or greater.
