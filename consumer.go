@@ -106,7 +106,7 @@ type Consumer[T any] struct {
 
 var ErrConsumerClosed = errors.New("DynamoMQ: Consumer closed")
 
-func (c *Consumer[T]) Listen() error {
+func (c *Consumer[T]) StartConsuming() error {
 	for {
 		ctx := context.Background()
 		r, err := c.client.ReceiveMessage(ctx, &ReceiveMessageInput{
