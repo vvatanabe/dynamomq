@@ -39,15 +39,93 @@ This package can be installed as library with the go get command:
 $ go get -u github.com/vvatanabe/dynamomq@latest
 ```
 
-## Usage
+## Usage for DynamoMQ CLI 
 
-### DynamoMQ CLI
+The `dynamomq` command-line interface provides a range of commands to interact with your DynamoDB-based message queue. Below are the available commands and global flags that can be used with `dynamomq`.
 
-Coming Soon
+### Available Commands
 
-### DynamoMQ Library
+- `completion`: Generate the autocompletion script for the specified shell to ease command usage.
+- `delete`: Delete a message from the queue using its ID.
+- `dlq`: Retrieve the statistics for the Dead Letter Queue (DLQ), providing insights into failed message processing.
+- `enqueue-test`: Send test messages to the DynamoDB table with IDs A-101, A-202, A-303, and A-404; existing messages with these IDs will be overwritten.
+- `fail`: Simulate the failure of message processing, which will return the message to the queue for reprocessing.
+- `get`: Fetch a specific message from the DynamoDB table using the application domain ID.
+- `help`: Display help information about any command.
+- `invalid`: Move a message from the standard queue to the DLQ for manual review and correction.
+- `ls`: List all message IDs in the queue, limited to a maximum of 10 elements.
+- `purge`: Remove all messages from the DynamoMQ table, effectively clearing the queue.
+- `qstat`: Retrieve statistics for the queue, offering an overview of its current state.
+- `receive`: Receive a message from the queue; this operation will replace the current message ID with the retrieved one.
+- `redrive`: Move a message from the DLQ back to the standard queue for reprocessing.
+- `reset`: Reset the system information of a message, typically used in message recovery scenarios.
 
-#### DynamoMQ Client
+### Global Flags
+
+- `--endpoint-url`: Override the default URL for commands with a specified endpoint URL.
+- `-h`, `--help`: Display help information for `dynamomq`.
+- `--queueing-index-name`: Specify the name of the queueing index to use (default is `"dynamo-mq-index-queue_type-queue_add_timestamp"`).
+- `--table-name`: Define the name of the DynamoDB table to contain the items (default is `"dynamo-mq-table"`).
+
+To get more detailed information about a specific command, use `dynamomq [command] --help`.
+
+### Example Usage
+
+Here are a few examples of how to use the `dynamomq` commands:
+
+```sh
+# Generate autocompletion script for bash
+dynamomq completion bash
+
+# Delete a message with ID 'A-123'
+dynamomq delete --id A-123
+
+# Retrieve DLQ statistics
+dynamomq dlq
+
+# Enqueue test messages
+dynamomq enqueue-test
+
+# Get a message by ID
+dynamomq get --id A-123
+
+# List the first 10 message IDs in the queue
+dynamomq ls
+
+# Receive a message from the queue
+dynamomq receive
+
+# Reset system information of a message with ID
+dynamomq reset --id A-123
+```
+
+### Interactive Mode
+
+The DynamoMQ CLI supports an Interactive Mode for an enhanced user experience. To enter the Interactive Mode, simply run the `dynamomq` command without specifying any subcommands.
+
+#### Interactive Mode Commands
+
+Once in Interactive Mode, you will have access to a suite of commands to manage and inspect your message queue:
+
+- `qstat` or `qstats`: Retrieves the queue statistics.
+- `dlq`: Retrieves the Dead Letter Queue (DLQ) statistics.
+- `enqueue-test` or `et`: Sends test messages to the DynamoDB table with IDs: A-101, A-202, A-303, and A-404; if a message with the same ID already exists, it will be overwritten.
+- `purge`: Removes all messages from the DynamoMQ table.
+- `ls`: Lists all message IDs, displaying a maximum of 10 elements.
+- `receive`: Receives a message from the queue and replaces the current ID with the peeked one.
+- `id <id>`: Switches the Interactive Mode to app mode, allowing you to perform various operations on a message identified by the provided app domain ID:
+  - `sys`: Displays the system info data in a JSON format.
+  - `data`: Prints the data as JSON for the current message record.
+  - `info`: Prints all information regarding the Message record, including system_info and data in JSON format.
+  - `reset`: Resets the system info of the message.
+  - `redrive`: Drives a message from the DLQ back to the STANDARD queue.
+  - `delete`: Deletes a message by its ID.
+  - `fail`: Simulates the failed processing of a message by putting it back into the queue; the message will need to be received again.
+  - `invalid`: Moves a message from the standard queue to the DLQ for manual fixing.
+
+## Usage for DynamoMQ Library
+
+### DynamoMQ Client
 
 To begin using DynamoMQ, first import the necessary packages from the AWS SDK for Go v2 and the DynamoMQ library. These imports are required to interact with AWS services and to utilize the DynamoMQ functionalities.
 
@@ -82,7 +160,7 @@ type ExampleData struct {
 }
 ```
 
-#### DynamoMQ Producer
+### DynamoMQ Producer
 
 The following snippet creates a DynamoMQ producer for the 'ExampleData' type. It then sends a message with predefined data to the queue. 
 
@@ -100,7 +178,7 @@ if err != nil {
 }
 ```
 
-#### DynamoMQ Consumer
+### DynamoMQ Consumer
 
 To consume messages, instantiate a DynamoMQ consumer for 'ExampleData' and start it in a new goroutine. The consumer will process messages until an interrupt signal is received. The example includes graceful shutdown logic for the consumer.
 
