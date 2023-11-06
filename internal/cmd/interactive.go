@@ -58,21 +58,21 @@ func (c *Interactive) Run(ctx context.Context, command string, params []string) 
 
 func (c *Interactive) help(_ context.Context, _ []string) {
 	fmt.Println(`... this is Interactive HELP!
-  > qstat | qstats                                [Retrieves the Queue statistics (no need to be in App mode)]
+  > qstat | qstats                                [Retrieves the queue statistics]
   > dlq                                           [Retrieves the Dead Letter Queue (DLQ) statistics]
-  > enqueue-test | et                             [SendMessage test Message records in DynamoDB: A-101, A-202, A-303 and A-404; if already exists, it will overwrite it]
-  > purge                                         [It will remove all test data from DynamoDB]
-  > ls                                            [ListMessages all message IDs ... max 10 elements]
-  > receive                                       [ReceiveMessage the Message from the Queue .. it will replace the current ID with the peeked one]
-  > id <id>                                       [GetMessage the application object from DynamoDB by app domain ID; Interactive is in the app mode, from that point on]
+  > enqueue-test | et                             [Send test messages in DynamoDB table: A-101, A-202, A-303 and A-404; if already exists, it will overwrite it]
+  > purge                                         [It will remove all message from DynamoMQ table]
+  > ls                                            [List all message IDs ... max 10 elements]
+  > receive                                       [Receive a message from the queue .. it will replace the current ID with the peeked one]
+  > id <id>                                       [Get a message the application object from DynamoDB by app domain ID; Interactive is in the app mode, from that point on]
     > sys                                         [Show system info data in a JSON format]
     > data                                        [Print the data as JSON for the current message record]
     > info                                        [Print all info regarding Message record: system_info and data as JSON]
-    > reset                                       [Reset the system info of the current message record]
-    > redrive                                     [RedriveMessage the record to STANDARD from DLQ]
-    > delete                                      [DeleteMessage current ID]
-    > fail                                        [Simulate failed record's processing ... put back to the queue; needs to be peeked again]
-    > invalid                                     [Remove record from the regular queue to dead letter queue (DLQ) for manual fix]
+    > reset                                       [Reset the system info of the message]
+    > redrive                                     [Redrive a message to STANDARD from DLQ]
+    > delete                                      [Delete a message by ID]
+    > fail                                        [Simulate failed message's processing ... put back to the queue; needs to be receive again]
+    > invalid                                     [Remove a message from the standard queue to dead letter queue (DLQ) for manual fix]
   > id`)
 }
 
@@ -86,7 +86,7 @@ func (c *Interactive) ls(ctx context.Context, _ []string) {
 		fmt.Println("Queue is empty!")
 		return
 	}
-	fmt.Println("ListMessages of first 10 IDs:")
+	fmt.Println("List messages of first 10 IDs:")
 	for _, m := range out.Messages {
 		fmt.Printf("* ID: %s, status: %s", m.ID, m.Status)
 	}
@@ -102,7 +102,7 @@ func (c *Interactive) purge(ctx context.Context, _ []string) {
 		fmt.Println("Message table is empty ... nothing to remove!")
 		return
 	}
-	fmt.Println("ListMessages of removed IDs:")
+	fmt.Println("List messages of removed IDs:")
 	for _, m := range out.Messages {
 		_, err := c.Client.DeleteMessage(ctx, &dynamomq.DeleteMessageInput{
 			ID: m.ID,
@@ -116,7 +116,7 @@ func (c *Interactive) purge(ctx context.Context, _ []string) {
 }
 
 func (c *Interactive) enqueueTest(ctx context.Context, _ []string) {
-	fmt.Println("SendMessage message with IDs:")
+	fmt.Println("Send a message with IDs:")
 	ids := []string{"A-101", "A-202", "A-303", "A-404"}
 	for _, id := range ids {
 		message := dynamomq.NewMessage[test.MessageData](id, test.NewMessageData(id), clock.Now())

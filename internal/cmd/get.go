@@ -9,8 +9,8 @@ import (
 
 var getCmd = &cobra.Command{
 	Use:   "get",
-	Short: "",
-	Long:  `.`,
+	Short: "Get a message the application object from DynamoDB by app domain ID",
+	Long:  `Get a message the application object from DynamoDB by app domain ID.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		ctx := context.Background()
 		client, _, err := createDynamoMQClient[any](ctx, flgs)

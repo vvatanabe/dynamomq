@@ -14,18 +14,9 @@ import (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "dynamomq",
-	Short: "dynamomq is a tool for implementing message queueing with Amazon DynamoDB in Go",
-	Long: `dynamomq is a tool for implementing message queueing with Amazon DynamoDB in Go.
-
-Environment Variables:
-  * AWS_REGION
-  * AWS_PROFILE
-  * AWS_ACCESS_KEY_ID
-  * AWS_SECRET_ACCESS_KEY
-  * AWS_SESSION_TOKEN
-  refs: https://docs.aws.amazon.com/cli/latest/userguide/cli-configure-envvars.html
-`,
+	Use:     "dynamomq",
+	Short:   "DynamoMQ is a tool for implementing message queueing with Amazon DynamoDB in Go",
+	Long:    `DynamoMQ is a tool for implementing message queueing with Amazon DynamoDB in Go.`,
 	Version: "",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		defer fmt.Printf("... Interactive is ending\n\n\n")

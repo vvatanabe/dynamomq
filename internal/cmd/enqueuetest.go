@@ -13,8 +13,8 @@ import (
 
 var enqueueTestCmd = &cobra.Command{
 	Use:   "enqueue-test",
-	Short: "Send test Message records in DynamoDB table: A-101, A-202, A-303 and A-404; if already exists, it will overwrite it",
-	Long:  `Send test Message records in DynamoDB table: A-101, A-202, A-303 and A-404; if already exists, it will overwrite it.`,
+	Short: "Send test messages in DynamoDB table: A-101, A-202, A-303 and A-404; if already exists, it will overwrite it",
+	Long:  `Send test messages in DynamoDB table: A-101, A-202, A-303 and A-404; if already exists, it will overwrite it.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		ctx := context.Background()
 		client, _, err := createDynamoMQClient[any](ctx, flgs)

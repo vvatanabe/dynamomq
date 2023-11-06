@@ -10,8 +10,8 @@ import (
 
 var qstatCmd = &cobra.Command{
 	Use:   "qstat",
-	Short: "Retrieves the Queue statistics",
-	Long:  `Retrieves the Queue statistics.`,
+	Short: "Retrieves the queue statistics",
+	Long:  `Retrieves the queue statistics.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx := context.Background()
 		client, _, err := createDynamoMQClient[any](ctx, flgs)

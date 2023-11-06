@@ -10,8 +10,8 @@ import (
 
 var receiveCmd = &cobra.Command{
 	Use:   "receive",
-	Short: "Receive a message from the Queue .. it will replace the current ID with the peeked one",
-	Long:  `Receive a message from the Queue .. it will replace the current ID with the peeked one.`,
+	Short: "Receive a message from the queue .. it will replace the current ID with the peeked one",
+	Long:  `Receive a message from the queue .. it will replace the current ID with the peeked one.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		ctx := context.Background()
 		client, _, err := createDynamoMQClient[any](ctx, flgs)
