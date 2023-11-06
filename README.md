@@ -136,6 +136,7 @@ type Counter[T any] struct {
 func (c *Counter[T]) Process(msg *dynamomq.Message[T]) error {
 	c.Value++
 	fmt.Printf("value: %d, message: %v\n", c.Value, msg)
+	return nil
 }
 ```
 
