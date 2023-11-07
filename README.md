@@ -4,6 +4,30 @@
 
 Implementing message queueing with Amazon DynamoDB in Go.
 
+## Table of Contents
+
+- [Current Status](#current-status)
+- [Features](#features)
+- [Installation](#installation)
+  * [DynamoMQ CLI](#dynamomq-cli)
+  * [DynamoMQ Library](#dynamomq-library)
+- [Usage for DynamoMQ CLI](#usage-for-dynamomq-cli)
+  * [Available Commands](#available-commands)
+  * [Global Flags](#global-flags)
+  * [Example Usage](#example-usage)
+  * [Interactive Mode](#interactive-mode)
+- [Usage for DynamoMQ Library](#usage-for-dynamomq-library)
+  * [DynamoMQ Client](#dynamomq-client)
+  * [DynamoMQ Producer](#dynamomq-producer)
+  * [DynamoMQ Consumer](#dynamomq-consumer)
+- [Software Design](#software-design)
+  * [State Machine](#state-machine)
+  * [Table Definition](#table-definition)
+  * [Data Transition](#data-transition)
+- [Authors](#authors)
+- [License](#license)
+
+
 ## Current Status
 
 This project is actively under development, but it is currently in version 0. Please be aware that the public API and exported methods may undergo changes.
