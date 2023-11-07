@@ -284,7 +284,29 @@ The DynamoDB table for the DynamoMQ message queue system is designed to efficien
 
 ### Data Transition
 
+This data transition diagram serves as a map for developers and operators to understand how messages flow through the DynamoMQ system, providing insight into the mechanisms of message processing, failure handling, and retries within a DynamoDB-backed queue.
+
 ![Data Transition](https://cacoo.com/diagrams/DjoA2pSKnhCghTYM-D143B.png)
+
+#### Initial State
+
+- **SendMessage()**: A message is created with an initial `status` of 'READY'. It includes a unique `id`, arbitrary `data`, and a `receive_count` set to 0, indicating it has not yet been processed. The `queue_type` is 'STANDARD', and timestamps are recorded for creation, last update, and when added to the queue.
+
+#### Processing
+
+- **ReceiveMessage()**: The message `status` changes to 'PROCESSING', the `receive_count` increments to reflect the number of times it's been retrieved, and the `version` number increases to facilitate optimistic locking. Timestamps are updated accordingly.
+
+#### Retry Logic
+
+- **UpdateMessageAsVisible()**: If processing fails, the message's visibility is updated to make it available for retry, and the `receive_count` is incremented. Timestamps are refreshed to reflect the most recent update.
+
+#### Dead Letter Queue
+
+- **MoveMessageToDLQ()**: After the maximum number of retries is reached without successful processing, the message is moved to the DLQ. Its `queue_type` changes to 'DLQ', and `receive_count` is reset, indicating that it's ready for a fresh attempt or investigation.
+
+#### Redrive Policy
+
+- **RedriveMessage()**: If issues are resolved, messages in the DLQ can be sent back to the standard queue for processing. This is depicted by the `RedriveMessage()` operation, which resets the `receive_count` and alters the `queue_type` back to 'STANDARD', along with updating the timestamps.
 
 ## Authors
 
