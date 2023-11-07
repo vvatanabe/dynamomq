@@ -252,6 +252,8 @@ This design ensures that DynamoMQ maintains message reliability while enabling t
 
 ### Table Definition
 
+The DynamoDB table for the DynamoMQ message queue system is designed to efficiently manage and track the status of messages. Here’s a breakdown of the table schema:
+
 | Key   | Attributes               | Type   | Example Value                       |
 |-------|--------------------------|--------|-------------------------------------|
 | PK    | id                       | string | A-101                               |
@@ -264,6 +266,21 @@ This design ensures that DynamoMQ maintains message reliability while enabling t
 |       | last_updated_timestamp   | string | 2006-01-02T15:04:05.999999999Z07:00 |
 | GSISK | queue_add_timestamp      | string | 2006-01-02T15:04:05.999999999Z07:00 |
 |       | queue_peek_timestamp     | string | 2006-01-02T15:04:05.999999999Z07:00 |
+
+**PK (Primary Key)** `ID`: A unique identifier for each message, such as 'A-101'. This is a string value that facilitates the retrieval and management of messages.
+
+**GSIPK (Global Secondary Index - Partition Key)** `queue_type`: Used to categorize messages by `queue_type`, such as 'STANDARD' or 'DLQ' (Dead Letter Queue), allowing for quick access and operations on subsets of the queue.
+
+**GSISK (Global Secondary Index - Sort Key)** `queue_add_timestamp`: The timestamp when the message was added to the queue. Facilitates the ordering of messages based on the time they were added to the queue, which is useful for implementing FIFO (First-In-First-Out) or other ordering mechanisms.
+
+**Attributes**: These are the various properties associated with each message:
+- `data`: This attribute holds the content of the message and can be of any type.
+- `status`: Indicates the current state of the message, either 'READY' for new messages or 'PROCESSING' for messages being processed.
+- `receive_count`: A numerical count of how many times the message has been retrieved from the queue.
+- `version`: A number that can be used for optimistic locking and to ensure that the message is not being concurrently modified.
+- `creation_timestamp`: The date and time when the message was created. ISO 8601 format.
+- `last_updated_timestamp`: The date and time when the message was last updated. ISO 8601 format.
+- `queue_peek_timestamp`: The timestamp when the message was last viewed without being altered. ISO 8601 format.
 
 ### Data Transition
 
