@@ -7,6 +7,7 @@ Implementing message queueing with Amazon DynamoDB in Go.
 ## Table of Contents
 
 - [Current Status](#current-status)
+- [Motivation](#motivation)
 - [Features](#features)
 - [Installation](#installation)
   * [DynamoMQ CLI](#dynamomq-cli)
@@ -31,6 +32,16 @@ Implementing message queueing with Amazon DynamoDB in Go.
 ## Current Status
 
 This project is actively under development, but it is currently in version 0. Please be aware that the public API and exported methods may undergo changes.
+
+## Motivation
+
+> DynamoDB is a key-value and document database that delivers single-digit millisecond performance at any scale. It’s a serverless and fully managed service that you can use for mobile, web, gaming, ad tech, IoT, and other applications that need low-latency data access at a large scale.
+>
+> There are many queuing implementations that offer persistence, single-message processing, and distributed computing. Some popular queuing solutions are Amazon SQS, Amazon MQ, Apache ActiveMQ, RabbitMQ, and Kafka. Those services handle various queuing features and functions with several different characteristics, such as methods of implementation, scaling, and performance.
+>
+> However, most of those queuing systems cannot easily change the order of the items after they arrive in the queue. Discussed implementation with DynamoDB can change the order in the queue or cancel items before processing.
+
+Quoted from AWS official blog: [Implementing Priority Queueing with Amazon DynamoDB](https://aws.amazon.com/blogs/database/implementing-priority-queueing-with-amazon-dynamodb/)
 
 ## Features
 
