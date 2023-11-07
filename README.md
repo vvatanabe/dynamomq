@@ -222,7 +222,33 @@ func (c *Counter[T]) Process(msg *dynamomq.Message[T]) error {
 
 ### State Machine
 
+The state machine diagram below illustrates the key steps a message goes through as it traverses the system.
+
 ![State Machine](https://cacoo.com/diagrams/DjoA2pSKnhCghTYM-4B362.png) 
+
+#### Basic Flow
+
+1. **SendMessage()**: A user sends a message that is placed in the `READY` state in the queue.
+
+2. **ReceiveMessage()**: The message moves from `READY` to `PROCESSING` status as it is picked up for processing.
+
+3. **DeleteMessage()**: If processing is successful, the message is deleted from the queue.
+
+#### Error Handling
+
+1. **UpdateMessageAsVisibility()**: If processing fails, the message is made visible again in the `READY` state for retry, and its visibility timeout is updated.
+
+2. **MoveMessageToDLQ()**: If the message exceeds the retry limit, it is moved to the Dead Letter Queue (DLQ). The DLQ is used to isolate problematic messages for later analysis.
+
+#### Dead Letter Queue (DLQ)
+
+1. **RedriveMessage()**: The system may choose to return a message to the standard queue if it determines that the issues have been resolved. This is achieved through the `Redrive` operation.
+
+2. **ReceiveMessage()**: Messages in the DLQ are also moved from `READY` to `PROCESSING` status, similar to regular queue messages.
+
+3. **DeleteMessage()**: Once a message in the DLQ is successfully processed, it is deleted from the queue.
+
+This design ensures that DynamoMQ maintains message reliability while enabling tracking and analysis of messages in the event of errors. The use of a DLQ minimizes the impact of failures while maintaining system resiliency.
 
 ### Table Definition
 
