@@ -12,6 +12,9 @@ Implementing message queueing with Amazon DynamoDB in Go.
 - [Installation](#installation)
   * [DynamoMQ CLI](#dynamomq-cli)
   * [DynamoMQ Library](#dynamomq-library)
+- [Setup DynamoMQ Table](#setup-dynamomq-table)
+  * [Use AWS CLI](#use-aws-cli)
+  * [Use Terraform](#use-terraform)
 - [Usage for DynamoMQ CLI](#usage-for-dynamomq-cli)
   * [Available Commands](#available-commands)
   * [Global Flags](#global-flags)
@@ -73,6 +76,19 @@ This package can be installed as library with the go get command:
 ```
 $ go get -u github.com/vvatanabe/dynamomq@latest
 ```
+
+## Setup DynamoMQ Table
+
+### Use AWS CLI
+
+```sh
+aws dynamodb create-table --cli-input-json file://dynamomq.json 
+```
+Please refer to [dynamomq.json](./dynamomq.json).
+
+### Use Terraform
+
+Please refer to [dynamomq.tf](./dynamomq.tf).
 
 ## Usage for DynamoMQ CLI 
 
