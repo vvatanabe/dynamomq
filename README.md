@@ -16,6 +16,9 @@ Implementing message queueing with Amazon DynamoDB in Go.
   * [Required IAM Policy](#required-iam-policy)
   * [Create Table with AWS CLI](#create-table-with-aws-cli)
   * [Create Table with Terraform](#create-table-with-terraform)
+- [Authentication and access credentials](#authentication-and-access-credentials)
+  * [Environment Variables](#environment-variables)
+  * [Shared Configuration and Credentials Files](#shared-configuration-and-credentials-files)
 - [Usage for DynamoMQ CLI](#usage-for-dynamomq-cli)
   * [Available Commands](#available-commands)
   * [Global Flags](#global-flags)
@@ -94,6 +97,22 @@ Please refer to [dynamomq-table.json](./dynamomq-table.json).
 ### Create Table with Terraform
 
 Please refer to [dynamomq-table.tf](./dynamomq-table.tf).
+
+## Authentication and access credentials
+
+DynamoMQ's CLI and library configure AWS Config with credentials obtained from external configuration sources. This setup allows for flexible and secure management of access credentials. The following are the default sources for configuration:
+
+### Environment Variables
+
+- `AWS_REGION` - Specifies the AWS region.
+- `AWS_PROFILE` - Identifies the AWS profile to be used.
+- `AWS_ACCESS_KEY_ID` - Your AWS access key.
+- `AWS_SECRET_ACCESS_KEY` - Your AWS secret key.
+- `AWS_SESSION_TOKEN` - Session token for temporary credentials.
+
+### Shared Configuration and Credentials Files
+
+These files provide a common location for storing AWS credentials and configuration settings, enabling consistent credential management across different AWS tools and applications.
 
 ## Usage for DynamoMQ CLI 
 
