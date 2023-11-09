@@ -12,9 +12,10 @@ Implementing message queueing with Amazon DynamoDB in Go.
 - [Installation](#installation)
   * [DynamoMQ CLI](#dynamomq-cli)
   * [DynamoMQ Library](#dynamomq-library)
-- [Setup DynamoMQ Table](#setup-dynamomq-table)
-  * [Use AWS CLI](#use-aws-cli)
-  * [Use Terraform](#use-terraform)
+- [Setup DynamoMQ](#setup-dynamomq)
+  * [Required IAM Policy](#required-iam-policy)
+  * [Create Table with AWS CLI](#create-table-with-aws-cli)
+  * [Create Table with Terraform](#create-table-with-terraform)
 - [Usage for DynamoMQ CLI](#usage-for-dynamomq-cli)
   * [Available Commands](#available-commands)
   * [Global Flags](#global-flags)
@@ -77,18 +78,22 @@ This package can be installed as library with the go get command:
 $ go get -u github.com/vvatanabe/dynamomq@latest
 ```
 
-## Setup DynamoMQ Table
+## Setup DynamoMQ
 
-### Use AWS CLI
+### Required IAM Policy
+
+Please refer to [dynamomq-iam-policy.json](./dynamomq-iam-policy.json) or [dynamomq-iam-policy.tf](./dynamomq-iam-policy.tf)
+
+### Create Table with AWS CLI
 
 ```sh
-aws dynamodb create-table --cli-input-json file://dynamomq.json 
+aws dynamodb create-table --cli-input-json file://dynamomq-table.json 
 ```
-Please refer to [dynamomq.json](./dynamomq.json).
+Please refer to [dynamomq-table.json](./dynamomq-table.json).
 
-### Use Terraform
+### Create Table with Terraform
 
-Please refer to [dynamomq.tf](./dynamomq.tf).
+Please refer to [dynamomq-table.tf](./dynamomq-table.tf).
 
 ## Usage for DynamoMQ CLI 
 
