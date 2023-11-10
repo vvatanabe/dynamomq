@@ -14,6 +14,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+	uuid "github.com/satori/go.uuid"
 	"github.com/upsidr/dynamotest"
 	"github.com/vvatanabe/dynamomq/internal/clock"
 	"github.com/vvatanabe/dynamomq/internal/test"
@@ -35,8 +36,9 @@ func withClock(clock clock.Clock) func(s *ClientOptions) {
 	}
 }
 
-func setupDynamoDB(t *testing.T, initialData ...*types.PutRequest) (client *dynamodb.Client, clean func()) {
+func setupDynamoDB(t *testing.T, initialData ...*types.PutRequest) (tableName string, client *dynamodb.Client, clean func()) {
 	client, clean = dynamotest.NewDynamoDB(t)
+	tableName = DefaultTableName + "-" + uuid.NewV4().String()
 	dynamotest.PrepTable(t, client, dynamotest.InitialTableSetup{
 		Table: &dynamodb.CreateTableInput{
 			AttributeDefinitions: []types.AttributeDefinition{
@@ -79,7 +81,7 @@ func setupDynamoDB(t *testing.T, initialData ...*types.PutRequest) (client *dyna
 					KeyType:       types.KeyTypeHash,
 				},
 			},
-			TableName: aws.String(DefaultTableName),
+			TableName: aws.String(tableName),
 		},
 		InitialData: initialData,
 	})
@@ -109,9 +111,10 @@ func newTestMessageItemAsDLQ(id string, now time.Time) *Message[test.MessageData
 }
 
 func TestDynamoMQClientSendMessage(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
-		setup    func(*testing.T) (*dynamodb.Client, func())
+		setup    func(*testing.T) (string, *dynamodb.Client, func())
 		sdkClock clock.Clock
 		args     *SendMessageInput[test.MessageData]
 		want     *SendMessageOutput[test.MessageData]
@@ -119,7 +122,7 @@ func TestDynamoMQClientSendMessage(t *testing.T) {
 	}{
 		{
 			name: "should return IDNotProvidedError",
-			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
 						Item: newTestMessageItemAsReady("A-101", clock.Now()).marshalMapUnsafe(),
@@ -135,7 +138,7 @@ func TestDynamoMQClientSendMessage(t *testing.T) {
 		},
 		{
 			name: "should return IDDuplicatedError",
-			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
 						Item: newTestMessageItemAsReady("A-101", clock.Now()).marshalMapUnsafe(),
@@ -151,7 +154,7 @@ func TestDynamoMQClientSendMessage(t *testing.T) {
 		},
 		{
 			name: "should enqueue succeeds",
-			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t)
 			},
 			sdkClock: mockClock{
@@ -178,8 +181,10 @@ func TestDynamoMQClientSendMessage(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			raw, clean := tt.setup(t)
+			t.Parallel()
+			tableName, raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
 			cfg, err := config.LoadDefaultConfig(ctx)
@@ -187,14 +192,14 @@ func TestDynamoMQClientSendMessage(t *testing.T) {
 				t.Fatalf("failed to load aws config: %s\n", err)
 				return
 			}
-			client, err := NewFromConfig[test.MessageData](cfg, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock))
+			client, err := NewFromConfig[test.MessageData](cfg, WithTableName(tableName), WithAWSDynamoDBClient(raw), withClock(tt.sdkClock))
 			if err != nil {
 				t.Fatalf("NewFromConfig() error = %v", err)
 				return
 			}
 			result, err := client.SendMessage(ctx, tt.args)
 			if tt.wantErr != nil {
-				if err != tt.wantErr {
+				if !errors.Is(err, tt.wantErr) {
 					t.Errorf("SendMessage() error = %v, wantErr %v", err, tt.wantErr)
 					return
 				}
@@ -212,16 +217,17 @@ func TestDynamoMQClientSendMessage(t *testing.T) {
 }
 
 func TestDynamoMQClientReceiveMessage(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
-		setup    func(*testing.T) (*dynamodb.Client, func())
+		setup    func(*testing.T) (string, *dynamodb.Client, func())
 		sdkClock clock.Clock
 		want     *ReceiveMessageOutput[test.MessageData]
 		wantErr  error
 	}{
 		{
 			name: "should return EmptyQueueError",
-			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
 						Item: newTestMessageItemAsPeeked("A-202", clock.Now()).marshalMapUnsafe(),
@@ -236,7 +242,7 @@ func TestDynamoMQClientReceiveMessage(t *testing.T) {
 		},
 		{
 			name: "should peek when not selected",
-			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
 						Item: newTestMessageItemAsReady("B-202",
@@ -272,7 +278,7 @@ func TestDynamoMQClientReceiveMessage(t *testing.T) {
 		},
 		{
 			name: "should peek when visibility timeout has expired",
-			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
 						Item: newTestMessageItemAsPeeked("B-202",
@@ -308,7 +314,7 @@ func TestDynamoMQClientReceiveMessage(t *testing.T) {
 		},
 		{
 			name: "can not peek when visibility timeout",
-			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
 						Item: newTestMessageItemAsPeeked("B-202",
@@ -326,8 +332,10 @@ func TestDynamoMQClientReceiveMessage(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			raw, clean := tt.setup(t)
+			t.Parallel()
+			tableName, raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
 			cfg, err := config.LoadDefaultConfig(ctx)
@@ -335,14 +343,14 @@ func TestDynamoMQClientReceiveMessage(t *testing.T) {
 				t.Fatalf("failed to load aws config: %s\n", err)
 				return
 			}
-			client, err := NewFromConfig[test.MessageData](cfg, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
+			client, err := NewFromConfig[test.MessageData](cfg, WithTableName(tableName), WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
 			if err != nil {
 				t.Fatalf("NewFromConfig() error = %v", err)
 				return
 			}
 			result, err := client.ReceiveMessage(ctx, &ReceiveMessageInput{})
 			if tt.wantErr != nil {
-				if err != tt.wantErr {
+				if !errors.Is(err, tt.wantErr) {
 					t.Errorf("ReceiveMessage() error = %v, wantErr %v", err, tt.wantErr)
 					return
 				}
@@ -360,7 +368,8 @@ func TestDynamoMQClientReceiveMessage(t *testing.T) {
 }
 
 func TestDynamoMQClientReceiveMessageUseFIFO(t *testing.T) {
-	raw, clean := setupDynamoDB(t,
+	t.Parallel()
+	tableName, raw, clean := setupDynamoDB(t,
 		&types.PutRequest{
 			Item: newTestMessageItemAsReady("A-101", time.Date(2023, 12, 1, 0, 0, 3, 0, time.UTC)).marshalMapUnsafe(),
 		},
@@ -381,7 +390,7 @@ func TestDynamoMQClientReceiveMessageUseFIFO(t *testing.T) {
 		t.Fatalf("failed to load aws config: %s\n", err)
 		return
 	}
-	client, err := NewFromConfig[test.MessageData](cfg,
+	client, err := NewFromConfig[test.MessageData](cfg, WithTableName(tableName),
 		WithAWSDynamoDBClient(raw),
 		withClock(mockClock{
 			t: now,
@@ -534,7 +543,8 @@ func TestDynamoMQClientReceiveMessageUseFIFO(t *testing.T) {
 }
 
 func TestDynamoMQClientReceiveMessageNotUseFIFO(t *testing.T) {
-	raw, clean := setupDynamoDB(t,
+	t.Parallel()
+	tableName, raw, clean := setupDynamoDB(t,
 		&types.PutRequest{
 			Item: newTestMessageItemAsReady("A-101", time.Date(2023, 12, 1, 0, 0, 3, 0, time.UTC)).marshalMapUnsafe(),
 		},
@@ -555,7 +565,7 @@ func TestDynamoMQClientReceiveMessageNotUseFIFO(t *testing.T) {
 		t.Fatalf("failed to load aws config: %s\n", err)
 		return
 	}
-	client, err := NewFromConfig[test.MessageData](cfg,
+	client, err := NewFromConfig[test.MessageData](cfg, WithTableName(tableName),
 		WithAWSDynamoDBClient(raw),
 		withClock(mockClock{
 			t: now,
@@ -670,12 +680,13 @@ func TestDynamoMQClientReceiveMessageNotUseFIFO(t *testing.T) {
 }
 
 func TestDynamoMQClientUpdateMessageAsVisible(t *testing.T) {
+	t.Parallel()
 	type args struct {
 		id string
 	}
 	tests := []struct {
 		name     string
-		setup    func(*testing.T) (*dynamodb.Client, func())
+		setup    func(*testing.T) (string, *dynamodb.Client, func())
 		sdkClock clock.Clock
 		args     args
 		want     *UpdateMessageAsVisibleOutput[test.MessageData]
@@ -683,7 +694,7 @@ func TestDynamoMQClientUpdateMessageAsVisible(t *testing.T) {
 	}{
 		{
 			name: "should return IDNotProvidedError",
-			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
 						Item: newTestMessageItemAsReady("A-101", clock.Now()).marshalMapUnsafe(),
@@ -698,7 +709,7 @@ func TestDynamoMQClientUpdateMessageAsVisible(t *testing.T) {
 		},
 		{
 			name: "should return IDNotFoundError",
-			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
 						Item: newTestMessageItemAsReady("A-101", clock.Now()).marshalMapUnsafe(),
@@ -713,7 +724,7 @@ func TestDynamoMQClientUpdateMessageAsVisible(t *testing.T) {
 		},
 		{
 			name: "existing id do not return error",
-			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
 						Item: newTestMessageItemAsPeeked("A-101", time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC)).marshalMapUnsafe(),
@@ -747,8 +758,10 @@ func TestDynamoMQClientUpdateMessageAsVisible(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			raw, clean := tt.setup(t)
+			t.Parallel()
+			tableName, raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
 			cfg, err := config.LoadDefaultConfig(ctx)
@@ -756,7 +769,7 @@ func TestDynamoMQClientUpdateMessageAsVisible(t *testing.T) {
 				t.Fatalf("failed to load aws config: %s\n", err)
 				return
 			}
-			client, err := NewFromConfig[test.MessageData](cfg, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
+			client, err := NewFromConfig[test.MessageData](cfg, WithTableName(tableName), WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
 			if err != nil {
 				t.Fatalf("NewFromConfig() error = %v", err)
 				return
@@ -765,7 +778,7 @@ func TestDynamoMQClientUpdateMessageAsVisible(t *testing.T) {
 				ID: tt.args.id,
 			})
 			if tt.wantErr != nil {
-				if err != tt.wantErr {
+				if !errors.Is(err, tt.wantErr) {
 					t.Errorf("UpdateMessageAsVisible() error = %v, wantErr %v", err, tt.wantErr)
 					return
 				}
@@ -783,19 +796,20 @@ func TestDynamoMQClientUpdateMessageAsVisible(t *testing.T) {
 }
 
 func TestDynamoMQClientDeleteMessage(t *testing.T) {
+	t.Parallel()
 	type args struct {
 		id string
 	}
 	tests := []struct {
 		name     string
-		setup    func(*testing.T) (*dynamodb.Client, func())
+		setup    func(*testing.T) (string, *dynamodb.Client, func())
 		sdkClock clock.Clock
 		args     args
 		want     error
 	}{
 		{
 			name: "should return IDNotProvidedError",
-			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
 						Item: newTestMessageItemAsReady("A-101", clock.Now()).marshalMapUnsafe(),
@@ -809,7 +823,7 @@ func TestDynamoMQClientDeleteMessage(t *testing.T) {
 		},
 		{
 			name: "not exist id does not return error",
-			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
 						Item: newTestMessageItemAsReady("A-101", clock.Now()).marshalMapUnsafe(),
@@ -823,7 +837,7 @@ func TestDynamoMQClientDeleteMessage(t *testing.T) {
 		},
 		{
 			name: "existing id do not return error",
-			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
 						Item: newTestMessageItemAsReady("A-101", clock.Now()).marshalMapUnsafe(),
@@ -838,8 +852,10 @@ func TestDynamoMQClientDeleteMessage(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			raw, clean := tt.setup(t)
+			t.Parallel()
+			tableName, raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
 			cfg, err := config.LoadDefaultConfig(ctx)
@@ -847,7 +863,7 @@ func TestDynamoMQClientDeleteMessage(t *testing.T) {
 				t.Fatalf("failed to load aws config: %s\n", err)
 				return
 			}
-			client, err := NewFromConfig[test.MessageData](cfg, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
+			client, err := NewFromConfig[test.MessageData](cfg, WithTableName(tableName), WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
 			if err != nil {
 				t.Fatalf("NewFromConfig() error = %v", err)
 				return
@@ -855,7 +871,7 @@ func TestDynamoMQClientDeleteMessage(t *testing.T) {
 			_, err = client.DeleteMessage(ctx, &DeleteMessageInput{
 				ID: tt.args.id,
 			})
-			if err != tt.want {
+			if !errors.Is(err, tt.want) {
 				t.Errorf("DeleteMessage() error = %v, wantErr %v", err, tt.want)
 				return
 			}
@@ -864,9 +880,10 @@ func TestDynamoMQClientDeleteMessage(t *testing.T) {
 }
 
 func TestDynamoMQClientMoveMessageToDLQ(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
-		setup    func(*testing.T) (*dynamodb.Client, func())
+		setup    func(*testing.T) (string, *dynamodb.Client, func())
 		sdkClock clock.Clock
 		args     *MoveMessageToDLQInput
 		want     *MoveMessageToDLQOutput
@@ -874,7 +891,7 @@ func TestDynamoMQClientMoveMessageToDLQ(t *testing.T) {
 	}{
 		{
 			name: "should return IDNotProvidedError",
-			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
 						Item: newTestMessageItemAsReady("A-101", clock.Now()).marshalMapUnsafe(),
@@ -889,7 +906,7 @@ func TestDynamoMQClientMoveMessageToDLQ(t *testing.T) {
 		},
 		{
 			name: "should return IDNotFoundError",
-			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
 						Item: newTestMessageItemAsReady("A-101", clock.Now()).marshalMapUnsafe(),
@@ -904,7 +921,7 @@ func TestDynamoMQClientMoveMessageToDLQ(t *testing.T) {
 		},
 		{
 			name: "should send to DLQ succeeds when already exists DLQ",
-			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
 						Item: newTestMessageItemAsDLQ("A-101",
@@ -931,7 +948,7 @@ func TestDynamoMQClientMoveMessageToDLQ(t *testing.T) {
 		},
 		{
 			name: "should send to DLQ succeeds",
-			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
 						Item: newTestMessageItemAsPeeked("A-101",
@@ -967,8 +984,10 @@ func TestDynamoMQClientMoveMessageToDLQ(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			raw, clean := tt.setup(t)
+			t.Parallel()
+			tableName, raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
 			cfg, err := config.LoadDefaultConfig(ctx)
@@ -976,14 +995,14 @@ func TestDynamoMQClientMoveMessageToDLQ(t *testing.T) {
 				t.Fatalf("failed to load aws config: %s\n", err)
 				return
 			}
-			client, err := NewFromConfig[test.MessageData](cfg, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
+			client, err := NewFromConfig[test.MessageData](cfg, WithTableName(tableName), WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
 			if err != nil {
 				t.Fatalf("NewFromConfig() error = %v", err)
 				return
 			}
 			result, err := client.MoveMessageToDLQ(ctx, tt.args)
 			if tt.wantErr != nil {
-				if err != tt.wantErr {
+				if !errors.Is(err, tt.wantErr) {
 					t.Errorf("MoveMessageToDLQ() error = %v, wantErr %v", err, tt.wantErr)
 					return
 				}
@@ -1001,12 +1020,13 @@ func TestDynamoMQClientMoveMessageToDLQ(t *testing.T) {
 }
 
 func TestDynamoMQClientRedriveMessage(t *testing.T) {
+	t.Parallel()
 	type args struct {
 		id string
 	}
 	tests := []struct {
 		name     string
-		setup    func(*testing.T) (*dynamodb.Client, func())
+		setup    func(*testing.T) (string, *dynamodb.Client, func())
 		sdkClock clock.Clock
 		args     args
 		want     *RedriveMessageOutput
@@ -1014,7 +1034,7 @@ func TestDynamoMQClientRedriveMessage(t *testing.T) {
 	}{
 		{
 			name: "should return IDNotProvidedError",
-			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
 						Item: newTestMessageItemAsReady("A-101", clock.Now()).marshalMapUnsafe(),
@@ -1029,7 +1049,7 @@ func TestDynamoMQClientRedriveMessage(t *testing.T) {
 		},
 		{
 			name: "should return IDNotFoundError",
-			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
 						Item: newTestMessageItemAsReady("A-101", clock.Now()).marshalMapUnsafe(),
@@ -1044,7 +1064,7 @@ func TestDynamoMQClientRedriveMessage(t *testing.T) {
 		},
 		{
 			name: "should redrive succeeds",
-			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
 						Item: newTestMessageItemAsDLQ("A-101", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)).marshalMapUnsafe(),
@@ -1067,8 +1087,10 @@ func TestDynamoMQClientRedriveMessage(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			raw, clean := tt.setup(t)
+			t.Parallel()
+			tableName, raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
 			cfg, err := config.LoadDefaultConfig(ctx)
@@ -1076,7 +1098,7 @@ func TestDynamoMQClientRedriveMessage(t *testing.T) {
 				t.Fatalf("failed to load aws config: %s\n", err)
 				return
 			}
-			client, err := NewFromConfig[test.MessageData](cfg, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
+			client, err := NewFromConfig[test.MessageData](cfg, WithTableName(tableName), WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
 			if err != nil {
 				t.Fatalf("NewFromConfig() error = %v", err)
 				return
@@ -1085,7 +1107,7 @@ func TestDynamoMQClientRedriveMessage(t *testing.T) {
 				ID: tt.args.id,
 			})
 			if tt.wantErr != nil {
-				if err != tt.wantErr {
+				if !errors.Is(err, tt.wantErr) {
 					t.Errorf("RedriveMessage() error = %v, wantErr %v", err, tt.wantErr)
 					return
 				}
@@ -1103,14 +1125,15 @@ func TestDynamoMQClientRedriveMessage(t *testing.T) {
 }
 
 func TestDynamoMQClientGetQueueStats(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name  string
-		setup func(*testing.T) (*dynamodb.Client, func())
+		setup func(*testing.T) (string, *dynamodb.Client, func())
 		want  *GetQueueStatsOutput
 	}{
 		{
 			name: "empty items",
-			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t)
 			},
 			want: &GetQueueStatsOutput{
@@ -1123,7 +1146,7 @@ func TestDynamoMQClientGetQueueStats(t *testing.T) {
 		},
 		{
 			name: "has one item in enqueued",
-			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
 						Item: newTestMessageItemAsReady("A-101", clock.Now()).marshalMapUnsafe(),
@@ -1140,7 +1163,7 @@ func TestDynamoMQClientGetQueueStats(t *testing.T) {
 		},
 		{
 			name: "has one item in peeked",
-			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
 						Item: newTestMessageItemAsPeeked("A-101", clock.Now()).marshalMapUnsafe(),
@@ -1157,7 +1180,7 @@ func TestDynamoMQClientGetQueueStats(t *testing.T) {
 		},
 		{
 			name: "has two item in enqueued or peeked",
-			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
 						Item: newTestMessageItemAsReady("A-101", clock.Now()).marshalMapUnsafe(),
@@ -1184,8 +1207,10 @@ func TestDynamoMQClientGetQueueStats(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			raw, clean := tt.setup(t)
+			t.Parallel()
+			tableName, raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
 			cfg, err := config.LoadDefaultConfig(ctx)
@@ -1193,7 +1218,7 @@ func TestDynamoMQClientGetQueueStats(t *testing.T) {
 				t.Fatalf("failed to load aws config: %s\n", err)
 				return
 			}
-			client, err := NewFromConfig[test.MessageData](cfg, WithAWSDynamoDBClient(raw))
+			client, err := NewFromConfig[test.MessageData](cfg, WithTableName(tableName), WithAWSDynamoDBClient(raw))
 			if err != nil {
 				t.Fatalf("NewFromConfig() error = %v", err)
 				return
@@ -1211,14 +1236,15 @@ func TestDynamoMQClientGetQueueStats(t *testing.T) {
 }
 
 func TestDynamoMQClientGetDLQStats(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name  string
-		setup func(*testing.T) (*dynamodb.Client, func())
+		setup func(*testing.T) (string, *dynamodb.Client, func())
 		want  *GetDLQStatsOutput
 	}{
 		{
 			name: "empty items",
-			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
 						Item: newTestMessageItemAsReady("A-101", clock.Now().Add(time.Second)).marshalMapUnsafe(),
@@ -1238,7 +1264,7 @@ func TestDynamoMQClientGetDLQStats(t *testing.T) {
 		},
 		{
 			name: "has three items in DLQ",
-			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
 						Item: newTestMessageItemAsReady("A-101", clock.Now()).marshalMapUnsafe(),
@@ -1268,8 +1294,10 @@ func TestDynamoMQClientGetDLQStats(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			raw, clean := tt.setup(t)
+			t.Parallel()
+			tableName, raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
 			cfg, err := config.LoadDefaultConfig(ctx)
@@ -1277,7 +1305,7 @@ func TestDynamoMQClientGetDLQStats(t *testing.T) {
 				t.Fatalf("failed to load aws config: %s\n", err)
 				return
 			}
-			client, err := NewFromConfig[test.MessageData](cfg, WithAWSDynamoDBClient(raw))
+			client, err := NewFromConfig[test.MessageData](cfg, WithTableName(tableName), WithAWSDynamoDBClient(raw))
 			if err != nil {
 				t.Fatalf("NewFromConfig() error = %v", err)
 				return
@@ -1295,20 +1323,20 @@ func TestDynamoMQClientGetDLQStats(t *testing.T) {
 }
 
 func TestDynamoMQClientGetMessage(t *testing.T) {
-
+	t.Parallel()
 	type args struct {
 		id string
 	}
 	tests := []struct {
 		name    string
-		setup   func(*testing.T) (*dynamodb.Client, func())
+		setup   func(*testing.T) (string, *dynamodb.Client, func())
 		args    args
 		want    *Message[test.MessageData]
 		wantErr error
 	}{
 		{
 			name: "IDNotProvidedError",
-			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
 						Item: newTestMessageItemAsReady("A-101", clock.Now()).marshalMapUnsafe(),
@@ -1323,7 +1351,7 @@ func TestDynamoMQClientGetMessage(t *testing.T) {
 		},
 		{
 			name: "nil",
-			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
 						Item: newTestMessageItemAsReady("A-101", clock.Now()).marshalMapUnsafe(),
@@ -1338,7 +1366,7 @@ func TestDynamoMQClientGetMessage(t *testing.T) {
 		},
 		{
 			name: "get a message",
-			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
 						Item: newTestMessageItemAsReady("A-101", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)).marshalMapUnsafe(),
@@ -1357,8 +1385,10 @@ func TestDynamoMQClientGetMessage(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			raw, clean := tt.setup(t)
+			t.Parallel()
+			tableName, raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
 			cfg, err := config.LoadDefaultConfig(ctx)
@@ -1366,7 +1396,7 @@ func TestDynamoMQClientGetMessage(t *testing.T) {
 				t.Fatalf("failed to load aws config: %s\n", err)
 				return
 			}
-			client, err := NewFromConfig[test.MessageData](cfg, WithAWSDynamoDBClient(raw))
+			client, err := NewFromConfig[test.MessageData](cfg, WithTableName(tableName), WithAWSDynamoDBClient(raw))
 			if err != nil {
 				t.Fatalf("NewFromConfig() error = %v", err)
 				return
@@ -1375,7 +1405,7 @@ func TestDynamoMQClientGetMessage(t *testing.T) {
 				ID: tt.args.id,
 			})
 			if tt.wantErr != nil {
-				if err != tt.wantErr {
+				if !errors.Is(err, tt.wantErr) {
 					t.Errorf("GetMessage() error = %v, wantErr %v", err, tt.wantErr)
 					return
 				}
@@ -1389,20 +1419,20 @@ func TestDynamoMQClientGetMessage(t *testing.T) {
 }
 
 func TestDynamoMQClientReplaceMessage(t *testing.T) {
-
+	t.Parallel()
 	type args struct {
 		message *Message[test.MessageData]
 	}
 	tests := []struct {
 		name    string
-		setup   func(*testing.T) (*dynamodb.Client, func())
+		setup   func(*testing.T) (string, *dynamodb.Client, func())
 		args    args
 		want    *Message[test.MessageData]
 		wantErr error
 	}{
 		{
 			name: "IDNotProvidedError",
-			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
 						Item: newTestMessageItemAsReady("A-101", clock.Now()).marshalMapUnsafe(),
@@ -1419,7 +1449,7 @@ func TestDynamoMQClientReplaceMessage(t *testing.T) {
 		},
 		{
 			name: "duplicated id",
-			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
 						Item: newTestMessageItemAsReady("A-101", clock.Now()).marshalMapUnsafe(),
@@ -1434,7 +1464,7 @@ func TestDynamoMQClientReplaceMessage(t *testing.T) {
 		},
 		{
 			name: "unique id",
-			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
 						Item: newTestMessageItemAsReady("A-101", clock.Now()).marshalMapUnsafe(),
@@ -1450,8 +1480,10 @@ func TestDynamoMQClientReplaceMessage(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			raw, clean := tt.setup(t)
+			t.Parallel()
+			tableName, raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
 			cfg, err := config.LoadDefaultConfig(ctx)
@@ -1459,7 +1491,7 @@ func TestDynamoMQClientReplaceMessage(t *testing.T) {
 				t.Fatalf("failed to load aws config: %s\n", err)
 				return
 			}
-			client, err := NewFromConfig[test.MessageData](cfg, WithAWSDynamoDBClient(raw))
+			client, err := NewFromConfig[test.MessageData](cfg, WithTableName(tableName), WithAWSDynamoDBClient(raw))
 			if err != nil {
 				t.Fatalf("NewFromConfig() error = %v", err)
 				return
@@ -1468,7 +1500,7 @@ func TestDynamoMQClientReplaceMessage(t *testing.T) {
 				Message: tt.args.message,
 			})
 			if tt.wantErr != nil {
-				if err != tt.wantErr {
+				if !errors.Is(err, tt.wantErr) {
 					t.Errorf("ReplaceMessage() error = %v, wantErr %v", err, tt.wantErr)
 					return
 				}
@@ -1493,12 +1525,13 @@ func TestDynamoMQClientReplaceMessage(t *testing.T) {
 }
 
 func TestDynamoMQClientListMessages(t *testing.T) {
+	t.Parallel()
 	type args struct {
 		size int32
 	}
 	tests := []struct {
 		name     string
-		setup    func(*testing.T) (*dynamodb.Client, func())
+		setup    func(*testing.T) (string, *dynamodb.Client, func())
 		sdkClock clock.Clock
 		args     args
 		want     []*Message[test.MessageData]
@@ -1506,7 +1539,7 @@ func TestDynamoMQClientListMessages(t *testing.T) {
 	}{
 		{
 			name: "empty",
-			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t)
 			},
 			args: args{
@@ -1517,7 +1550,7 @@ func TestDynamoMQClientListMessages(t *testing.T) {
 		},
 		{
 			name: "list",
-			setup: func(t *testing.T) (*dynamodb.Client, func()) {
+			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				var puts []*types.PutRequest
 				for i := 0; i < 10; i++ {
 					puts = append(puts, &types.PutRequest{
@@ -1544,8 +1577,10 @@ func TestDynamoMQClientListMessages(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			raw, clean := tt.setup(t)
+			t.Parallel()
+			tableName, raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
 			cfg, err := config.LoadDefaultConfig(ctx)
@@ -1553,7 +1588,7 @@ func TestDynamoMQClientListMessages(t *testing.T) {
 				t.Fatalf("failed to load aws config: %s\n", err)
 				return
 			}
-			client, err := NewFromConfig[test.MessageData](cfg, WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
+			client, err := NewFromConfig[test.MessageData](cfg, WithTableName(tableName), WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
 			if err != nil {
 				t.Fatalf("NewFromConfig() error = %v", err)
 				return
@@ -1562,7 +1597,7 @@ func TestDynamoMQClientListMessages(t *testing.T) {
 				Size: tt.args.size,
 			})
 			if tt.wantErr != nil {
-				if err != tt.wantErr {
+				if !errors.Is(err, tt.wantErr) {
 					t.Errorf("ListMessages() error = %v, wantErr %v", err, tt.wantErr)
 					return
 				}
