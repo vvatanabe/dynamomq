@@ -122,14 +122,14 @@ func (c *Interactive) enqueueTest(ctx context.Context, _ []string) {
 		message := dynamomq.NewMessage[test.MessageData](id, test.NewMessageData(id), clock.Now())
 		item, err := message.MarshalMap()
 		if err != nil {
-			fmt.Printf("* ID: %s, error: %s\n", id, err)
+			printErrorWithID(err, id)
 			continue
 		}
 		_, err = c.Client.DeleteMessage(ctx, &dynamomq.DeleteMessageInput{
 			ID: id,
 		})
 		if err != nil {
-			fmt.Printf("* ID: %s, error: %s\n", id, err)
+			printErrorWithID(err, id)
 			continue
 		}
 		_, err = c.Client.GetDynamodbClient().PutItem(ctx, &dynamodb.PutItemInput{
@@ -137,7 +137,7 @@ func (c *Interactive) enqueueTest(ctx context.Context, _ []string) {
 			Item:      item,
 		})
 		if err != nil {
-			fmt.Printf("* ID: %s, error: %s\n", id, err)
+			printErrorWithID(err, id)
 			continue
 		}
 		fmt.Printf("* ID: %s\n", id)
@@ -150,7 +150,7 @@ func (c *Interactive) qstat(ctx context.Context, _ []string) {
 		printError(err)
 		return
 	}
-	printMessageWithData("Queue status:\n", stats)
+	printQueueStatus(stats)
 }
 
 func (c *Interactive) dlq(ctx context.Context, _ []string) {
@@ -261,7 +261,7 @@ func (c *Interactive) delete(ctx context.Context, _ []string) {
 		printError(err)
 		return
 	}
-	printMessageWithData("Queue status:\n", stats)
+	printQueueStatus(stats)
 }
 
 func (c *Interactive) fail(ctx context.Context, _ []string) {
@@ -292,7 +292,7 @@ func (c *Interactive) fail(ctx context.Context, _ []string) {
 		printError(err)
 		return
 	}
-	printMessageWithData("Queue status:\n", stats)
+	printQueueStatus(stats)
 }
 
 func (c *Interactive) invalid(ctx context.Context, _ []string) {
@@ -313,7 +313,7 @@ func (c *Interactive) invalid(ctx context.Context, _ []string) {
 		printError(err)
 		return
 	}
-	printMessageWithData("Queue status:\n", stats)
+	printQueueStatus(stats)
 }
 
 func (c *Interactive) data(_ context.Context, _ []string) {
