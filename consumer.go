@@ -122,15 +122,31 @@ func (c *Consumer[T]) StartConsuming() error {
 			time.Sleep(c.pollingInterval)
 			continue
 		}
-		go c.listen(ctx, r.PeekedMessageObject)
+		go c.trackAndProcessMessage(ctx, r.PeekedMessageObject)
 		time.Sleep(c.pollingInterval)
 	}
 }
 
-func (c *Consumer[T]) listen(ctx context.Context, msg *Message[T]) {
+func (c *Consumer[T]) trackAndProcessMessage(ctx context.Context, msg *Message[T]) {
 	c.trackMessage(msg, true)
 	c.processMessage(ctx, msg)
 	c.trackMessage(msg, false)
+}
+
+func (c *Consumer[T]) processMessage(ctx context.Context, msg *Message[T]) {
+	if err := c.messageProcessor.Process(msg); err != nil {
+		c.handleError(ctx, msg, err)
+		return
+	}
+	c.deleteMessage(ctx, msg)
+}
+
+func (c *Consumer[T]) handleError(ctx context.Context, msg *Message[T], err error) {
+	if c.shouldRetry(msg) {
+		c.retryMessage(ctx, msg, err)
+	} else {
+		c.handleFailure(ctx, msg, err)
+	}
 }
 
 func (c *Consumer[T]) shouldRetry(msg *Message[T]) bool {
@@ -143,43 +159,30 @@ func (c *Consumer[T]) shouldRetry(msg *Message[T]) bool {
 	return false
 }
 
-func (c *Consumer[T]) processMessage(ctx context.Context, msg *Message[T]) {
-	err := c.messageProcessor.Process(msg)
-	if err != nil {
-		if c.shouldRetry(msg) {
-			_, err := c.client.UpdateMessageAsVisible(ctx, &UpdateMessageAsVisibleInput{ID: msg.ID})
-			if err != nil {
-				c.logf("DynamoMQ: Failed to update a message as visible. %s", err)
-				return
-			}
-		} else {
-			switch c.queueType {
-			case QueueTypeStandard:
-				_, err := c.client.MoveMessageToDLQ(ctx, &MoveMessageToDLQInput{
-					ID: msg.ID,
-				})
-				if err != nil {
-					c.logf("DynamoMQ: Failed to move a message to DLQ. %s", err)
-					return
-				}
-			case QueueTypeDLQ:
-				_, err := c.client.DeleteMessage(ctx, &DeleteMessageInput{
-					ID: msg.ID,
-				})
-				if err != nil {
-					c.logf("DynamoMQ: Failed to delete a message. %s", err)
-					return
-				}
-			}
-		}
-		return
+func (c *Consumer[T]) retryMessage(ctx context.Context, msg *Message[T], err error) {
+	if _, err := c.client.UpdateMessageAsVisible(ctx, &UpdateMessageAsVisibleInput{ID: msg.ID}); err != nil {
+		c.logf("DynamoMQ: Failed to update a message as visible. %s", err)
 	}
-	_, err = c.client.DeleteMessage(ctx, &DeleteMessageInput{
-		ID: msg.ID,
-	})
-	if err != nil {
+}
+
+func (c *Consumer[T]) handleFailure(ctx context.Context, msg *Message[T], err error) {
+	switch c.queueType {
+	case QueueTypeStandard:
+		c.moveToDLQ(ctx, msg, err)
+	case QueueTypeDLQ:
+		c.deleteMessage(ctx, msg)
+	}
+}
+
+func (c *Consumer[T]) moveToDLQ(ctx context.Context, msg *Message[T], err error) {
+	if _, err := c.client.MoveMessageToDLQ(ctx, &MoveMessageToDLQInput{ID: msg.ID}); err != nil {
+		c.logf("DynamoMQ: Failed to move a message to DLQ. %s", err)
+	}
+}
+
+func (c *Consumer[T]) deleteMessage(ctx context.Context, msg *Message[T]) {
+	if _, err := c.client.DeleteMessage(ctx, &DeleteMessageInput{ID: msg.ID}); err != nil {
 		c.logf("DynamoMQ: Failed to delete a message. %s", err)
-		return
 	}
 }
 
