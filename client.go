@@ -191,17 +191,43 @@ func (c *client[T]) ReceiveMessage(ctx context.Context, params *ReceiveMessageIn
 	if params.QueueType == "" {
 		params.QueueType = QueueTypeStandard
 	}
+
+	selectedItem, err := c.queryDynamoDB(ctx, params)
+	if err != nil {
+		return &ReceiveMessageOutput[T]{}, err
+	}
+
+	updatedItem, err := c.processSelectedItem(ctx, selectedItem)
+	if err != nil {
+		return &ReceiveMessageOutput[T]{}, err
+	}
+
+	return &ReceiveMessageOutput[T]{
+		Result: &Result{
+			ID:                   updatedItem.ID,
+			Status:               updatedItem.Status,
+			LastUpdatedTimestamp: updatedItem.LastUpdatedTimestamp,
+			Version:              updatedItem.Version,
+		},
+		PeekFromQueueTimestamp: updatedItem.PeekFromQueueTimestamp,
+		PeekedMessageObject:    updatedItem,
+	}, nil
+}
+
+func (c *client[T]) queryDynamoDB(ctx context.Context, params *ReceiveMessageInput) (*Message[T], error) {
 	expr, err := expression.NewBuilder().
 		WithKeyCondition(expression.Key("queue_type").Equal(expression.Value(params.QueueType))).
 		Build()
 	if err != nil {
-		return &ReceiveMessageOutput[T]{}, &BuildingExpressionError{Cause: err}
+		return nil, &BuildingExpressionError{Cause: err}
 	}
+
 	var (
 		exclusiveStartKey map[string]types.AttributeValue
 		selectedItem      *Message[T]
 	)
 	visibilityTimeout := time.Duration(c.visibilityTimeoutInMinutes) * time.Minute
+
 	for {
 		queryResult, err := c.dynamoDB.Query(ctx, &dynamodb.QueryInput{
 			IndexName:                 aws.String(c.queueingIndexName),
@@ -214,19 +240,20 @@ func (c *client[T]) ReceiveMessage(ctx context.Context, params *ReceiveMessageIn
 			ExclusiveStartKey:         exclusiveStartKey,
 		})
 		if err != nil {
-			return &ReceiveMessageOutput[T]{}, handleDynamoDBError(err)
+			return nil, handleDynamoDBError(err)
 		}
 		exclusiveStartKey = queryResult.LastEvaluatedKey
+
 		for _, itemMap := range queryResult.Items {
 			item := Message[T]{}
 			if err = attributevalue.UnmarshalMap(itemMap, &item); err != nil {
-				return &ReceiveMessageOutput[T]{}, &UnmarshalingAttributeError{Cause: err}
+				return nil, &UnmarshalingAttributeError{Cause: err}
 			}
-			isQueueSelected := item.isQueueSelected(c.clock.Now(), visibilityTimeout)
-			if c.useFIFO && isQueueSelected {
-				goto ExitLoop
-			}
-			if !isQueueSelected {
+			if item.isQueueSelected(c.clock.Now(), visibilityTimeout) {
+				if c.useFIFO {
+					return nil, &EmptyQueueError{}
+				}
+			} else {
 				selectedItem = &item
 				break
 			}
@@ -235,36 +262,30 @@ func (c *client[T]) ReceiveMessage(ctx context.Context, params *ReceiveMessageIn
 			break
 		}
 	}
-ExitLoop:
-	if selectedItem == nil || selectedItem.markAsProcessing(c.clock.Now(), visibilityTimeout) != err {
-		return &ReceiveMessageOutput[T]{}, &EmptyQueueError{}
+	if selectedItem == nil || selectedItem.markAsProcessing(c.clock.Now(), visibilityTimeout) != nil {
+		return nil, &EmptyQueueError{}
 	}
-	expr, err = expression.NewBuilder().
+	return selectedItem, nil
+}
+
+func (c *client[T]) processSelectedItem(ctx context.Context, item *Message[T]) (*Message[T], error) {
+	expr, err := expression.NewBuilder().
 		WithUpdate(expression.
 			Add(expression.Name("version"), expression.Value(1)).
 			Add(expression.Name("receive_count"), expression.Value(1)).
-			Set(expression.Name("last_updated_timestamp"), expression.Value(selectedItem.LastUpdatedTimestamp)).
-			Set(expression.Name("queue_peek_timestamp"), expression.Value(selectedItem.PeekFromQueueTimestamp)).
-			Set(expression.Name("status"), expression.Value(selectedItem.Status))).
-		WithCondition(expression.Name("version").Equal(expression.Value(selectedItem.Version))).
+			Set(expression.Name("last_updated_timestamp"), expression.Value(item.LastUpdatedTimestamp)).
+			Set(expression.Name("queue_peek_timestamp"), expression.Value(item.PeekFromQueueTimestamp)).
+			Set(expression.Name("status"), expression.Value(item.Status))).
+		WithCondition(expression.Name("version").Equal(expression.Value(item.Version))).
 		Build()
 	if err != nil {
-		return &ReceiveMessageOutput[T]{}, &BuildingExpressionError{Cause: err}
+		return nil, &BuildingExpressionError{Cause: err}
 	}
-	peeked, err := c.updateDynamoDBItem(ctx, selectedItem.ID, &expr)
+	updated, err := c.updateDynamoDBItem(ctx, item.ID, &expr)
 	if err != nil {
-		return &ReceiveMessageOutput[T]{}, err
+		return nil, err
 	}
-	return &ReceiveMessageOutput[T]{
-		Result: &Result{
-			ID:                   peeked.ID,
-			Status:               peeked.Status,
-			LastUpdatedTimestamp: peeked.LastUpdatedTimestamp,
-			Version:              peeked.Version,
-		},
-		PeekFromQueueTimestamp: peeked.PeekFromQueueTimestamp,
-		PeekedMessageObject:    peeked,
-	}, nil
+	return updated, nil
 }
 
 type UpdateMessageAsVisibleInput struct {
