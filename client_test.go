@@ -1401,6 +1401,7 @@ func TestDynamoMQClientGetMessage(t *testing.T) {
 				t.Fatalf("NewFromConfig() error = %v", err)
 				return
 			}
+
 			got, err := client.GetMessage(ctx, &GetMessageInput{
 				ID: tt.args.id,
 			})
@@ -1486,14 +1487,9 @@ func TestDynamoMQClientReplaceMessage(t *testing.T) {
 			tableName, raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			cfg, err := config.LoadDefaultConfig(ctx)
+			client, err := setupClient(ctx, WithTableName(tableName), WithAWSDynamoDBClient(raw), WithAWSVisibilityTimeout(1))
 			if err != nil {
-				t.Fatalf("failed to load aws config: %s\n", err)
-				return
-			}
-			client, err := NewFromConfig[test.MessageData](cfg, WithTableName(tableName), WithAWSDynamoDBClient(raw))
-			if err != nil {
-				t.Fatalf("NewFromConfig() error = %v", err)
+				t.Fatalf("failed to setup client: %s\n", err)
 				return
 			}
 			_, err = client.ReplaceMessage(ctx, &ReplaceMessageInput[test.MessageData]{
@@ -1538,7 +1534,7 @@ func TestDynamoMQClientListMessages(t *testing.T) {
 		wantErr  error
 	}{
 		{
-			name: "empty",
+			name: "should return empty list when no messages",
 			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t)
 			},
@@ -1549,29 +1545,18 @@ func TestDynamoMQClientListMessages(t *testing.T) {
 			wantErr: nil,
 		},
 		{
-			name: "list",
+			name: "should return list of messages when messages exist",
 			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
-				var puts []*types.PutRequest
-				for i := 0; i < 10; i++ {
-					puts = append(puts, &types.PutRequest{
-						Item: newTestMessageItemAsReady(fmt.Sprintf("A-%d", i),
-							time.Date(2023, 12, 1, 0, 0, i, 0, time.UTC)).
-							marshalMapUnsafe(),
-					})
-				}
+				messages := generateExpectedMessages("A",
+					time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC), 10)
+				puts := generatePutRequests(messages)
 				return setupDynamoDB(t, puts...)
 			},
 			args: args{
 				size: 10,
 			},
-			want: func() []*Message[test.MessageData] {
-				var messages []*Message[test.MessageData]
-				for i := 0; i < 10; i++ {
-					messages = append(messages, newTestMessageItemAsReady(fmt.Sprintf("A-%d", i),
-						time.Date(2023, 12, 1, 0, 0, i, 0, time.UTC)))
-				}
-				return messages
-			}(),
+			want: generateExpectedMessages("A",
+				time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC), 10),
 			wantErr: nil,
 		},
 	}
@@ -1583,36 +1568,77 @@ func TestDynamoMQClientListMessages(t *testing.T) {
 			tableName, raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			cfg, err := config.LoadDefaultConfig(ctx)
-			if err != nil {
-				t.Fatalf("failed to load aws config: %s\n", err)
-				return
+			optFns := []func(*ClientOptions){
+				WithTableName(tableName),
+				WithAWSDynamoDBClient(raw),
+				withClock(tt.sdkClock),
+				WithAWSVisibilityTimeout(1),
 			}
-			client, err := NewFromConfig[test.MessageData](cfg, WithTableName(tableName), WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
-			if err != nil {
-				t.Fatalf("NewFromConfig() error = %v", err)
-				return
-			}
-			result, err := client.ListMessages(ctx, &ListMessagesInput{
-				Size: tt.args.size,
-			})
-			if tt.wantErr != nil {
-				if !errors.Is(err, tt.wantErr) {
-					t.Errorf("ListMessages() error = %v, wantErr %v", err, tt.wantErr)
+			handleTestOperation(t, ctx, optFns, func(client Client[test.MessageData]) {
+				result, err := client.ListMessages(ctx, &ListMessagesInput{
+					Size: tt.args.size,
+				})
+				if err := checkExpectedError(t, err, tt.wantErr, "ListMessages()"); err != nil {
 					return
 				}
-				return
-			}
-			if err != nil {
-				t.Errorf("ListMessages() error = %v", err)
-				return
-			}
-			sort.Slice(result.Messages, func(i, j int) bool {
-				return result.Messages[i].LastUpdatedTimestamp < result.Messages[j].LastUpdatedTimestamp
+				sort.Slice(result.Messages, func(i, j int) bool {
+					return result.Messages[i].LastUpdatedTimestamp < result.Messages[j].LastUpdatedTimestamp
+				})
+				if !reflect.DeepEqual(result.Messages, tt.want) {
+					t.Errorf("ListMessages() got = %v, want %v", result, tt.want)
+				}
 			})
-			if !reflect.DeepEqual(result.Messages, tt.want) {
-				t.Errorf("ListMessages() got = %v, want %v", result, tt.want)
-			}
 		})
 	}
+}
+
+func generateExpectedMessages(idPrefix string, now time.Time, count int) []*Message[test.MessageData] {
+	messages := make([]*Message[test.MessageData], count)
+	for i := 0; i < count; i++ {
+		now = now.Add(time.Minute)
+		messages[i] = newTestMessageItemAsReady(fmt.Sprintf("%s-%d", idPrefix, i), now)
+	}
+	return messages
+}
+
+func generatePutRequests(messages []*Message[test.MessageData]) []*types.PutRequest {
+	var puts []*types.PutRequest
+	for _, message := range messages {
+		puts = append(puts, &types.PutRequest{
+			Item: message.marshalMapUnsafe(),
+		})
+	}
+	return puts
+}
+
+func checkExpectedError(t *testing.T, err, wantErr error, messagePrefix string) error {
+	if wantErr != nil {
+		if !errors.Is(err, wantErr) {
+			t.Errorf("%s error = %v, wantErr %v", messagePrefix, err, wantErr)
+			return err
+		}
+		return nil
+	}
+	if err != nil {
+		t.Errorf("%s unexpected error = %v", messagePrefix, err)
+		return err
+	}
+	return nil
+}
+
+func handleTestOperation(t *testing.T, ctx context.Context, optFns []func(*ClientOptions), operation func(Client[test.MessageData])) {
+	client, err := setupClient(ctx, optFns...)
+	if err != nil {
+		t.Fatalf("failed to setup client: %s\n", err)
+		return
+	}
+	operation(client)
+}
+
+func setupClient(ctx context.Context, optFns ...func(*ClientOptions)) (Client[test.MessageData], error) {
+	cfg, err := config.LoadDefaultConfig(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return NewFromConfig[test.MessageData](cfg, optFns...)
 }
