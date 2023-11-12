@@ -531,17 +531,34 @@ func (c *client[T]) GetQueueStats(ctx context.Context, params *GetQueueStatsInpu
 	if params == nil {
 		params = &GetQueueStatsInput{}
 	}
+
 	expr, err := expression.NewBuilder().
 		WithKeyCondition(expression.KeyEqual(expression.Key("queue_type"), expression.Value(QueueTypeStandard))).
 		Build()
 	if err != nil {
 		return &GetQueueStatsOutput{}, &BuildingExpressionError{Cause: err}
 	}
-	var totalQueueSize int
-	var exclusiveStartKey map[string]types.AttributeValue
-	var peekedRecords int
-	allQueueIDs := make([]string, 0)
-	processingIDs := make([]string, 0)
+
+	stats, err := c.queryAndCalculateQueueStats(ctx, expr)
+	if err != nil {
+		return &GetQueueStatsOutput{}, err
+	}
+
+	return stats, nil
+}
+
+func (c *client[T]) queryAndCalculateQueueStats(ctx context.Context, expr expression.Expression) (*GetQueueStatsOutput, error) {
+	var (
+		stats = &GetQueueStatsOutput{
+			First100IDsInQueue:         make([]string, 0),
+			First100SelectedIDsInQueue: make([]string, 0),
+			TotalRecordsInQueue:        0,
+			TotalRecordsInProcessing:   0,
+			TotalRecordsNotStarted:     0,
+		}
+		exclusiveStartKey map[string]types.AttributeValue
+	)
+
 	for {
 		queryOutput, err := c.dynamoDB.Query(ctx, &dynamodb.QueryInput{
 			IndexName:                 aws.String(c.queueingIndexName),
@@ -554,37 +571,49 @@ func (c *client[T]) GetQueueStats(ctx context.Context, params *GetQueueStatsInpu
 			ExclusiveStartKey:         exclusiveStartKey,
 		})
 		if err != nil {
-			return &GetQueueStatsOutput{}, handleDynamoDBError(err)
+			return nil, err
 		}
-		exclusiveStartKey = queryOutput.LastEvaluatedKey
-		for _, itemMap := range queryOutput.Items {
-			totalQueueSize++
-			item := Message[T]{}
-			err := attributevalue.UnmarshalMap(itemMap, &item)
-			if err != nil {
-				return &GetQueueStatsOutput{}, &UnmarshalingAttributeError{Cause: err}
-			}
-			if item.Status == StatusProcessing {
-				peekedRecords++
-				if len(processingIDs) < 100 {
-					processingIDs = append(processingIDs, item.ID)
-				}
-			}
-			if len(allQueueIDs) < 100 {
-				allQueueIDs = append(allQueueIDs, item.ID)
-			}
+
+		exclusiveStartKey, err = processQueryItemsForQueueStats[T](queryOutput.Items, stats)
+		if err != nil {
+			return nil, err
 		}
+
 		if exclusiveStartKey == nil {
 			break
 		}
 	}
-	return &GetQueueStatsOutput{
-		TotalRecordsInProcessing:   peekedRecords,
-		TotalRecordsInQueue:        totalQueueSize,
-		TotalRecordsNotStarted:     totalQueueSize - peekedRecords,
-		First100IDsInQueue:         allQueueIDs,
-		First100SelectedIDsInQueue: processingIDs,
-	}, nil
+	stats.TotalRecordsNotStarted = stats.TotalRecordsInQueue - stats.TotalRecordsInProcessing
+	return stats, nil
+}
+
+func processQueryItemsForQueueStats[T any](items []map[string]types.AttributeValue, stats *GetQueueStatsOutput) (map[string]types.AttributeValue, error) {
+	var exclusiveStartKey map[string]types.AttributeValue
+
+	for _, itemMap := range items {
+		stats.TotalRecordsInQueue++
+		item := Message[T]{}
+		err := attributevalue.UnmarshalMap(itemMap, &item)
+		if err != nil {
+			return nil, &UnmarshalingAttributeError{Cause: err}
+		}
+
+		updateQueueStatsFromItem[T](&item, stats)
+	}
+
+	return exclusiveStartKey, nil
+}
+
+func updateQueueStatsFromItem[T any](item *Message[T], stats *GetQueueStatsOutput) {
+	if item.Status == StatusProcessing {
+		stats.TotalRecordsInProcessing++
+		if len(stats.First100SelectedIDsInQueue) < 100 {
+			stats.First100SelectedIDsInQueue = append(stats.First100SelectedIDsInQueue, item.ID)
+		}
+	}
+	if len(stats.First100IDsInQueue) < 100 {
+		stats.First100IDsInQueue = append(stats.First100IDsInQueue, item.ID)
+	}
 }
 
 type GetDLQStatsInput struct{}
