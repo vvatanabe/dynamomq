@@ -222,12 +222,20 @@ func (c *client[T]) queryDynamoDB(ctx context.Context, params *ReceiveMessageInp
 		return nil, &BuildingExpressionError{Cause: err}
 	}
 
-	var (
-		exclusiveStartKey map[string]types.AttributeValue
-		selectedItem      *Message[T]
-	)
-	visibilityTimeout := time.Duration(c.visibilityTimeoutInMinutes) * time.Minute
+	selectedItem, err := c.executeQuery(ctx, expr)
+	if err != nil {
+		return nil, err
+	}
 
+	if selectedItem == nil || selectedItem.markAsProcessing(c.clock.Now(), c.getVisibilityTimeout()) != nil {
+		return nil, &EmptyQueueError{}
+	}
+	return selectedItem, nil
+}
+
+func (c *client[T]) executeQuery(ctx context.Context, expr expression.Expression) (*Message[T], error) {
+	var exclusiveStartKey map[string]types.AttributeValue
+	var selectedItem *Message[T]
 	for {
 		queryResult, err := c.dynamoDB.Query(ctx, &dynamodb.QueryInput{
 			IndexName:                 aws.String(c.queueingIndexName),
@@ -242,30 +250,42 @@ func (c *client[T]) queryDynamoDB(ctx context.Context, params *ReceiveMessageInp
 		if err != nil {
 			return nil, handleDynamoDBError(err)
 		}
+
 		exclusiveStartKey = queryResult.LastEvaluatedKey
 
-		for _, itemMap := range queryResult.Items {
-			item := Message[T]{}
-			if err = attributevalue.UnmarshalMap(itemMap, &item); err != nil {
-				return nil, &UnmarshalingAttributeError{Cause: err}
-			}
-			if item.isQueueSelected(c.clock.Now(), visibilityTimeout) {
-				if c.useFIFO {
-					return nil, &EmptyQueueError{}
-				}
-			} else {
-				selectedItem = &item
-				break
-			}
+		selectedItem, err = c.processQueryResult(queryResult)
+		if err != nil {
+			return nil, err
 		}
 		if selectedItem != nil || exclusiveStartKey == nil {
 			break
 		}
 	}
-	if selectedItem == nil || selectedItem.markAsProcessing(c.clock.Now(), visibilityTimeout) != nil {
-		return nil, &EmptyQueueError{}
+	return selectedItem, nil
+}
+
+func (c *client[T]) processQueryResult(queryResult *dynamodb.QueryOutput) (*Message[T], error) {
+	var selectedItem *Message[T]
+	visibilityTimeout := c.getVisibilityTimeout()
+
+	for _, itemMap := range queryResult.Items {
+		item := Message[T]{}
+		if err := attributevalue.UnmarshalMap(itemMap, &item); err != nil {
+			return nil, &UnmarshalingAttributeError{Cause: err}
+		}
+		if !item.isQueueSelected(c.clock.Now(), visibilityTimeout) {
+			selectedItem = &item
+			break
+		}
+		if c.useFIFO {
+			return nil, &EmptyQueueError{}
+		}
 	}
 	return selectedItem, nil
+}
+
+func (c *client[T]) getVisibilityTimeout() time.Duration {
+	return time.Duration(c.visibilityTimeoutInMinutes) * time.Minute
 }
 
 func (c *client[T]) processSelectedItem(ctx context.Context, item *Message[T]) (*Message[T], error) {
