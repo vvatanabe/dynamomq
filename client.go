@@ -573,8 +573,9 @@ func (c *client[T]) queryAndCalculateQueueStats(ctx context.Context, expr expres
 		if err != nil {
 			return nil, err
 		}
+		exclusiveStartKey = queryOutput.LastEvaluatedKey
 
-		exclusiveStartKey, err = processQueryItemsForQueueStats[T](queryOutput.Items, stats)
+		err = processQueryItemsForQueueStats[T](queryOutput.Items, stats)
 		if err != nil {
 			return nil, err
 		}
@@ -587,21 +588,18 @@ func (c *client[T]) queryAndCalculateQueueStats(ctx context.Context, expr expres
 	return stats, nil
 }
 
-func processQueryItemsForQueueStats[T any](items []map[string]types.AttributeValue, stats *GetQueueStatsOutput) (map[string]types.AttributeValue, error) {
-	var exclusiveStartKey map[string]types.AttributeValue
-
+func processQueryItemsForQueueStats[T any](items []map[string]types.AttributeValue, stats *GetQueueStatsOutput) error {
 	for _, itemMap := range items {
 		stats.TotalRecordsInQueue++
 		item := Message[T]{}
 		err := attributevalue.UnmarshalMap(itemMap, &item)
 		if err != nil {
-			return nil, &UnmarshalingAttributeError{Cause: err}
+			return &UnmarshalingAttributeError{Cause: err}
 		}
 
 		updateQueueStatsFromItem[T](&item, stats)
 	}
-
-	return exclusiveStartKey, nil
+	return nil
 }
 
 func updateQueueStatsFromItem[T any](item *Message[T], stats *GetQueueStatsOutput) {
@@ -634,11 +632,25 @@ func (c *client[T]) GetDLQStats(ctx context.Context, params *GetDLQStatsInput) (
 	if err != nil {
 		return &GetDLQStatsOutput{}, &BuildingExpressionError{Cause: err}
 	}
-	var totalDLQSize int
-	var lastEvaluatedKey map[string]types.AttributeValue
-	listBANs := make([]string, 0)
+
+	stats, err := c.queryAndCalculateDLQStats(ctx, expr)
+	if err != nil {
+		return &GetDLQStatsOutput{}, err
+	}
+
+	return stats, nil
+}
+
+func (c *client[T]) queryAndCalculateDLQStats(ctx context.Context, expr expression.Expression) (*GetDLQStatsOutput, error) {
+	var (
+		stats = &GetDLQStatsOutput{
+			First100IDsInQueue: make([]string, 0),
+			TotalRecordsInDLQ:  0,
+		}
+		lastEvaluatedKey map[string]types.AttributeValue
+	)
 	for {
-		resp, err := c.dynamoDB.Query(ctx, &dynamodb.QueryInput{
+		queryOutput, err := c.dynamoDB.Query(ctx, &dynamodb.QueryInput{
 			IndexName:                 aws.String(c.queueingIndexName),
 			TableName:                 aws.String(c.tableName),
 			ExpressionAttributeNames:  expr.Names(),
@@ -651,26 +663,33 @@ func (c *client[T]) GetDLQStats(ctx context.Context, params *GetDLQStatsInput) (
 		if err != nil {
 			return &GetDLQStatsOutput{}, handleDynamoDBError(err)
 		}
-		lastEvaluatedKey = resp.LastEvaluatedKey
-		for _, itemMap := range resp.Items {
-			totalDLQSize++
-			if len(listBANs) < 100 {
-				item := Message[T]{}
-				err := attributevalue.UnmarshalMap(itemMap, &item)
-				if err != nil {
-					return &GetDLQStatsOutput{}, &UnmarshalingAttributeError{Cause: err}
-				}
-				listBANs = append(listBANs, item.ID)
-			}
+		lastEvaluatedKey = queryOutput.LastEvaluatedKey
+
+		err = processQueryItemsForDLQStats[T](queryOutput.Items, stats)
+		if err != nil {
+			return nil, err
 		}
+
 		if lastEvaluatedKey == nil {
 			break
 		}
 	}
-	return &GetDLQStatsOutput{
-		First100IDsInQueue: listBANs,
-		TotalRecordsInDLQ:  totalDLQSize,
-	}, nil
+	return stats, nil
+}
+
+func processQueryItemsForDLQStats[T any](items []map[string]types.AttributeValue, stats *GetDLQStatsOutput) error {
+	for _, itemMap := range items {
+		stats.TotalRecordsInDLQ++
+		if len(stats.First100IDsInQueue) < 100 {
+			item := Message[T]{}
+			err := attributevalue.UnmarshalMap(itemMap, &item)
+			if err != nil {
+				return &UnmarshalingAttributeError{Cause: err}
+			}
+			stats.First100IDsInQueue = append(stats.First100IDsInQueue, item.ID)
+		}
+	}
+	return nil
 }
 
 type GetMessageInput struct {
