@@ -1432,7 +1432,7 @@ func TestDynamoMQClientReplaceMessage(t *testing.T) {
 		wantErr error
 	}{
 		{
-			name: "IDNotProvidedError",
+			name: "should return IDNotProvidedError when id is empty",
 			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
@@ -1449,7 +1449,7 @@ func TestDynamoMQClientReplaceMessage(t *testing.T) {
 			wantErr: &IDNotProvidedError{},
 		},
 		{
-			name: "duplicated id",
+			name: "should return message when id is duplicated",
 			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
@@ -1458,13 +1458,15 @@ func TestDynamoMQClientReplaceMessage(t *testing.T) {
 				)
 			},
 			args: args{
-				message: newTestMessageItemAsReady("A-101", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)),
+				message: newTestMessageItemAsReady("A-101",
+					date(2023, 12, 1, 0, 0, 0)),
 			},
-			want:    newTestMessageItemAsReady("A-101", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)),
+			want: newTestMessageItemAsReady("A-101",
+				date(2023, 12, 1, 0, 0, 0)),
 			wantErr: nil,
 		},
 		{
-			name: "unique id",
+			name: "should return message when id is unique",
 			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
@@ -1473,9 +1475,11 @@ func TestDynamoMQClientReplaceMessage(t *testing.T) {
 				)
 			},
 			args: args{
-				message: newTestMessageItemAsReady("B-202", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)),
+				message: newTestMessageItemAsReady("B-202",
+					date(2023, 12, 1, 0, 0, 0)),
 			},
-			want:    newTestMessageItemAsReady("B-202", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)),
+			want: newTestMessageItemAsReady("B-202",
+				date(2023, 12, 1, 0, 0, 0)),
 			wantErr: nil,
 		},
 	}
@@ -1487,35 +1491,30 @@ func TestDynamoMQClientReplaceMessage(t *testing.T) {
 			tableName, raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			client, err := setupClient(ctx, WithTableName(tableName), WithAWSDynamoDBClient(raw), WithAWSVisibilityTimeout(1))
-			if err != nil {
-				t.Fatalf("failed to setup client: %s\n", err)
-				return
+			optFns := []func(*ClientOptions){
+				WithTableName(tableName),
+				WithAWSDynamoDBClient(raw),
+				WithAWSVisibilityTimeout(1),
 			}
-			_, err = client.ReplaceMessage(ctx, &ReplaceMessageInput[test.MessageData]{
-				Message: tt.args.message,
-			})
-			if tt.wantErr != nil {
-				if !errors.Is(err, tt.wantErr) {
-					t.Errorf("ReplaceMessage() error = %v, wantErr %v", err, tt.wantErr)
+			handleTestOperation(t, ctx, optFns, func(client Client[test.MessageData]) {
+				_, err := client.ReplaceMessage(ctx, &ReplaceMessageInput[test.MessageData]{
+					Message: tt.args.message,
+				})
+				err = checkExpectedError(t, err, tt.wantErr, "ReplaceMessage()")
+				if err != nil || tt.wantErr != nil {
 					return
 				}
-				return
-			}
-			if err != nil {
-				t.Errorf("ReplaceMessage() error = %v", err)
-				return
-			}
-			got, err := client.GetMessage(ctx, &GetMessageInput{
-				ID: tt.args.message.ID,
+				got, err := client.GetMessage(ctx, &GetMessageInput{
+					ID: tt.args.message.ID,
+				})
+				if err != nil {
+					t.Errorf("GetMessage() error = %v", err)
+					return
+				}
+				if !reflect.DeepEqual(got.Message, tt.want) {
+					t.Errorf("GetMessage() got = %v, want %v", got.Message, tt.want)
+				}
 			})
-			if err != nil {
-				t.Errorf("GetMessage() error = %v", err)
-				return
-			}
-			if !reflect.DeepEqual(got.Message, tt.want) {
-				t.Errorf("GetMessage() got = %v, want %v", got.Message, tt.want)
-			}
 		})
 	}
 }
@@ -1548,7 +1547,7 @@ func TestDynamoMQClientListMessages(t *testing.T) {
 			name: "should return list of messages when messages exist",
 			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				messages := generateExpectedMessages("A",
-					time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC), 10)
+					date(2023, 12, 1, 0, 0, 0), 10)
 				puts := generatePutRequests(messages)
 				return setupDynamoDB(t, puts...)
 			},
@@ -1556,7 +1555,7 @@ func TestDynamoMQClientListMessages(t *testing.T) {
 				size: 10,
 			},
 			want: generateExpectedMessages("A",
-				time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC), 10),
+				date(2023, 12, 1, 0, 0, 0), 10),
 			wantErr: nil,
 		},
 	}
@@ -1578,7 +1577,8 @@ func TestDynamoMQClientListMessages(t *testing.T) {
 				result, err := client.ListMessages(ctx, &ListMessagesInput{
 					Size: tt.args.size,
 				})
-				if err := checkExpectedError(t, err, tt.wantErr, "ListMessages()"); err != nil {
+				err = checkExpectedError(t, err, tt.wantErr, "ListMessages()")
+				if err != nil || tt.wantErr != nil {
 					return
 				}
 				sort.Slice(result.Messages, func(i, j int) bool {
@@ -1641,4 +1641,8 @@ func setupClient(ctx context.Context, optFns ...func(*ClientOptions)) (Client[te
 		return nil, err
 	}
 	return NewFromConfig[test.MessageData](cfg, optFns...)
+}
+
+func date(year int, month time.Month, day, hour, min, sec int) time.Time {
+	return time.Date(year, month, day, hour, min, sec, 0, time.UTC)
 }
