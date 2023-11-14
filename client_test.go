@@ -367,179 +367,90 @@ func TestDynamoMQClientReceiveMessage(t *testing.T) {
 	}
 }
 
+func newMessageFromReadyToProcessing(id string,
+	readyTime time.Time, processingTime time.Time) *ReceiveMessageOutput[test.MessageData] {
+	s := newTestMessageItemAsReady(id, readyTime)
+	_ = s.markAsProcessing(processingTime, 0)
+	s.Version = 2
+	s.ReceiveCount = 1
+	r := &ReceiveMessageOutput[test.MessageData]{
+		Result: &Result{
+			ID:                   s.ID,
+			Status:               s.Status,
+			LastUpdatedTimestamp: s.LastUpdatedTimestamp,
+			Version:              s.Version,
+		},
+		PeekFromQueueTimestamp: s.PeekFromQueueTimestamp,
+		PeekedMessageObject:    s,
+	}
+	return r
+}
+
 func TestDynamoMQClientReceiveMessageUseFIFO(t *testing.T) {
 	t.Parallel()
 	tableName, raw, clean := setupDynamoDB(t,
 		&types.PutRequest{
-			Item: newTestMessageItemAsReady("A-101", time.Date(2023, 12, 1, 0, 0, 3, 0, time.UTC)).marshalMapUnsafe(),
+			Item: newTestMessageItemAsReady("A-101", date(2023, 12, 1, 0, 0, 3)).marshalMapUnsafe(),
 		},
 		&types.PutRequest{
-			Item: newTestMessageItemAsReady("A-202", time.Date(2023, 12, 1, 0, 0, 2, 0, time.UTC)).marshalMapUnsafe(),
+			Item: newTestMessageItemAsReady("A-202", date(2023, 12, 1, 0, 0, 2)).marshalMapUnsafe(),
 		},
 		&types.PutRequest{
-			Item: newTestMessageItemAsReady("A-303", time.Date(2023, 12, 1, 0, 0, 1, 0, time.UTC)).marshalMapUnsafe(),
+			Item: newTestMessageItemAsReady("A-303", date(2023, 12, 1, 0, 0, 1)).marshalMapUnsafe(),
 		},
 	)
 	defer clean()
 
-	now := time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC)
-
-	ctx := context.Background()
-	cfg, err := config.LoadDefaultConfig(ctx)
-	if err != nil {
-		t.Fatalf("failed to load aws config: %s\n", err)
-		return
-	}
-	client, err := NewFromConfig[test.MessageData](cfg, WithTableName(tableName),
+	now := date(2023, 12, 1, 0, 0, 10)
+	optFns := []func(*ClientOptions){
+		WithTableName(tableName),
 		WithAWSDynamoDBClient(raw),
 		withClock(mockClock{
 			t: now,
 		}),
 		WithAWSVisibilityTimeout(1),
-		WithUseFIFO(true))
-	if err != nil {
-		t.Fatalf("NewFromConfig() error = %v", err)
-		return
+		WithUseFIFO(true),
 	}
 
-	want1 := func() *ReceiveMessageOutput[test.MessageData] {
-		s := newTestMessageItemAsReady("A-303", time.Date(2023, 12, 1, 0, 0, 1, 0, time.UTC))
-		err := s.markAsProcessing(now, 0)
-		if err != nil {
-			panic(err)
-		}
-		s.Version = 2
-		s.ReceiveCount = 1
-		r := &ReceiveMessageOutput[test.MessageData]{
-			Result: &Result{
-				ID:                   s.ID,
-				Status:               s.Status,
-				LastUpdatedTimestamp: s.LastUpdatedTimestamp,
-				Version:              s.Version,
-			},
-			PeekFromQueueTimestamp: s.PeekFromQueueTimestamp,
-			PeekedMessageObject:    s,
-		}
-		return r
-	}()
+	wants := []*ReceiveMessageOutput[test.MessageData]{
+		newMessageFromReadyToProcessing("A-303", date(2023, 12, 1, 0, 0, 1), now),
+		newMessageFromReadyToProcessing("A-202", date(2023, 12, 1, 0, 0, 2), now),
+		newMessageFromReadyToProcessing("A-101", date(2023, 12, 1, 0, 0, 3), now),
+	}
 
-	result, err := client.ReceiveMessage(ctx, &ReceiveMessageInput{})
-	if err != nil {
-		t.Errorf("ReceiveMessage() 1 error = %v", err)
-		return
-	}
-	if !reflect.DeepEqual(result, want1) {
-		v1, _ := json.Marshal(result)
-		v2, _ := json.Marshal(want1)
-		t.Errorf("ReceiveMessage() 1 got = %v, want %v", string(v1), string(v2))
-	}
-	_, err = client.ReceiveMessage(ctx, &ReceiveMessageInput{})
-	if !errors.Is(err, &EmptyQueueError{}) {
-		t.Errorf("ReceiveMessage() 2 error = %v, wantErr %v", err, &EmptyQueueError{})
-		return
-	}
-	_, err = client.DeleteMessage(ctx, &DeleteMessageInput{
-		ID: result.ID,
+	ctx := context.Background()
+	handleTestOperation(t, ctx, optFns, func(client Client[test.MessageData]) {
+		for i, want := range wants {
+			result, err := client.ReceiveMessage(ctx, &ReceiveMessageInput{})
+			if err != nil {
+				t.Errorf("ReceiveMessage() [%d] error = %v", i, err)
+				return
+			}
+			if !reflect.DeepEqual(result, want) {
+				v1, _ := json.Marshal(result)
+				v2, _ := json.Marshal(want)
+				t.Errorf("ReceiveMessage() [%d] got = %v, want %v", i, string(v1), string(v2))
+			}
+			_, err = client.ReceiveMessage(ctx, &ReceiveMessageInput{})
+			if !errors.Is(err, &EmptyQueueError{}) {
+				t.Errorf("ReceiveMessage() [%d] error = %v, wantErr %v", i, err, &EmptyQueueError{})
+				return
+			}
+			_, err = client.DeleteMessage(ctx, &DeleteMessageInput{
+				ID: result.ID,
+			})
+			if err != nil {
+				t.Errorf("DeleteMessage() [%d] error = %v", i, err)
+				return
+			}
+		}
+
+		_, err := client.ReceiveMessage(ctx, &ReceiveMessageInput{})
+		if !errors.Is(err, &EmptyQueueError{}) {
+			t.Errorf("ReceiveMessage() [last] error = %v, wantErr %v", err, &EmptyQueueError{})
+			return
+		}
 	})
-	if err != nil {
-		t.Errorf("Done() 1 error = %v", err)
-		return
-	}
-
-	want2 := func() *ReceiveMessageOutput[test.MessageData] {
-		s := newTestMessageItemAsReady("A-202", time.Date(2023, 12, 1, 0, 0, 2, 0, time.UTC))
-		err := s.markAsProcessing(now, 0)
-		if err != nil {
-			panic(err)
-		}
-		s.Version = 2
-		s.ReceiveCount = 1
-		r := &ReceiveMessageOutput[test.MessageData]{
-			Result: &Result{
-				ID:                   s.ID,
-				Status:               s.Status,
-				LastUpdatedTimestamp: s.LastUpdatedTimestamp,
-				Version:              s.Version,
-			},
-			PeekFromQueueTimestamp: s.PeekFromQueueTimestamp,
-			PeekedMessageObject:    s,
-		}
-		return r
-	}()
-
-	result, err = client.ReceiveMessage(ctx, &ReceiveMessageInput{})
-	if err != nil {
-		t.Errorf("ReceiveMessage() 3 error = %v", err)
-		return
-	}
-	if !reflect.DeepEqual(result, want2) {
-		v1, _ := json.Marshal(result)
-		v2, _ := json.Marshal(want2)
-		t.Errorf("ReceiveMessage() 3 got = %v, want %v", string(v1), string(v2))
-	}
-
-	_, err = client.ReceiveMessage(ctx, &ReceiveMessageInput{})
-	if !errors.Is(err, &EmptyQueueError{}) {
-		t.Errorf("ReceiveMessage() 4 error = %v, wantErr %v", err, &EmptyQueueError{})
-		return
-	}
-	_, err = client.DeleteMessage(ctx, &DeleteMessageInput{
-		ID: result.ID,
-	})
-	if err != nil {
-		t.Errorf("Done() 2 error = %v", err)
-		return
-	}
-
-	want3 := func() *ReceiveMessageOutput[test.MessageData] {
-		s := newTestMessageItemAsReady("A-101", time.Date(2023, 12, 1, 0, 0, 3, 0, time.UTC))
-		err := s.markAsProcessing(now, 0)
-		if err != nil {
-			panic(err)
-		}
-		s.Version = 2
-		s.ReceiveCount = 1
-		r := &ReceiveMessageOutput[test.MessageData]{
-			Result: &Result{
-				ID:                   s.ID,
-				Status:               s.Status,
-				LastUpdatedTimestamp: s.LastUpdatedTimestamp,
-				Version:              s.Version,
-			},
-			PeekFromQueueTimestamp: s.PeekFromQueueTimestamp,
-			PeekedMessageObject:    s,
-		}
-		return r
-	}()
-
-	result, err = client.ReceiveMessage(ctx, &ReceiveMessageInput{})
-	if err != nil {
-		t.Errorf("ReceiveMessage() 5 error = %v", err)
-		return
-	}
-	if !reflect.DeepEqual(result, want3) {
-		v1, _ := json.Marshal(result)
-		v2, _ := json.Marshal(want3)
-		t.Errorf("ReceiveMessage() 5 got = %v, want %v", string(v1), string(v2))
-	}
-
-	_, err = client.ReceiveMessage(ctx, &ReceiveMessageInput{})
-	if !errors.Is(err, &EmptyQueueError{}) {
-		t.Errorf("ReceiveMessage() 6 error = %v, wantErr %v", err, &EmptyQueueError{})
-		return
-	}
-	_, err = client.DeleteMessage(ctx, &DeleteMessageInput{
-		ID: result.ID,
-	})
-	if err != nil {
-		t.Errorf("Done() 3 error = %v", err)
-		return
-	}
-	_, err = client.ReceiveMessage(ctx, &ReceiveMessageInput{})
-	if !errors.Is(err, &EmptyQueueError{}) {
-		t.Errorf("ReceiveMessage() 7 error = %v, wantErr %v", err, &EmptyQueueError{})
-		return
-	}
 }
 
 func TestDynamoMQClientReceiveMessageNotUseFIFO(t *testing.T) {
@@ -570,28 +481,10 @@ func TestDynamoMQClientReceiveMessageNotUseFIFO(t *testing.T) {
 		WithAWSVisibilityTimeout(1),
 	}
 
-	newTestMessage := func(id string, before time.Time, after time.Time) *ReceiveMessageOutput[test.MessageData] {
-		s := newTestMessageItemAsReady(id, before)
-		_ = s.markAsProcessing(after, 0)
-		s.Version = 2
-		s.ReceiveCount = 1
-		r := &ReceiveMessageOutput[test.MessageData]{
-			Result: &Result{
-				ID:                   s.ID,
-				Status:               s.Status,
-				LastUpdatedTimestamp: s.LastUpdatedTimestamp,
-				Version:              s.Version,
-			},
-			PeekFromQueueTimestamp: s.PeekFromQueueTimestamp,
-			PeekedMessageObject:    s,
-		}
-		return r
-	}
-
 	wants := []*ReceiveMessageOutput[test.MessageData]{
-		newTestMessage("A-303", date(2023, 12, 1, 0, 0, 1), now),
-		newTestMessage("A-202", date(2023, 12, 1, 0, 0, 2), now),
-		newTestMessage("A-101", date(2023, 12, 1, 0, 0, 3), now),
+		newMessageFromReadyToProcessing("A-303", date(2023, 12, 1, 0, 0, 1), now),
+		newMessageFromReadyToProcessing("A-202", date(2023, 12, 1, 0, 0, 2), now),
+		newMessageFromReadyToProcessing("A-101", date(2023, 12, 1, 0, 0, 3), now),
 	}
 
 	ctx := context.Background()
