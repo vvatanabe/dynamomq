@@ -419,38 +419,38 @@ func TestDynamoMQClientReceiveMessageUseFIFO(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	handleTestOperation(t, ctx, optFns, func(client Client[test.MessageData]) {
-		for i, want := range wants {
-			result, err := client.ReceiveMessage(ctx, &ReceiveMessageInput{})
-			if err != nil {
-				t.Errorf("ReceiveMessage() [%d] error = %v", i, err)
-				return
-			}
-			if !reflect.DeepEqual(result, want) {
-				v1, _ := json.Marshal(result)
-				v2, _ := json.Marshal(want)
-				t.Errorf("ReceiveMessage() [%d] got = %v, want %v", i, string(v1), string(v2))
-			}
-			_, err = client.ReceiveMessage(ctx, &ReceiveMessageInput{})
-			if !errors.Is(err, &EmptyQueueError{}) {
-				t.Errorf("ReceiveMessage() [%d] error = %v, wantErr %v", i, err, &EmptyQueueError{})
-				return
-			}
-			_, err = client.DeleteMessage(ctx, &DeleteMessageInput{
-				ID: result.ID,
-			})
-			if err != nil {
-				t.Errorf("DeleteMessage() [%d] error = %v", i, err)
-				return
-			}
-		}
+	client := prepareTestClient(t, ctx, optFns)
 
-		_, err := client.ReceiveMessage(ctx, &ReceiveMessageInput{})
-		if !errors.Is(err, &EmptyQueueError{}) {
-			t.Errorf("ReceiveMessage() [last] error = %v, wantErr %v", err, &EmptyQueueError{})
+	for i, want := range wants {
+		result, err := client.ReceiveMessage(ctx, &ReceiveMessageInput{})
+		if err != nil {
+			t.Errorf("ReceiveMessage() [%d] error = %v", i, err)
 			return
 		}
-	})
+		if !reflect.DeepEqual(result, want) {
+			v1, _ := json.Marshal(result)
+			v2, _ := json.Marshal(want)
+			t.Errorf("ReceiveMessage() [%d] got = %v, want %v", i, string(v1), string(v2))
+		}
+		_, err = client.ReceiveMessage(ctx, &ReceiveMessageInput{})
+		if !errors.Is(err, &EmptyQueueError{}) {
+			t.Errorf("ReceiveMessage() [%d] error = %v, wantErr %v", i, err, &EmptyQueueError{})
+			return
+		}
+		_, err = client.DeleteMessage(ctx, &DeleteMessageInput{
+			ID: result.ID,
+		})
+		if err != nil {
+			t.Errorf("DeleteMessage() [%d] error = %v", i, err)
+			return
+		}
+	}
+
+	_, err := client.ReceiveMessage(ctx, &ReceiveMessageInput{})
+	if !errors.Is(err, &EmptyQueueError{}) {
+		t.Errorf("ReceiveMessage() [last] error = %v, wantErr %v", err, &EmptyQueueError{})
+		return
+	}
 }
 
 func TestDynamoMQClientReceiveMessageNotUseFIFO(t *testing.T) {
@@ -488,25 +488,25 @@ func TestDynamoMQClientReceiveMessageNotUseFIFO(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	handleTestOperation(t, ctx, optFns, func(client Client[test.MessageData]) {
-		for i, want := range wants {
-			result, err := client.ReceiveMessage(ctx, &ReceiveMessageInput{})
-			if err != nil {
-				t.Errorf("ReceiveMessage() [%d] error = %v", i, err)
-				return
-			}
-			if !reflect.DeepEqual(result, want) {
-				v1, _ := json.Marshal(result)
-				v2, _ := json.Marshal(want)
-				t.Errorf("ReceiveMessage() [%d] got = %v, want %v", i, string(v1), string(v2))
-			}
-		}
-		_, err := client.ReceiveMessage(ctx, &ReceiveMessageInput{})
-		if !errors.Is(err, &EmptyQueueError{}) {
-			t.Errorf("ReceiveMessage() [last] error = %v, wantErr %v", err, &EmptyQueueError{})
+	client := prepareTestClient(t, ctx, optFns)
+
+	for i, want := range wants {
+		result, err := client.ReceiveMessage(ctx, &ReceiveMessageInput{})
+		if err != nil {
+			t.Errorf("ReceiveMessage() [%d] error = %v", i, err)
 			return
 		}
-	})
+		if !reflect.DeepEqual(result, want) {
+			v1, _ := json.Marshal(result)
+			v2, _ := json.Marshal(want)
+			t.Errorf("ReceiveMessage() [%d] got = %v, want %v", i, string(v1), string(v2))
+		}
+	}
+	_, err := client.ReceiveMessage(ctx, &ReceiveMessageInput{})
+	if !errors.Is(err, &EmptyQueueError{}) {
+		t.Errorf("ReceiveMessage() [last] error = %v, wantErr %v", err, &EmptyQueueError{})
+		return
+	}
 }
 
 func TestDynamoMQClientUpdateMessageAsVisible(t *testing.T) {
@@ -603,18 +603,19 @@ func TestDynamoMQClientUpdateMessageAsVisible(t *testing.T) {
 				withClock(tt.sdkClock),
 				WithAWSVisibilityTimeout(1),
 			}
-			handleTestOperation(t, ctx, optFns, func(client Client[test.MessageData]) {
-				result, err := client.UpdateMessageAsVisible(ctx, &UpdateMessageAsVisibleInput{
-					ID: tt.args.id,
-				})
-				err = checkExpectedError(t, err, tt.wantErr, "UpdateMessageAsVisible()")
-				if err != nil || tt.wantErr != nil {
-					return
-				}
-				if !reflect.DeepEqual(result, tt.want) {
-					t.Errorf("UpdateMessageAsVisible() got = %v, want %v", result, tt.want)
-				}
+
+			client := prepareTestClient(t, ctx, optFns)
+
+			result, err := client.UpdateMessageAsVisible(ctx, &UpdateMessageAsVisibleInput{
+				ID: tt.args.id,
 			})
+			err = checkExpectedError(t, err, tt.wantErr, "UpdateMessageAsVisible()")
+			if err != nil || tt.wantErr != nil {
+				return
+			}
+			if !reflect.DeepEqual(result, tt.want) {
+				t.Errorf("UpdateMessageAsVisible() got = %v, want %v", result, tt.want)
+			}
 		})
 	}
 }
@@ -688,12 +689,13 @@ func TestDynamoMQClientDeleteMessage(t *testing.T) {
 				withClock(tt.sdkClock),
 				WithAWSVisibilityTimeout(1),
 			}
-			handleTestOperation(t, ctx, optFns, func(client Client[test.MessageData]) {
-				_, err := client.DeleteMessage(ctx, &DeleteMessageInput{
-					ID: tt.args.id,
-				})
-				err = checkExpectedError(t, err, tt.want, "DeleteMessage()")
+
+			client := prepareTestClient(t, ctx, optFns)
+
+			_, err := client.DeleteMessage(ctx, &DeleteMessageInput{
+				ID: tt.args.id,
 			})
+			err = checkExpectedError(t, err, tt.want, "DeleteMessage()")
 		})
 	}
 }
@@ -815,16 +817,17 @@ func TestDynamoMQClientMoveMessageToDLQ(t *testing.T) {
 				withClock(tt.sdkClock),
 				WithAWSVisibilityTimeout(1),
 			}
-			handleTestOperation(t, ctx, optFns, func(client Client[test.MessageData]) {
-				result, err := client.MoveMessageToDLQ(ctx, tt.args)
-				err = checkExpectedError(t, err, tt.wantErr, "MoveMessageToDLQ()")
-				if err != nil || tt.wantErr != nil {
-					return
-				}
-				if !reflect.DeepEqual(result, tt.want) {
-					t.Errorf("MoveMessageToDLQ() got = %v, want %v", result, tt.want)
-				}
-			})
+
+			client := prepareTestClient(t, ctx, optFns)
+
+			result, err := client.MoveMessageToDLQ(ctx, tt.args)
+			err = checkExpectedError(t, err, tt.wantErr, "MoveMessageToDLQ()")
+			if err != nil || tt.wantErr != nil {
+				return
+			}
+			if !reflect.DeepEqual(result, tt.want) {
+				t.Errorf("MoveMessageToDLQ() got = %v, want %v", result, tt.want)
+			}
 		})
 	}
 }
@@ -911,18 +914,19 @@ func TestDynamoMQClientRedriveMessage(t *testing.T) {
 				withClock(tt.sdkClock),
 				WithAWSVisibilityTimeout(1),
 			}
-			handleTestOperation(t, ctx, optFns, func(client Client[test.MessageData]) {
-				result, err := client.RedriveMessage(ctx, &RedriveMessageInput{
-					ID: tt.args.id,
-				})
-				err = checkExpectedError(t, err, tt.wantErr, "RedriveMessage()")
-				if err != nil || tt.wantErr != nil {
-					return
-				}
-				if !reflect.DeepEqual(result, tt.want) {
-					t.Errorf("RedriveMessage() got = %v, want %v", result, tt.want)
-				}
+
+			client := prepareTestClient(t, ctx, optFns)
+
+			result, err := client.RedriveMessage(ctx, &RedriveMessageInput{
+				ID: tt.args.id,
 			})
+			err = checkExpectedError(t, err, tt.wantErr, "RedriveMessage()")
+			if err != nil || tt.wantErr != nil {
+				return
+			}
+			if !reflect.DeepEqual(result, tt.want) {
+				t.Errorf("RedriveMessage() got = %v, want %v", result, tt.want)
+			}
 		})
 	}
 }
@@ -1022,16 +1026,17 @@ func TestDynamoMQClientGetQueueStats(t *testing.T) {
 				WithAWSDynamoDBClient(raw),
 				WithAWSVisibilityTimeout(1),
 			}
-			handleTestOperation(t, ctx, optFns, func(client Client[test.MessageData]) {
-				got, err := client.GetQueueStats(ctx, &GetQueueStatsInput{})
-				err = checkExpectedError(t, err, tt.wantErr, "GetQueueStats()")
-				if err != nil || tt.wantErr != nil {
-					return
-				}
-				if !reflect.DeepEqual(got, tt.want) {
-					t.Errorf("GetQueueStats() got = %v, want %v", got, tt.want)
-				}
-			})
+
+			client := prepareTestClient(t, ctx, optFns)
+
+			got, err := client.GetQueueStats(ctx, &GetQueueStatsInput{})
+			err = checkExpectedError(t, err, tt.wantErr, "GetQueueStats()")
+			if err != nil || tt.wantErr != nil {
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("GetQueueStats() got = %v, want %v", got, tt.want)
+			}
 		})
 	}
 }
@@ -1107,16 +1112,17 @@ func TestDynamoMQClientGetDLQStats(t *testing.T) {
 				WithAWSDynamoDBClient(raw),
 				WithAWSVisibilityTimeout(1),
 			}
-			handleTestOperation(t, ctx, optFns, func(client Client[test.MessageData]) {
-				got, err := client.GetDLQStats(ctx, &GetDLQStatsInput{})
-				err = checkExpectedError(t, err, tt.wantErr, "GetDLQStats()")
-				if err != nil || tt.wantErr != nil {
-					return
-				}
-				if !reflect.DeepEqual(got, tt.want) {
-					t.Errorf("GetDLQStats() got = %v, want %v", got, tt.want)
-				}
-			})
+
+			client := prepareTestClient(t, ctx, optFns)
+
+			got, err := client.GetDLQStats(ctx, &GetDLQStatsInput{})
+			err = checkExpectedError(t, err, tt.wantErr, "GetDLQStats()")
+			if err != nil || tt.wantErr != nil {
+				return
+			}
+			if !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("GetDLQStats() got = %v, want %v", got, tt.want)
+			}
 		})
 	}
 }
@@ -1197,18 +1203,19 @@ func TestDynamoMQClientGetMessage(t *testing.T) {
 				WithAWSDynamoDBClient(raw),
 				WithAWSVisibilityTimeout(1),
 			}
-			handleTestOperation(t, ctx, optFns, func(client Client[test.MessageData]) {
-				got, err := client.GetMessage(ctx, &GetMessageInput{
-					ID: tt.args.id,
-				})
-				err = checkExpectedError(t, err, tt.wantErr, "GetMessage()")
-				if err != nil || tt.wantErr != nil {
-					return
-				}
-				if !reflect.DeepEqual(got.Message, tt.want) {
-					t.Errorf("GetMessage() got = %v, want %v", got.Message, tt.want)
-				}
+
+			client := prepareTestClient(t, ctx, optFns)
+
+			got, err := client.GetMessage(ctx, &GetMessageInput{
+				ID: tt.args.id,
 			})
+			err = checkExpectedError(t, err, tt.wantErr, "GetMessage()")
+			if err != nil || tt.wantErr != nil {
+				return
+			}
+			if !reflect.DeepEqual(got.Message, tt.want) {
+				t.Errorf("GetMessage() got = %v, want %v", got.Message, tt.want)
+			}
 		})
 	}
 }
@@ -1290,25 +1297,26 @@ func TestDynamoMQClientReplaceMessage(t *testing.T) {
 				WithAWSDynamoDBClient(raw),
 				WithAWSVisibilityTimeout(1),
 			}
-			handleTestOperation(t, ctx, optFns, func(client Client[test.MessageData]) {
-				_, err := client.ReplaceMessage(ctx, &ReplaceMessageInput[test.MessageData]{
-					Message: tt.args.message,
-				})
-				err = checkExpectedError(t, err, tt.wantErr, "ReplaceMessage()")
-				if err != nil || tt.wantErr != nil {
-					return
-				}
-				got, err := client.GetMessage(ctx, &GetMessageInput{
-					ID: tt.args.message.ID,
-				})
-				if err != nil {
-					t.Errorf("GetMessage() error = %v", err)
-					return
-				}
-				if !reflect.DeepEqual(got.Message, tt.want) {
-					t.Errorf("GetMessage() got = %v, want %v", got.Message, tt.want)
-				}
+
+			client := prepareTestClient(t, ctx, optFns)
+
+			_, err := client.ReplaceMessage(ctx, &ReplaceMessageInput[test.MessageData]{
+				Message: tt.args.message,
 			})
+			err = checkExpectedError(t, err, tt.wantErr, "ReplaceMessage()")
+			if err != nil || tt.wantErr != nil {
+				return
+			}
+			got, err := client.GetMessage(ctx, &GetMessageInput{
+				ID: tt.args.message.ID,
+			})
+			if err != nil {
+				t.Errorf("GetMessage() error = %v", err)
+				return
+			}
+			if !reflect.DeepEqual(got.Message, tt.want) {
+				t.Errorf("GetMessage() got = %v, want %v", got.Message, tt.want)
+			}
 		})
 	}
 }
@@ -1367,21 +1375,22 @@ func TestDynamoMQClientListMessages(t *testing.T) {
 				withClock(tt.sdkClock),
 				WithAWSVisibilityTimeout(1),
 			}
-			handleTestOperation(t, ctx, optFns, func(client Client[test.MessageData]) {
-				result, err := client.ListMessages(ctx, &ListMessagesInput{
-					Size: tt.args.size,
-				})
-				err = checkExpectedError(t, err, tt.wantErr, "ListMessages()")
-				if err != nil || tt.wantErr != nil {
-					return
-				}
-				sort.Slice(result.Messages, func(i, j int) bool {
-					return result.Messages[i].LastUpdatedTimestamp < result.Messages[j].LastUpdatedTimestamp
-				})
-				if !reflect.DeepEqual(result.Messages, tt.want) {
-					t.Errorf("ListMessages() got = %v, want %v", result, tt.want)
-				}
+
+			client := prepareTestClient(t, ctx, optFns)
+
+			result, err := client.ListMessages(ctx, &ListMessagesInput{
+				Size: tt.args.size,
 			})
+			err = checkExpectedError(t, err, tt.wantErr, "ListMessages()")
+			if err != nil || tt.wantErr != nil {
+				return
+			}
+			sort.Slice(result.Messages, func(i, j int) bool {
+				return result.Messages[i].LastUpdatedTimestamp < result.Messages[j].LastUpdatedTimestamp
+			})
+			if !reflect.DeepEqual(result.Messages, tt.want) {
+				t.Errorf("ListMessages() got = %v, want %v", result, tt.want)
+			}
 		})
 	}
 }
@@ -1420,13 +1429,13 @@ func checkExpectedError(t *testing.T, err, wantErr error, messagePrefix string) 
 	return nil
 }
 
-func handleTestOperation(t *testing.T, ctx context.Context, optFns []func(*ClientOptions), operation func(Client[test.MessageData])) {
+func prepareTestClient(t *testing.T, ctx context.Context, optFns []func(*ClientOptions)) Client[test.MessageData] {
 	client, err := setupClient(ctx, optFns...)
 	if err != nil {
 		t.Fatalf("failed to setup client: %s\n", err)
-		return
+		return nil
 	}
-	operation(client)
+	return client
 }
 
 func setupClient(ctx context.Context, optFns ...func(*ClientOptions)) (Client[test.MessageData], error) {
