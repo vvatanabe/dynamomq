@@ -179,9 +179,7 @@ func TestDynamoMQClientReceiveMessage(t *testing.T) {
 			name: "should return EmptyQueueError when queue is empty",
 			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t,
-					&types.PutRequest{
-						Item: newTestMessageItemAsProcessing("A-202", clock.Now()).marshalMapUnsafe(),
-					},
+					createPutRequestWithProcessingItem("A-202", clock.Now()),
 					&types.PutRequest{
 						Item: newTestMessageItemAsDLQ("A-303", clock.Now()).marshalMapUnsafe(),
 					},
@@ -227,11 +225,8 @@ func TestDynamoMQClientReceiveMessage(t *testing.T) {
 			name: "should return message when exists message expired visibility timeout",
 			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t,
-					&types.PutRequest{
-						Item: newTestMessageItemAsProcessing("B-202",
-							date(2023, 12, 1, 0, 0, 0)).
-							marshalMapUnsafe(),
-					},
+					createPutRequestWithProcessingItem("B-202",
+						date(2023, 12, 1, 0, 0, 0)),
 				)
 			},
 			sdkClock: mockClock{
@@ -260,11 +255,8 @@ func TestDynamoMQClientReceiveMessage(t *testing.T) {
 			name: "should return EmptyQueueError when exists message but visibility timeout is not expired",
 			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t,
-					&types.PutRequest{
-						Item: newTestMessageItemAsProcessing("B-202",
-							date(2023, 12, 1, 0, 0, 0)).
-							marshalMapUnsafe(),
-					},
+					createPutRequestWithProcessingItem("B-202",
+						date(2023, 12, 1, 0, 0, 0)),
 				)
 			},
 			sdkClock: mockClock{
@@ -450,10 +442,8 @@ func TestDynamoMQClientUpdateMessageAsVisible(t *testing.T) {
 			name: "should succeed when id is found",
 			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t,
-					&types.PutRequest{
-						Item: newTestMessageItemAsProcessing("A-101",
-							date(2023, 12, 1, 0, 0, 10)).marshalMapUnsafe(),
-					},
+					createPutRequestWithProcessingItem("A-101",
+						date(2023, 12, 1, 0, 0, 10)),
 				)
 			},
 			sdkClock: mockClock{
@@ -647,11 +637,8 @@ func TestDynamoMQClientMoveMessageToDLQ(t *testing.T) {
 			name: "should succeed when id is found and queue type is DLQ and status is processing",
 			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t,
-					&types.PutRequest{
-						Item: newTestMessageItemAsProcessing("A-101",
-							date(2023, 12, 1, 0, 0, 0)).
-							marshalMapUnsafe(),
-					},
+					createPutRequestWithProcessingItem("A-101",
+						date(2023, 12, 1, 0, 0, 0)),
 				)
 			},
 			sdkClock: mockClock{
@@ -830,11 +817,7 @@ func TestDynamoMQClientGetQueueStats(t *testing.T) {
 		{
 			name: "should return one processing item stats when one item in standard queue",
 			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
-				return setupDynamoDB(t,
-					&types.PutRequest{
-						Item: newTestMessageItemAsProcessing("A-101", clock.Now()).marshalMapUnsafe(),
-					},
-				)
+				return setupDynamoDB(t, createPutRequestWithProcessingItem("A-101", clock.Now()))
 			},
 			want: &GetQueueStatsOutput{
 				First100IDsInQueue:         []string{"A-101"},
@@ -854,12 +837,8 @@ func TestDynamoMQClientGetQueueStats(t *testing.T) {
 					&types.PutRequest{
 						Item: newTestMessageItemAsReady("B-202", clock.Now().Add(1*time.Second)).marshalMapUnsafe(),
 					},
-					&types.PutRequest{
-						Item: newTestMessageItemAsProcessing("C-303", clock.Now().Add(2*time.Second)).marshalMapUnsafe(),
-					},
-					&types.PutRequest{
-						Item: newTestMessageItemAsProcessing("D-404", clock.Now().Add(3*time.Second)).marshalMapUnsafe(),
-					},
+					createPutRequestWithProcessingItem("C-303", clock.Now().Add(2*time.Second)),
+					createPutRequestWithProcessingItem("D-404", clock.Now().Add(3*time.Second)),
 				)
 			},
 			want: &GetQueueStatsOutput{
@@ -909,9 +888,7 @@ func TestDynamoMQClientGetDLQStats(t *testing.T) {
 					&types.PutRequest{
 						Item: newTestMessageItemAsReady("B-202", clock.Now().Add(1*time.Second)).marshalMapUnsafe(),
 					},
-					&types.PutRequest{
-						Item: newTestMessageItemAsProcessing("C-303", clock.Now().Add(2*time.Second)).marshalMapUnsafe(),
-					},
+					createPutRequestWithProcessingItem("C-303", clock.Now().Add(2*time.Second)),
 				)
 			},
 			want: &GetDLQStatsOutput{
@@ -929,9 +906,7 @@ func TestDynamoMQClientGetDLQStats(t *testing.T) {
 					&types.PutRequest{
 						Item: newTestMessageItemAsReady("B-202", clock.Now().Add(1*time.Second)).marshalMapUnsafe(),
 					},
-					&types.PutRequest{
-						Item: newTestMessageItemAsProcessing("C-303", clock.Now().Add(2*time.Second)).marshalMapUnsafe(),
-					},
+					createPutRequestWithProcessingItem("C-303", clock.Now().Add(2*time.Second)),
 					&types.PutRequest{
 						Item: newTestMessageItemAsDLQ("D-404", clock.Now().Add(3*time.Second)).marshalMapUnsafe(),
 					},
@@ -1315,6 +1290,12 @@ func newMessageFromReadyToProcessing(id string,
 		PeekedMessageObject:    s,
 	}
 	return r
+}
+
+func createPutRequestWithProcessingItem(id string, now time.Time) *types.PutRequest {
+	return &types.PutRequest{
+		Item: newTestMessageItemAsProcessing(id, now).marshalMapUnsafe(),
+	}
 }
 
 type mockClock struct {
