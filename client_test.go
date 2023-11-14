@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
-	"sort"
 	"testing"
 	"time"
 
@@ -945,9 +944,6 @@ func TestDynamoMQClientListMessages(t *testing.T) {
 			if err != nil || tt.wantErr != nil {
 				return
 			}
-			sort.Slice(result.Messages, func(i, j int) bool {
-				return result.Messages[i].LastUpdatedTimestamp < result.Messages[j].LastUpdatedTimestamp
-			})
 			assertDeepEqual(t, result.Messages, tt.want, "ListMessages()")
 		})
 	}

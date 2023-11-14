@@ -3,6 +3,7 @@ package dynamomq
 import (
 	"context"
 	"errors"
+	"sort"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -754,6 +755,9 @@ func (c *client[T]) ListMessages(ctx context.Context, params *ListMessagesInput)
 	if err != nil {
 		return &ListMessagesOutput[T]{}, &UnmarshalingAttributeError{Cause: err}
 	}
+	sort.Slice(messages, func(i, j int) bool {
+		return messages[i].LastUpdatedTimestamp < messages[j].LastUpdatedTimestamp
+	})
 	return &ListMessagesOutput[T]{Messages: messages}, nil
 }
 
