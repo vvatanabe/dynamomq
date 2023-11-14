@@ -72,6 +72,11 @@ func setupDynamoDB(t *testing.T, initialData ...*types.PutRequest) (tableName st
 	return
 }
 
+const (
+	testNameShouldReturnIDNotFoundError    = "should return IDNotFoundError"
+	testNameShouldReturnIDNotProvidedError = "should return IDNotProvidedError"
+)
+
 func TestDynamoMQClientSendMessage(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -83,7 +88,7 @@ func TestDynamoMQClientSendMessage(t *testing.T) {
 		wantErr  error
 	}{
 		{
-			name: "should return IDNotProvidedError when id is empty",
+			name: testNameShouldReturnIDNotProvidedError,
 			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
@@ -444,7 +449,7 @@ func TestDynamoMQClientUpdateMessageAsVisible(t *testing.T) {
 		wantErr  error
 	}{
 		{
-			name: "should return IDNotProvidedError when id is empty",
+			name: testNameShouldReturnIDNotProvidedError,
 			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
@@ -459,7 +464,7 @@ func TestDynamoMQClientUpdateMessageAsVisible(t *testing.T) {
 			wantErr: &IDNotProvidedError{},
 		},
 		{
-			name: "should return IDNotFoundError when id is not found",
+			name: testNameShouldReturnIDNotFoundError,
 			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
@@ -554,7 +559,7 @@ func TestDynamoMQClientDeleteMessage(t *testing.T) {
 		want     error
 	}{
 		{
-			name: "should return IDNotProvidedError when id is empty",
+			name: testNameShouldReturnIDNotProvidedError,
 			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
@@ -632,7 +637,7 @@ func TestDynamoMQClientMoveMessageToDLQ(t *testing.T) {
 		wantErr  error
 	}{
 		{
-			name: "should return IDNotProvidedError when id is empty",
+			name: testNameShouldReturnIDNotProvidedError,
 			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
@@ -647,7 +652,7 @@ func TestDynamoMQClientMoveMessageToDLQ(t *testing.T) {
 			wantErr: &IDNotProvidedError{},
 		},
 		{
-			name: "should return IDNotFoundError when id is not found",
+			name: testNameShouldReturnIDNotFoundError,
 			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
@@ -767,7 +772,7 @@ func TestDynamoMQClientRedriveMessage(t *testing.T) {
 		wantErr  error
 	}{
 		{
-			name: "should return IDNotProvidedError when id is empty",
+			name: testNameShouldReturnIDNotProvidedError,
 			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
@@ -782,7 +787,7 @@ func TestDynamoMQClientRedriveMessage(t *testing.T) {
 			wantErr: &IDNotProvidedError{},
 		},
 		{
-			name: "should return IDNotFoundError when id is not found",
+			name: testNameShouldReturnIDNotFoundError,
 			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
@@ -1061,7 +1066,7 @@ func TestDynamoMQClientGetMessage(t *testing.T) {
 		wantErr error
 	}{
 		{
-			name: "should return IDNotProvidedError when id is empty",
+			name: testNameShouldReturnIDNotProvidedError,
 			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
@@ -1154,7 +1159,7 @@ func TestDynamoMQClientReplaceMessage(t *testing.T) {
 		wantErr error
 	}{
 		{
-			name: "should return IDNotProvidedError when id is empty",
+			name: testNameShouldReturnIDNotProvidedError,
 			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
