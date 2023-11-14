@@ -149,13 +149,11 @@ func TestDynamoMQClientSendMessage(t *testing.T) {
 			client, clean := prepareTestClient(t, ctx, tt.setup, tt.sdkClock, false)
 			defer clean()
 			result, err := client.SendMessage(ctx, tt.args)
-			err = checkExpectedError(t, err, tt.wantErr, "SendMessage()")
+			err = assertError(t, err, tt.wantErr, "SendMessage()")
 			if err != nil || tt.wantErr != nil {
 				return
 			}
-			if !reflect.DeepEqual(result, tt.want) {
-				t.Errorf("SendMessage() got = %v, want %v", result, tt.want)
-			}
+			assertDeepEqual(t, result, tt.want, "SendMessage()")
 		})
 	}
 }
@@ -256,13 +254,11 @@ func TestDynamoMQClientReceiveMessage(t *testing.T) {
 			client, clean := prepareTestClient(t, ctx, tt.setup, tt.sdkClock, false)
 			defer clean()
 			result, err := client.ReceiveMessage(ctx, &ReceiveMessageInput{})
-			err = checkExpectedError(t, err, tt.wantErr, "ReceiveMessage()")
+			err = assertError(t, err, tt.wantErr, "ReceiveMessage()")
 			if err != nil || tt.wantErr != nil {
 				return
 			}
-			if !reflect.DeepEqual(result, tt.want) {
-				t.Errorf("ReceiveMessage() got = %v, want %v", result, tt.want)
-			}
+			assertDeepEqual(t, result, tt.want, "ReceiveMessage()")
 		})
 	}
 }
@@ -293,11 +289,7 @@ func testDynamoMQClientReceiveMessageSequence(t *testing.T, useFIFO bool) {
 			t.Errorf("ReceiveMessage() [%d] error = %v", i, err)
 			return
 		}
-		if !reflect.DeepEqual(result, want) {
-			v1, _ := json.Marshal(result)
-			v2, _ := json.Marshal(want)
-			t.Errorf("ReceiveMessage() [%d] got = %v, want %v", i, string(v1), string(v2))
-		}
+		assertDeepEqual(t, result, want, fmt.Sprintf("ReceiveMessage() [%d]", i))
 
 		if !useFIFO {
 			return
@@ -407,13 +399,11 @@ func TestDynamoMQClientUpdateMessageAsVisible(t *testing.T) {
 			result, err := client.UpdateMessageAsVisible(ctx, &UpdateMessageAsVisibleInput{
 				ID: tt.args.id,
 			})
-			err = checkExpectedError(t, err, tt.wantErr, "UpdateMessageAsVisible()")
+			err = assertError(t, err, tt.wantErr, "UpdateMessageAsVisible()")
 			if err != nil || tt.wantErr != nil {
 				return
 			}
-			if !reflect.DeepEqual(result, tt.want) {
-				t.Errorf("UpdateMessageAsVisible() got = %v, want %v", result, tt.want)
-			}
+			assertDeepEqual(t, result, tt.want, "UpdateMessageAsVisible()")
 		})
 	}
 }
@@ -466,7 +456,7 @@ func TestDynamoMQClientDeleteMessage(t *testing.T) {
 			_, err := client.DeleteMessage(ctx, &DeleteMessageInput{
 				ID: tt.args.id,
 			})
-			err = checkExpectedError(t, err, tt.want, "DeleteMessage()")
+			err = assertError(t, err, tt.want, "DeleteMessage()")
 		})
 	}
 }
@@ -560,13 +550,11 @@ func TestDynamoMQClientMoveMessageToDLQ(t *testing.T) {
 			client, clean := prepareTestClient(t, ctx, tt.setup, tt.sdkClock, false)
 			defer clean()
 			result, err := client.MoveMessageToDLQ(ctx, tt.args)
-			err = checkExpectedError(t, err, tt.wantErr, "MoveMessageToDLQ()")
+			err = assertError(t, err, tt.wantErr, "MoveMessageToDLQ()")
 			if err != nil || tt.wantErr != nil {
 				return
 			}
-			if !reflect.DeepEqual(result, tt.want) {
-				t.Errorf("MoveMessageToDLQ() got = %v, want %v", result, tt.want)
-			}
+			assertDeepEqual(t, result, tt.want, "MoveMessageToDLQ()")
 		})
 	}
 }
@@ -631,13 +619,11 @@ func TestDynamoMQClientRedriveMessage(t *testing.T) {
 			result, err := client.RedriveMessage(ctx, &RedriveMessageInput{
 				ID: tt.args.id,
 			})
-			err = checkExpectedError(t, err, tt.wantErr, "RedriveMessage()")
+			err = assertError(t, err, tt.wantErr, "RedriveMessage()")
 			if err != nil || tt.wantErr != nil {
 				return
 			}
-			if !reflect.DeepEqual(result, tt.want) {
-				t.Errorf("RedriveMessage() got = %v, want %v", result, tt.want)
-			}
+			assertDeepEqual(t, result, tt.want, "RedriveMessage()")
 		})
 	}
 }
@@ -712,13 +698,11 @@ func TestDynamoMQClientGetQueueStats(t *testing.T) {
 			client, clean := prepareTestClient(t, ctx, tt.setup, clock.RealClock{}, false)
 			defer clean()
 			got, err := client.GetQueueStats(ctx, &GetQueueStatsInput{})
-			err = checkExpectedError(t, err, tt.wantErr, "GetQueueStats()")
+			err = assertError(t, err, tt.wantErr, "GetQueueStats()")
 			if err != nil || tt.wantErr != nil {
 				return
 			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("GetQueueStats() got = %v, want %v", got, tt.want)
-			}
+			assertDeepEqual(t, got, tt.want, "GetQueueStats()")
 		})
 	}
 }
@@ -767,13 +751,11 @@ func TestDynamoMQClientGetDLQStats(t *testing.T) {
 			client, clean := prepareTestClient(t, ctx, tt.setup, clock.RealClock{}, false)
 			defer clean()
 			got, err := client.GetDLQStats(ctx, &GetDLQStatsInput{})
-			err = checkExpectedError(t, err, tt.wantErr, "GetDLQStats()")
+			err = assertError(t, err, tt.wantErr, "GetDLQStats()")
 			if err != nil || tt.wantErr != nil {
 				return
 			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("GetDLQStats() got = %v, want %v", got, tt.want)
-			}
+			assertDeepEqual(t, got, tt.want, "GetDLQStats()")
 		})
 	}
 }
@@ -833,13 +815,11 @@ func TestDynamoMQClientGetMessage(t *testing.T) {
 			got, err := client.GetMessage(ctx, &GetMessageInput{
 				ID: tt.args.id,
 			})
-			err = checkExpectedError(t, err, tt.wantErr, "GetMessage()")
+			err = assertError(t, err, tt.wantErr, "GetMessage()")
 			if err != nil || tt.wantErr != nil {
 				return
 			}
-			if !reflect.DeepEqual(got.Message, tt.want) {
-				t.Errorf("GetMessage() got = %v, want %v", got.Message, tt.want)
-			}
+			assertDeepEqual(t, got.Message, tt.want, "GetMessage()")
 		})
 	}
 }
@@ -901,7 +881,7 @@ func TestDynamoMQClientReplaceMessage(t *testing.T) {
 			_, err := client.ReplaceMessage(ctx, &ReplaceMessageInput[test.MessageData]{
 				Message: tt.args.message,
 			})
-			err = checkExpectedError(t, err, tt.wantErr, "ReplaceMessage()")
+			err = assertError(t, err, tt.wantErr, "ReplaceMessage()")
 			if err != nil || tt.wantErr != nil {
 				return
 			}
@@ -912,9 +892,7 @@ func TestDynamoMQClientReplaceMessage(t *testing.T) {
 				t.Errorf("GetMessage() error = %v", err)
 				return
 			}
-			if !reflect.DeepEqual(got.Message, tt.want) {
-				t.Errorf("GetMessage() got = %v, want %v", got.Message, tt.want)
-			}
+			assertDeepEqual(t, got.Message, tt.want, "GetMessage()")
 		})
 	}
 }
@@ -963,52 +941,41 @@ func TestDynamoMQClientListMessages(t *testing.T) {
 			result, err := client.ListMessages(ctx, &ListMessagesInput{
 				Size: tt.args.size,
 			})
-			err = checkExpectedError(t, err, tt.wantErr, "ListMessages()")
+			err = assertError(t, err, tt.wantErr, "ListMessages()")
 			if err != nil || tt.wantErr != nil {
 				return
 			}
 			sort.Slice(result.Messages, func(i, j int) bool {
 				return result.Messages[i].LastUpdatedTimestamp < result.Messages[j].LastUpdatedTimestamp
 			})
-			if !reflect.DeepEqual(result.Messages, tt.want) {
-				t.Errorf("ListMessages() got = %v, want %v", result, tt.want)
-			}
+			assertDeepEqual(t, result.Messages, tt.want, "ListMessages()")
 		})
 	}
 }
 
-func generateExpectedMessages(idPrefix string, now time.Time, count int) []*Message[test.MessageData] {
-	messages := make([]*Message[test.MessageData], count)
-	for i := 0; i < count; i++ {
-		now = now.Add(time.Minute)
-		messages[i] = newTestMessageItemAsReady(fmt.Sprintf("%s-%d", idPrefix, i), now)
-	}
-	return messages
-}
-
-func generatePutRequests(messages []*Message[test.MessageData]) []*types.PutRequest {
-	var puts []*types.PutRequest
-	for _, message := range messages {
-		puts = append(puts, &types.PutRequest{
-			Item: message.marshalMapUnsafe(),
-		})
-	}
-	return puts
-}
-
-func checkExpectedError(t *testing.T, err, wantErr error, messagePrefix string) error {
-	if wantErr != nil {
-		if !errors.Is(err, wantErr) {
-			t.Errorf("%s error = %v, wantErr %v", messagePrefix, err, wantErr)
-			return err
+func assertError(t *testing.T, got, want error, prefix string) error {
+	t.Helper()
+	if want != nil {
+		if !errors.Is(got, want) {
+			t.Errorf("%s error = %v, want %v", prefix, got, want)
+			return got
 		}
 		return nil
 	}
-	if err != nil {
-		t.Errorf("%s unexpected error = %v", messagePrefix, err)
-		return err
+	if got != nil {
+		t.Errorf("%s unexpected error = %v", prefix, got)
+		return got
 	}
 	return nil
+}
+
+func assertDeepEqual(t *testing.T, got, want any, prefix string) {
+	t.Helper()
+	if !reflect.DeepEqual(got, want) {
+		v1, _ := json.Marshal(got)
+		v2, _ := json.Marshal(want)
+		t.Errorf("%s got = %v, want %v", prefix, string(v1), string(v2))
+	}
 }
 
 func prepareTestClient(t *testing.T, ctx context.Context,
@@ -1016,6 +983,7 @@ func prepareTestClient(t *testing.T, ctx context.Context,
 	sdkClock clock.Clock,
 	useFIFO bool,
 ) (Client[test.MessageData], func()) {
+	t.Helper()
 	tableName, raw, clean := setupTable(t)
 	optFns := []func(*ClientOptions){
 		WithTableName(tableName),
@@ -1098,6 +1066,25 @@ func newPutRequestWithDLQItem(id string, now time.Time) *types.PutRequest {
 	return &types.PutRequest{
 		Item: newTestMessageItemAsDLQ(id, now).marshalMapUnsafe(),
 	}
+}
+
+func generateExpectedMessages(idPrefix string, now time.Time, count int) []*Message[test.MessageData] {
+	messages := make([]*Message[test.MessageData], count)
+	for i := 0; i < count; i++ {
+		now = now.Add(time.Minute)
+		messages[i] = newTestMessageItemAsReady(fmt.Sprintf("%s-%d", idPrefix, i), now)
+	}
+	return messages
+}
+
+func generatePutRequests(messages []*Message[test.MessageData]) []*types.PutRequest {
+	var puts []*types.PutRequest
+	for _, message := range messages {
+		puts = append(puts, &types.PutRequest{
+			Item: message.marshalMapUnsafe(),
+		})
+	}
+	return puts
 }
 
 type mockClock struct {
