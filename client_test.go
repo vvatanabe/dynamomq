@@ -1238,12 +1238,13 @@ func TestDynamoMQClientGetQueueStats(t *testing.T) {
 func TestDynamoMQClientGetDLQStats(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name  string
-		setup func(*testing.T) (string, *dynamodb.Client, func())
-		want  *GetDLQStatsOutput
+		name    string
+		setup   func(*testing.T) (string, *dynamodb.Client, func())
+		want    *GetDLQStatsOutput
+		wantErr error
 	}{
 		{
-			name: "empty items",
+			name: "should return empty items when no items in DLQ",
 			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
@@ -1263,7 +1264,7 @@ func TestDynamoMQClientGetDLQStats(t *testing.T) {
 			},
 		},
 		{
-			name: "has three items in DLQ",
+			name: "should return three DLQ items when items in DLQ",
 			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
@@ -1300,24 +1301,21 @@ func TestDynamoMQClientGetDLQStats(t *testing.T) {
 			tableName, raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			cfg, err := config.LoadDefaultConfig(ctx)
-			if err != nil {
-				t.Fatalf("failed to load aws config: %s\n", err)
-				return
+			optFns := []func(*ClientOptions){
+				WithTableName(tableName),
+				WithAWSDynamoDBClient(raw),
+				WithAWSVisibilityTimeout(1),
 			}
-			client, err := NewFromConfig[test.MessageData](cfg, WithTableName(tableName), WithAWSDynamoDBClient(raw))
-			if err != nil {
-				t.Fatalf("NewFromConfig() error = %v", err)
-				return
-			}
-			got, err := client.GetDLQStats(ctx, &GetDLQStatsInput{})
-			if err != nil {
-				t.Errorf("GetDLQStats() error = %v", err)
-				return
-			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("GetDLQStats() got = %v, want %v", got, tt.want)
-			}
+			handleTestOperation(t, ctx, optFns, func(client Client[test.MessageData]) {
+				got, err := client.GetDLQStats(ctx, &GetDLQStatsInput{})
+				err = checkExpectedError(t, err, tt.wantErr, "GetDLQStats()")
+				if err != nil || tt.wantErr != nil {
+					return
+				}
+				if !reflect.DeepEqual(got, tt.want) {
+					t.Errorf("GetDLQStats() got = %v, want %v", got, tt.want)
+				}
+			})
 		})
 	}
 }
