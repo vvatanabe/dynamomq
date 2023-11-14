@@ -77,16 +77,18 @@ const (
 	testNameShouldReturnIDNotProvidedError = "should return IDNotProvidedError"
 )
 
+type TestCase[Args any, Want any] struct {
+	name     string
+	setup    func(*testing.T) (string, *dynamodb.Client, func())
+	sdkClock clock.Clock
+	args     Args
+	want     Want
+	wantErr  error
+}
+
 func TestDynamoMQClientSendMessage(t *testing.T) {
 	t.Parallel()
-	tests := []struct {
-		name     string
-		setup    func(*testing.T) (string, *dynamodb.Client, func())
-		sdkClock clock.Clock
-		args     *SendMessageInput[test.MessageData]
-		want     *SendMessageOutput[test.MessageData]
-		wantErr  error
-	}{
+	tests := []TestCase[*SendMessageInput[test.MessageData], *SendMessageOutput[test.MessageData]]{
 		{
 			name: testNameShouldReturnIDNotProvidedError,
 			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
@@ -160,13 +162,7 @@ func TestDynamoMQClientSendMessage(t *testing.T) {
 
 func TestDynamoMQClientReceiveMessage(t *testing.T) {
 	t.Parallel()
-	tests := []struct {
-		name     string
-		setup    func(*testing.T) (string, *dynamodb.Client, func())
-		sdkClock clock.Clock
-		want     *ReceiveMessageOutput[test.MessageData]
-		wantErr  error
-	}{
+	tests := []TestCase[any, *ReceiveMessageOutput[test.MessageData]]{
 		{
 			name: "should return EmptyQueueError when queue is empty",
 			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
@@ -367,14 +363,7 @@ func TestDynamoMQClientUpdateMessageAsVisible(t *testing.T) {
 	type args struct {
 		id string
 	}
-	tests := []struct {
-		name     string
-		setup    func(*testing.T) (string, *dynamodb.Client, func())
-		sdkClock clock.Clock
-		args     args
-		want     *UpdateMessageAsVisibleOutput[test.MessageData]
-		wantErr  error
-	}{
+	tests := []TestCase[args, *UpdateMessageAsVisibleOutput[test.MessageData]]{
 		{
 			name: testNameShouldReturnIDNotProvidedError,
 			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
@@ -459,13 +448,7 @@ func TestDynamoMQClientDeleteMessage(t *testing.T) {
 	type args struct {
 		id string
 	}
-	tests := []struct {
-		name     string
-		setup    func(*testing.T) (string, *dynamodb.Client, func())
-		sdkClock clock.Clock
-		args     args
-		want     error
-	}{
+	tests := []TestCase[args, error]{
 		{
 			name: testNameShouldReturnIDNotProvidedError,
 			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
@@ -515,14 +498,7 @@ func TestDynamoMQClientDeleteMessage(t *testing.T) {
 
 func TestDynamoMQClientMoveMessageToDLQ(t *testing.T) {
 	t.Parallel()
-	tests := []struct {
-		name     string
-		setup    func(*testing.T) (string, *dynamodb.Client, func())
-		sdkClock clock.Clock
-		args     *MoveMessageToDLQInput
-		want     *MoveMessageToDLQOutput
-		wantErr  error
-	}{
+	tests := []TestCase[*MoveMessageToDLQInput, *MoveMessageToDLQOutput]{
 		{
 			name: testNameShouldReturnIDNotProvidedError,
 			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
@@ -625,14 +601,7 @@ func TestDynamoMQClientRedriveMessage(t *testing.T) {
 	type args struct {
 		id string
 	}
-	tests := []struct {
-		name     string
-		setup    func(*testing.T) (string, *dynamodb.Client, func())
-		sdkClock clock.Clock
-		args     args
-		want     *RedriveMessageOutput
-		wantErr  error
-	}{
+	tests := []TestCase[args, *RedriveMessageOutput]{
 		{
 			name: testNameShouldReturnIDNotProvidedError,
 			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
@@ -700,12 +669,7 @@ func TestDynamoMQClientRedriveMessage(t *testing.T) {
 
 func TestDynamoMQClientGetQueueStats(t *testing.T) {
 	t.Parallel()
-	tests := []struct {
-		name    string
-		setup   func(*testing.T) (string, *dynamodb.Client, func())
-		want    *GetQueueStatsOutput
-		wantErr error
-	}{
+	tests := []TestCase[any, *GetQueueStatsOutput]{
 		{
 			name: "should return empty items stats when no item in standard queue",
 			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
@@ -786,12 +750,7 @@ func TestDynamoMQClientGetQueueStats(t *testing.T) {
 
 func TestDynamoMQClientGetDLQStats(t *testing.T) {
 	t.Parallel()
-	tests := []struct {
-		name    string
-		setup   func(*testing.T) (string, *dynamodb.Client, func())
-		want    *GetDLQStatsOutput
-		wantErr error
-	}{
+	tests := []TestCase[any, *GetDLQStatsOutput]{
 		{
 			name: "should return empty items when no items in DLQ",
 			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
@@ -849,13 +808,7 @@ func TestDynamoMQClientGetMessage(t *testing.T) {
 	type args struct {
 		id string
 	}
-	tests := []struct {
-		name    string
-		setup   func(*testing.T) (string, *dynamodb.Client, func())
-		args    args
-		want    *Message[test.MessageData]
-		wantErr error
-	}{
+	tests := []TestCase[args, *Message[test.MessageData]]{
 		{
 			name: testNameShouldReturnIDNotProvidedError,
 			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
@@ -921,13 +874,7 @@ func TestDynamoMQClientReplaceMessage(t *testing.T) {
 	type args struct {
 		message *Message[test.MessageData]
 	}
-	tests := []struct {
-		name    string
-		setup   func(*testing.T) (string, *dynamodb.Client, func())
-		args    args
-		want    *Message[test.MessageData]
-		wantErr error
-	}{
+	tests := []TestCase[args, *Message[test.MessageData]]{
 		{
 			name: testNameShouldReturnIDNotProvidedError,
 			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
@@ -1002,14 +949,7 @@ func TestDynamoMQClientListMessages(t *testing.T) {
 	type args struct {
 		size int32
 	}
-	tests := []struct {
-		name     string
-		setup    func(*testing.T) (string, *dynamodb.Client, func())
-		sdkClock clock.Clock
-		args     args
-		want     []*Message[test.MessageData]
-		wantErr  error
-	}{
+	tests := []TestCase[args, []*Message[test.MessageData]]{
 		{
 			name: "should return empty list when no messages",
 			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
