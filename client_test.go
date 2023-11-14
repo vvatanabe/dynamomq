@@ -693,7 +693,7 @@ func TestDynamoMQClientUpdateMessageAsVisible(t *testing.T) {
 		wantErr  error
 	}{
 		{
-			name: "should return IDNotProvidedError",
+			name: "should return IDNotProvidedError when id is empty",
 			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
@@ -708,7 +708,7 @@ func TestDynamoMQClientUpdateMessageAsVisible(t *testing.T) {
 			wantErr: &IDNotProvidedError{},
 		},
 		{
-			name: "should return IDNotFoundError",
+			name: "should return IDNotFoundError when id is not found",
 			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
@@ -723,30 +723,33 @@ func TestDynamoMQClientUpdateMessageAsVisible(t *testing.T) {
 			wantErr: &IDNotFoundError{},
 		},
 		{
-			name: "existing id do not return error",
+			name: "should succeed when id is found",
 			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
-						Item: newTestMessageItemAsPeeked("A-101", time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC)).marshalMapUnsafe(),
+						Item: newTestMessageItemAsPeeked("A-101",
+							date(2023, 12, 1, 0, 0, 10)).marshalMapUnsafe(),
 					},
 				)
 			},
 			sdkClock: mockClock{
-				t: time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC),
+				t: date(2023, 12, 1, 0, 0, 10),
 			},
 			args: args{
 				id: "A-101",
 			},
 			want: &UpdateMessageAsVisibleOutput[test.MessageData]{
 				Result: &Result{
-					ID:                   "A-101",
-					Status:               StatusReady,
-					LastUpdatedTimestamp: clock.FormatRFC3339Nano(time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC)),
-					Version:              2,
+					ID:     "A-101",
+					Status: StatusReady,
+					LastUpdatedTimestamp: clock.FormatRFC3339Nano(
+						date(2023, 12, 1, 0, 0, 10)),
+					Version: 2,
 				},
 				Message: func() *Message[test.MessageData] {
-					message := newTestMessageItemAsPeeked("A-101", time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC))
-					err := message.markAsReady(time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC))
+					now := date(2023, 12, 1, 0, 0, 10)
+					message := newTestMessageItemAsPeeked("A-101", now)
+					err := message.markAsReady(now)
 					if err != nil {
 						panic(err)
 					}
@@ -764,33 +767,24 @@ func TestDynamoMQClientUpdateMessageAsVisible(t *testing.T) {
 			tableName, raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			cfg, err := config.LoadDefaultConfig(ctx)
-			if err != nil {
-				t.Fatalf("failed to load aws config: %s\n", err)
-				return
+			optFns := []func(*ClientOptions){
+				WithTableName(tableName),
+				WithAWSDynamoDBClient(raw),
+				withClock(tt.sdkClock),
+				WithAWSVisibilityTimeout(1),
 			}
-			client, err := NewFromConfig[test.MessageData](cfg, WithTableName(tableName), WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
-			if err != nil {
-				t.Fatalf("NewFromConfig() error = %v", err)
-				return
-			}
-			result, err := client.UpdateMessageAsVisible(ctx, &UpdateMessageAsVisibleInput{
-				ID: tt.args.id,
-			})
-			if tt.wantErr != nil {
-				if !errors.Is(err, tt.wantErr) {
-					t.Errorf("UpdateMessageAsVisible() error = %v, wantErr %v", err, tt.wantErr)
+			handleTestOperation(t, ctx, optFns, func(client Client[test.MessageData]) {
+				result, err := client.UpdateMessageAsVisible(ctx, &UpdateMessageAsVisibleInput{
+					ID: tt.args.id,
+				})
+				err = checkExpectedError(t, err, tt.wantErr, "UpdateMessageAsVisible()")
+				if err != nil || tt.wantErr != nil {
 					return
 				}
-				return
-			}
-			if err != nil {
-				t.Errorf("UpdateMessageAsVisible() error = %v", err)
-				return
-			}
-			if !reflect.DeepEqual(result, tt.want) {
-				t.Errorf("UpdateMessageAsVisible() got = %v, want %v", result, tt.want)
-			}
+				if !reflect.DeepEqual(result, tt.want) {
+					t.Errorf("UpdateMessageAsVisible() got = %v, want %v", result, tt.want)
+				}
+			})
 		})
 	}
 }
