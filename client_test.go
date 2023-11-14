@@ -71,10 +71,6 @@ func setupDynamoDB(t *testing.T, initialData ...*types.PutRequest) (tableName st
 	return
 }
 
-const (
-	testNameShouldReturnIDNotFoundError = "should return IDNotFoundError"
-)
-
 type TestCase[Args any, Want any] struct {
 	name     string
 	setup    func(*testing.T) (string, *dynamodb.Client, func())
@@ -84,70 +80,107 @@ type TestCase[Args any, Want any] struct {
 	wantErr  error
 }
 
-func TestDynamoMQClientShouldReturnIDNotProvidedError(t *testing.T) {
+func TestDynamoMQClientShouldReturnError(t *testing.T) {
 	t.Parallel()
 	client, cancel := prepareTestClient(t, context.Background(), func(t *testing.T) (string, *dynamodb.Client, func()) {
 		return setupDynamoDB(t, newPutRequestWithReadyItem("A-101", clock.Now()))
 	}, mockClock{}, false)
 	defer cancel()
-
 	type testCase struct {
 		name      string
 		operation func() error
+		wantError error
 	}
 	tests := []testCase{
 		{
-			name: "SendMessage()",
+			name: "SendMessage should return IDNotProvidedError",
 			operation: func() error {
 				_, err := client.SendMessage(context.Background(), nil)
 				return err
 			},
+			wantError: &IDNotProvidedError{},
 		},
 		{
-			name: "UpdateMessageAsVisible()",
+			name: "UpdateMessageAsVisible should return IDNotProvidedError",
 			operation: func() error {
 				_, err := client.UpdateMessageAsVisible(context.Background(), nil)
 				return err
 			},
+			wantError: &IDNotProvidedError{},
 		},
 		{
-			name: "DeleteMessage()",
+			name: "UpdateMessageAsVisible should return IDNotFoundError",
 			operation: func() error {
-				_, err := client.DeleteMessage(context.Background(), nil)
+				_, err := client.UpdateMessageAsVisible(context.Background(), &UpdateMessageAsVisibleInput{
+					ID: "B-101",
+				})
 				return err
 			},
+			wantError: &IDNotFoundError{},
 		},
 		{
-			name: "MoveMessageToDLQ()",
+			name: "MoveMessageToDLQ should return IDNotProvidedError",
 			operation: func() error {
 				_, err := client.MoveMessageToDLQ(context.Background(), nil)
 				return err
 			},
+			wantError: &IDNotProvidedError{},
 		},
 		{
-			name: "RedriveMessage()",
+			name: "MoveMessageToDLQ should return IDNotFoundError",
+			operation: func() error {
+				_, err := client.MoveMessageToDLQ(context.Background(), &MoveMessageToDLQInput{
+					ID: "B-101",
+				})
+				return err
+			},
+			wantError: &IDNotFoundError{},
+		},
+		{
+			name: "RedriveMessage should return IDNotProvidedError",
 			operation: func() error {
 				_, err := client.RedriveMessage(context.Background(), nil)
 				return err
 			},
+			wantError: &IDNotProvidedError{},
 		},
 		{
-			name: "GetMessage()",
+			name: "RedriveMessage should return IDNotFoundError",
+			operation: func() error {
+				_, err := client.RedriveMessage(context.Background(), &RedriveMessageInput{
+					ID: "B-101",
+				})
+				return err
+			},
+			wantError: &IDNotFoundError{},
+		},
+		{
+			name: "DeleteMessage should return IDNotProvidedError",
+			operation: func() error {
+				_, err := client.DeleteMessage(context.Background(), nil)
+				return err
+			},
+			wantError: &IDNotProvidedError{},
+		},
+		{
+			name: "GetMessage should return IDNotProvidedError",
 			operation: func() error {
 				_, err := client.GetMessage(context.Background(), nil)
 				return err
 			},
+			wantError: &IDNotProvidedError{},
 		},
 		{
-			name: "ReplaceMessage()",
+			name: "ReplaceMessage should return IDNotProvidedError",
 			operation: func() error {
 				_, err := client.ReplaceMessage(context.Background(), nil)
 				return err
 			},
+			wantError: &IDNotProvidedError{},
 		},
 	}
 	for _, tt := range tests {
-		_ = assertError(t, tt.operation(), &IDNotProvidedError{}, tt.name)
+		_ = assertError(t, tt.operation(), tt.wantError, tt.name)
 	}
 }
 
@@ -361,17 +394,6 @@ func TestDynamoMQClientUpdateMessageAsVisible(t *testing.T) {
 	}
 	tests := []TestCase[args, *UpdateMessageAsVisibleOutput[test.MessageData]]{
 		{
-			name: testNameShouldReturnIDNotFoundError,
-			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
-				return setupDynamoDB(t, newPutRequestWithReadyItem("A-101", clock.Now()))
-			},
-			args: args{
-				id: "B-202",
-			},
-			want:    nil,
-			wantErr: &IDNotFoundError{},
-		},
-		{
 			name: "should succeed when id is found",
 			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t,
@@ -453,17 +475,6 @@ func TestDynamoMQClientMoveMessageToDLQ(t *testing.T) {
 	t.Parallel()
 	tests := []TestCase[*MoveMessageToDLQInput, *MoveMessageToDLQOutput]{
 		{
-			name: testNameShouldReturnIDNotFoundError,
-			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
-				return setupDynamoDB(t, newPutRequestWithReadyItem("A-101", clock.Now()))
-			},
-			args: &MoveMessageToDLQInput{
-				ID: "B-202",
-			},
-			want:    nil,
-			wantErr: &IDNotFoundError{},
-		},
-		{
 			name: "should succeed when id is found and queue type is standard",
 			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t,
@@ -530,17 +541,6 @@ func TestDynamoMQClientRedriveMessage(t *testing.T) {
 		id string
 	}
 	tests := []TestCase[args, *RedriveMessageOutput]{
-		{
-			name: testNameShouldReturnIDNotFoundError,
-			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
-				return setupDynamoDB(t, newPutRequestWithReadyItem("A-101", clock.Now()))
-			},
-			args: args{
-				id: "B-202",
-			},
-			want:    nil,
-			wantErr: &IDNotFoundError{},
-		},
 		{
 			name: "should succeed when id is found and status is ready",
 			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
