@@ -1127,12 +1127,13 @@ func TestDynamoMQClientRedriveMessage(t *testing.T) {
 func TestDynamoMQClientGetQueueStats(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
-		name  string
-		setup func(*testing.T) (string, *dynamodb.Client, func())
-		want  *GetQueueStatsOutput
+		name    string
+		setup   func(*testing.T) (string, *dynamodb.Client, func())
+		want    *GetQueueStatsOutput
+		wantErr error
 	}{
 		{
-			name: "empty items",
+			name: "should return empty items stats when no item in standard queue",
 			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t)
 			},
@@ -1145,7 +1146,7 @@ func TestDynamoMQClientGetQueueStats(t *testing.T) {
 			},
 		},
 		{
-			name: "has one item in enqueued",
+			name: "should return one item stats when one item in standard queue",
 			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
@@ -1162,7 +1163,7 @@ func TestDynamoMQClientGetQueueStats(t *testing.T) {
 			},
 		},
 		{
-			name: "has one item in peeked",
+			name: "should return one processing item stats when one item in standard queue",
 			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
@@ -1179,7 +1180,7 @@ func TestDynamoMQClientGetQueueStats(t *testing.T) {
 			},
 		},
 		{
-			name: "has two item in enqueued or peeked",
+			name: "should return two items stats when two items in standard queue",
 			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
@@ -1213,24 +1214,21 @@ func TestDynamoMQClientGetQueueStats(t *testing.T) {
 			tableName, raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			cfg, err := config.LoadDefaultConfig(ctx)
-			if err != nil {
-				t.Fatalf("failed to load aws config: %s\n", err)
-				return
+			optFns := []func(*ClientOptions){
+				WithTableName(tableName),
+				WithAWSDynamoDBClient(raw),
+				WithAWSVisibilityTimeout(1),
 			}
-			client, err := NewFromConfig[test.MessageData](cfg, WithTableName(tableName), WithAWSDynamoDBClient(raw))
-			if err != nil {
-				t.Fatalf("NewFromConfig() error = %v", err)
-				return
-			}
-			got, err := client.GetQueueStats(ctx, &GetQueueStatsInput{})
-			if err != nil {
-				t.Errorf("GetQueueStats() error = %v", err)
-				return
-			}
-			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("GetQueueStats() got = %v, want %v", got, tt.want)
-			}
+			handleTestOperation(t, ctx, optFns, func(client Client[test.MessageData]) {
+				got, err := client.GetQueueStats(ctx, &GetQueueStatsInput{})
+				err = checkExpectedError(t, err, tt.wantErr, "GetQueueStats()")
+				if err != nil || tt.wantErr != nil {
+					return
+				}
+				if !reflect.DeepEqual(got, tt.want) {
+					t.Errorf("GetQueueStats() got = %v, want %v", got, tt.want)
+				}
+			})
 		})
 	}
 }
