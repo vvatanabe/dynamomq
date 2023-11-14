@@ -139,22 +139,10 @@ func TestDynamoMQClientSendMessage(t *testing.T) {
 			wantErr: nil,
 		},
 	}
-
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			ctx := context.Background()
-			client, clean := prepareTestClient(t, ctx, tt.setup, tt.sdkClock, false)
-			defer clean()
-			result, err := client.SendMessage(ctx, tt.args)
-			err = assertError(t, err, tt.wantErr, "SendMessage()")
-			if err != nil || tt.wantErr != nil {
-				return
-			}
-			assertDeepEqual(t, result, tt.want, "SendMessage()")
+	runTestsParallel[*SendMessageInput[test.MessageData], *SendMessageOutput[test.MessageData]](t, "SendMessage()", tests,
+		func(client Client[test.MessageData], args *SendMessageInput[test.MessageData]) (*SendMessageOutput[test.MessageData], error) {
+			return client.SendMessage(context.Background(), args)
 		})
-	}
 }
 
 func TestDynamoMQClientReceiveMessage(t *testing.T) {
@@ -244,22 +232,10 @@ func TestDynamoMQClientReceiveMessage(t *testing.T) {
 			wantErr: &EmptyQueueError{},
 		},
 	}
-
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			ctx := context.Background()
-			client, clean := prepareTestClient(t, ctx, tt.setup, tt.sdkClock, false)
-			defer clean()
-			result, err := client.ReceiveMessage(ctx, &ReceiveMessageInput{})
-			err = assertError(t, err, tt.wantErr, "ReceiveMessage()")
-			if err != nil || tt.wantErr != nil {
-				return
-			}
-			assertDeepEqual(t, result, tt.want, "ReceiveMessage()")
+	runTestsParallel[any, *ReceiveMessageOutput[test.MessageData]](t, "ReceiveMessage()", tests,
+		func(client Client[test.MessageData], _ any) (*ReceiveMessageOutput[test.MessageData], error) {
+			return client.ReceiveMessage(context.Background(), &ReceiveMessageInput{})
 		})
-	}
 }
 
 func testDynamoMQClientReceiveMessageSequence(t *testing.T, useFIFO bool) {
@@ -387,24 +363,12 @@ func TestDynamoMQClientUpdateMessageAsVisible(t *testing.T) {
 			},
 		},
 	}
-
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			ctx := context.Background()
-			client, clean := prepareTestClient(t, ctx, tt.setup, tt.sdkClock, false)
-			defer clean()
-			result, err := client.UpdateMessageAsVisible(ctx, &UpdateMessageAsVisibleInput{
-				ID: tt.args.id,
+	runTestsParallel[args, *UpdateMessageAsVisibleOutput[test.MessageData]](t, "UpdateMessageAsVisible()", tests,
+		func(client Client[test.MessageData], args args) (*UpdateMessageAsVisibleOutput[test.MessageData], error) {
+			return client.UpdateMessageAsVisible(context.Background(), &UpdateMessageAsVisibleInput{
+				ID: args.id,
 			})
-			err = assertError(t, err, tt.wantErr, "UpdateMessageAsVisible()")
-			if err != nil || tt.wantErr != nil {
-				return
-			}
-			assertDeepEqual(t, result, tt.want, "UpdateMessageAsVisible()")
 		})
-	}
 }
 
 func TestDynamoMQClientDeleteMessage(t *testing.T) {
@@ -412,7 +376,7 @@ func TestDynamoMQClientDeleteMessage(t *testing.T) {
 	type args struct {
 		id string
 	}
-	tests := []TestCase[args, error]{
+	tests := []TestCase[args, *DeleteMessageOutput]{
 		{
 			name: testNameShouldReturnIDNotProvidedError,
 			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
@@ -421,7 +385,7 @@ func TestDynamoMQClientDeleteMessage(t *testing.T) {
 			args: args{
 				id: "",
 			},
-			want: &IDNotProvidedError{},
+			wantErr: &IDNotProvidedError{},
 		},
 		{
 			name: "should not return error when not existing id",
@@ -431,7 +395,7 @@ func TestDynamoMQClientDeleteMessage(t *testing.T) {
 			args: args{
 				id: "B-101",
 			},
-			want: nil,
+			want: &DeleteMessageOutput{},
 		},
 		{
 			name: "should succeed when id is found",
@@ -441,23 +405,15 @@ func TestDynamoMQClientDeleteMessage(t *testing.T) {
 			args: args{
 				id: "A-101",
 			},
-			want: nil,
+			want: &DeleteMessageOutput{},
 		},
 	}
-
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			ctx := context.Background()
-			client, clean := prepareTestClient(t, ctx, tt.setup, tt.sdkClock, false)
-			defer clean()
-			_, err := client.DeleteMessage(ctx, &DeleteMessageInput{
-				ID: tt.args.id,
+	runTestsParallel[args, *DeleteMessageOutput](t, "DeleteMessage()", tests,
+		func(client Client[test.MessageData], args args) (*DeleteMessageOutput, error) {
+			return client.DeleteMessage(context.Background(), &DeleteMessageInput{
+				ID: args.id,
 			})
-			err = assertError(t, err, tt.want, "DeleteMessage()")
 		})
-	}
 }
 
 func TestDynamoMQClientMoveMessageToDLQ(t *testing.T) {
@@ -540,22 +496,10 @@ func TestDynamoMQClientMoveMessageToDLQ(t *testing.T) {
 			wantErr: nil,
 		},
 	}
-
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			ctx := context.Background()
-			client, clean := prepareTestClient(t, ctx, tt.setup, tt.sdkClock, false)
-			defer clean()
-			result, err := client.MoveMessageToDLQ(ctx, tt.args)
-			err = assertError(t, err, tt.wantErr, "MoveMessageToDLQ()")
-			if err != nil || tt.wantErr != nil {
-				return
-			}
-			assertDeepEqual(t, result, tt.want, "MoveMessageToDLQ()")
+	runTestsParallel[*MoveMessageToDLQInput, *MoveMessageToDLQOutput](t, "MoveMessageToDLQ()", tests,
+		func(client Client[test.MessageData], args *MoveMessageToDLQInput) (*MoveMessageToDLQOutput, error) {
+			return client.MoveMessageToDLQ(context.Background(), args)
 		})
-	}
 }
 
 func TestDynamoMQClientRedriveMessage(t *testing.T) {
@@ -607,24 +551,12 @@ func TestDynamoMQClientRedriveMessage(t *testing.T) {
 			},
 		},
 	}
-
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			ctx := context.Background()
-			client, clean := prepareTestClient(t, ctx, tt.setup, tt.sdkClock, false)
-			defer clean()
-			result, err := client.RedriveMessage(ctx, &RedriveMessageInput{
-				ID: tt.args.id,
+	runTestsParallel[args, *RedriveMessageOutput](t, "RedriveMessage()", tests,
+		func(client Client[test.MessageData], args args) (*RedriveMessageOutput, error) {
+			return client.RedriveMessage(context.Background(), &RedriveMessageInput{
+				ID: args.id,
 			})
-			err = assertError(t, err, tt.wantErr, "RedriveMessage()")
-			if err != nil || tt.wantErr != nil {
-				return
-			}
-			assertDeepEqual(t, result, tt.want, "RedriveMessage()")
 		})
-	}
 }
 
 func TestDynamoMQClientGetQueueStats(t *testing.T) {
@@ -688,22 +620,10 @@ func TestDynamoMQClientGetQueueStats(t *testing.T) {
 			},
 		},
 	}
-
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			ctx := context.Background()
-			client, clean := prepareTestClient(t, ctx, tt.setup, clock.RealClock{}, false)
-			defer clean()
-			got, err := client.GetQueueStats(ctx, &GetQueueStatsInput{})
-			err = assertError(t, err, tt.wantErr, "GetQueueStats()")
-			if err != nil || tt.wantErr != nil {
-				return
-			}
-			assertDeepEqual(t, got, tt.want, "GetQueueStats()")
+	runTestsParallel[any, *GetQueueStatsOutput](t, "GetQueueStats()", tests,
+		func(client Client[test.MessageData], _ any) (*GetQueueStatsOutput, error) {
+			return client.GetQueueStats(context.Background(), &GetQueueStatsInput{})
 		})
-	}
 }
 
 func TestDynamoMQClientGetDLQStats(t *testing.T) {
@@ -741,22 +661,10 @@ func TestDynamoMQClientGetDLQStats(t *testing.T) {
 			},
 		},
 	}
-
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			ctx := context.Background()
-			client, clean := prepareTestClient(t, ctx, tt.setup, clock.RealClock{}, false)
-			defer clean()
-			got, err := client.GetDLQStats(ctx, &GetDLQStatsInput{})
-			err = assertError(t, err, tt.wantErr, "GetDLQStats()")
-			if err != nil || tt.wantErr != nil {
-				return
-			}
-			assertDeepEqual(t, got, tt.want, "GetDLQStats()")
+	runTestsParallel[any, *GetDLQStatsOutput](t, "GetDLQStats()", tests,
+		func(client Client[test.MessageData], _ any) (*GetDLQStatsOutput, error) {
+			return client.GetDLQStats(context.Background(), &GetDLQStatsInput{})
 		})
-	}
 }
 
 func TestDynamoMQClientGetMessage(t *testing.T) {
@@ -803,24 +711,13 @@ func TestDynamoMQClientGetMessage(t *testing.T) {
 			wantErr: nil,
 		},
 	}
-
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			ctx := context.Background()
-			client, clean := prepareTestClient(t, ctx, tt.setup, clock.RealClock{}, false)
-			defer clean()
-			got, err := client.GetMessage(ctx, &GetMessageInput{
-				ID: tt.args.id,
+	runTestsParallel[args, *Message[test.MessageData]](t, "GetMessage()", tests,
+		func(client Client[test.MessageData], args args) (*Message[test.MessageData], error) {
+			got, err := client.GetMessage(context.Background(), &GetMessageInput{
+				ID: args.id,
 			})
-			err = assertError(t, err, tt.wantErr, "GetMessage()")
-			if err != nil || tt.wantErr != nil {
-				return
-			}
-			assertDeepEqual(t, got.Message, tt.want, "GetMessage()")
+			return got.Message, err
 		})
-	}
 }
 
 func TestDynamoMQClientReplaceMessage(t *testing.T) {
@@ -869,31 +766,23 @@ func TestDynamoMQClientReplaceMessage(t *testing.T) {
 			wantErr: nil,
 		},
 	}
-
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
+	runTestsParallel[args, *Message[test.MessageData]](t, "ReplaceMessage()", tests,
+		func(client Client[test.MessageData], args args) (*Message[test.MessageData], error) {
 			ctx := context.Background()
-			client, clean := prepareTestClient(t, ctx, tt.setup, clock.RealClock{}, false)
-			defer clean()
 			_, err := client.ReplaceMessage(ctx, &ReplaceMessageInput[test.MessageData]{
-				Message: tt.args.message,
-			})
-			err = assertError(t, err, tt.wantErr, "ReplaceMessage()")
-			if err != nil || tt.wantErr != nil {
-				return
-			}
-			got, err := client.GetMessage(ctx, &GetMessageInput{
-				ID: tt.args.message.ID,
+				Message: args.message,
 			})
 			if err != nil {
-				t.Errorf("GetMessage() error = %v", err)
-				return
+				return nil, err
 			}
-			assertDeepEqual(t, got.Message, tt.want, "GetMessage()")
+			got, err := client.GetMessage(ctx, &GetMessageInput{
+				ID: args.message.ID,
+			})
+			if err != nil {
+				return nil, err
+			}
+			return got.Message, err
 		})
-	}
 }
 
 func TestDynamoMQClientListMessages(t *testing.T) {
@@ -929,22 +818,27 @@ func TestDynamoMQClientListMessages(t *testing.T) {
 			wantErr: nil,
 		},
 	}
+	runTestsParallel[args, []*Message[test.MessageData]](t, "ListMessages()", tests,
+		func(client Client[test.MessageData], args args) ([]*Message[test.MessageData], error) {
+			out, err := client.ListMessages(context.Background(), &ListMessagesInput{Size: args.size})
+			return out.Messages, err
+		})
+}
 
+func runTestsParallel[Args any, Want any](t *testing.T, prefix string,
+	tests []TestCase[Args, Want], operation func(Client[test.MessageData], Args) (Want, error)) {
 	for _, tt := range tests {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			ctx := context.Background()
-			client, clean := prepareTestClient(t, ctx, tt.setup, tt.sdkClock, false)
+			client, clean := prepareTestClient(t, context.Background(), tt.setup, tt.sdkClock, false)
 			defer clean()
-			result, err := client.ListMessages(ctx, &ListMessagesInput{
-				Size: tt.args.size,
-			})
-			err = assertError(t, err, tt.wantErr, "ListMessages()")
+			result, err := operation(client, tt.args)
+			err = assertError(t, err, tt.wantErr, prefix)
 			if err != nil || tt.wantErr != nil {
 				return
 			}
-			assertDeepEqual(t, result.Messages, tt.want, "ListMessages()")
+			assertDeepEqual(t, result, tt.want, prefix)
 		})
 	}
 }
