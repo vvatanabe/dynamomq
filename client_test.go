@@ -267,8 +267,7 @@ func TestDynamoMQClientReceiveMessage(t *testing.T) {
 	}
 }
 
-func TestDynamoMQClientReceiveMessageUseFIFO(t *testing.T) {
-	t.Parallel()
+func testDynamoMQClientReceiveMessageSequence(t *testing.T, useFIFO bool) {
 	now := date(2023, 12, 1, 0, 0, 10)
 	ctx := context.Background()
 	client, clean := prepareTestClient(t, ctx, func(t *testing.T) (string, *dynamodb.Client, func()) {
@@ -279,7 +278,7 @@ func TestDynamoMQClientReceiveMessageUseFIFO(t *testing.T) {
 		)
 	}, mockClock{
 		t: now,
-	}, true)
+	}, useFIFO)
 	defer clean()
 
 	wants := []*ReceiveMessageOutput[test.MessageData]{
@@ -299,6 +298,11 @@ func TestDynamoMQClientReceiveMessageUseFIFO(t *testing.T) {
 			v2, _ := json.Marshal(want)
 			t.Errorf("ReceiveMessage() [%d] got = %v, want %v", i, string(v1), string(v2))
 		}
+
+		if !useFIFO {
+			return
+		}
+
 		_, err = client.ReceiveMessage(ctx, &ReceiveMessageInput{})
 		if !errors.Is(err, &EmptyQueueError{}) {
 			t.Errorf("ReceiveMessage() [%d] error = %v, wantErr %v", i, err, &EmptyQueueError{})
@@ -312,7 +316,6 @@ func TestDynamoMQClientReceiveMessageUseFIFO(t *testing.T) {
 			return
 		}
 	}
-
 	_, err := client.ReceiveMessage(ctx, &ReceiveMessageInput{})
 	if !errors.Is(err, &EmptyQueueError{}) {
 		t.Errorf("ReceiveMessage() [last] error = %v, wantErr %v", err, &EmptyQueueError{})
@@ -320,42 +323,14 @@ func TestDynamoMQClientReceiveMessageUseFIFO(t *testing.T) {
 	}
 }
 
+func TestDynamoMQClientReceiveMessageUseFIFO(t *testing.T) {
+	t.Parallel()
+	testDynamoMQClientReceiveMessageSequence(t, true)
+}
+
 func TestDynamoMQClientReceiveMessageNotUseFIFO(t *testing.T) {
 	t.Parallel()
-	now := date(2023, 12, 1, 0, 0, 10)
-	ctx := context.Background()
-	client, clean := prepareTestClient(t, ctx, func(t *testing.T) (string, *dynamodb.Client, func()) {
-		return setupDynamoDB(t,
-			newPutRequestWithReadyItem("A-101", date(2023, 12, 1, 0, 0, 3)),
-			newPutRequestWithReadyItem("A-202", date(2023, 12, 1, 0, 0, 2)),
-			newPutRequestWithReadyItem("A-303", date(2023, 12, 1, 0, 0, 1)),
-		)
-	}, mockClock{
-		t: now,
-	}, false)
-	defer clean()
-	wants := []*ReceiveMessageOutput[test.MessageData]{
-		newMessageFromReadyToProcessing("A-303", date(2023, 12, 1, 0, 0, 1), now),
-		newMessageFromReadyToProcessing("A-202", date(2023, 12, 1, 0, 0, 2), now),
-		newMessageFromReadyToProcessing("A-101", date(2023, 12, 1, 0, 0, 3), now),
-	}
-	for i, want := range wants {
-		result, err := client.ReceiveMessage(ctx, &ReceiveMessageInput{})
-		if err != nil {
-			t.Errorf("ReceiveMessage() [%d] error = %v", i, err)
-			return
-		}
-		if !reflect.DeepEqual(result, want) {
-			v1, _ := json.Marshal(result)
-			v2, _ := json.Marshal(want)
-			t.Errorf("ReceiveMessage() [%d] got = %v, want %v", i, string(v1), string(v2))
-		}
-	}
-	_, err := client.ReceiveMessage(ctx, &ReceiveMessageInput{})
-	if !errors.Is(err, &EmptyQueueError{}) {
-		t.Errorf("ReceiveMessage() [last] error = %v, wantErr %v", err, &EmptyQueueError{})
-		return
-	}
+	testDynamoMQClientReceiveMessageSequence(t, false)
 }
 
 func TestDynamoMQClientUpdateMessageAsVisible(t *testing.T) {
