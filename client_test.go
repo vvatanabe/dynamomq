@@ -1335,7 +1335,7 @@ func TestDynamoMQClientGetMessage(t *testing.T) {
 		wantErr error
 	}{
 		{
-			name: "IDNotProvidedError",
+			name: "should return IDNotProvidedError when id is empty",
 			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
@@ -1350,7 +1350,7 @@ func TestDynamoMQClientGetMessage(t *testing.T) {
 			wantErr: &IDNotProvidedError{},
 		},
 		{
-			name: "nil",
+			name: "should not return message when id is not found",
 			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
@@ -1365,11 +1365,12 @@ func TestDynamoMQClientGetMessage(t *testing.T) {
 			wantErr: nil,
 		},
 		{
-			name: "get a message",
+			name: "should return message when id is found",
 			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
-						Item: newTestMessageItemAsReady("A-101", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)).marshalMapUnsafe(),
+						Item: newTestMessageItemAsReady("A-101",
+							date(2023, 12, 1, 0, 0, 0)).marshalMapUnsafe(),
 					},
 					&types.PutRequest{
 						Item: newTestMessageItemAsReady("B-202", clock.Now()).marshalMapUnsafe(),
@@ -1379,7 +1380,8 @@ func TestDynamoMQClientGetMessage(t *testing.T) {
 			args: args{
 				id: "A-101",
 			},
-			want:    newTestMessageItemAsReady("A-101", time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)),
+			want: newTestMessageItemAsReady("A-101",
+				date(2023, 12, 1, 0, 0, 0)),
 			wantErr: nil,
 		},
 	}
@@ -1391,30 +1393,23 @@ func TestDynamoMQClientGetMessage(t *testing.T) {
 			tableName, raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			cfg, err := config.LoadDefaultConfig(ctx)
-			if err != nil {
-				t.Fatalf("failed to load aws config: %s\n", err)
-				return
+			optFns := []func(*ClientOptions){
+				WithTableName(tableName),
+				WithAWSDynamoDBClient(raw),
+				WithAWSVisibilityTimeout(1),
 			}
-			client, err := NewFromConfig[test.MessageData](cfg, WithTableName(tableName), WithAWSDynamoDBClient(raw))
-			if err != nil {
-				t.Fatalf("NewFromConfig() error = %v", err)
-				return
-			}
-
-			got, err := client.GetMessage(ctx, &GetMessageInput{
-				ID: tt.args.id,
-			})
-			if tt.wantErr != nil {
-				if !errors.Is(err, tt.wantErr) {
-					t.Errorf("GetMessage() error = %v, wantErr %v", err, tt.wantErr)
+			handleTestOperation(t, ctx, optFns, func(client Client[test.MessageData]) {
+				got, err := client.GetMessage(ctx, &GetMessageInput{
+					ID: tt.args.id,
+				})
+				err = checkExpectedError(t, err, tt.wantErr, "GetMessage()")
+				if err != nil || tt.wantErr != nil {
 					return
 				}
-				return
-			}
-			if !reflect.DeepEqual(got.Message, tt.want) {
-				t.Errorf("GetMessage() got = %v, want %v", got, tt.want)
-			}
+				if !reflect.DeepEqual(got.Message, tt.want) {
+					t.Errorf("GetMessage() got = %v, want %v", got.Message, tt.want)
+				}
+			})
 		})
 	}
 }
