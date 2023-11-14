@@ -808,7 +808,7 @@ func TestDynamoMQClientDeleteMessage(t *testing.T) {
 		want     error
 	}{
 		{
-			name: "should return IDNotProvidedError",
+			name: "should return IDNotProvidedError when id is empty",
 			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
@@ -822,7 +822,7 @@ func TestDynamoMQClientDeleteMessage(t *testing.T) {
 			want: &IDNotProvidedError{},
 		},
 		{
-			name: "not exist id does not return error",
+			name: "should not return error when not existing id",
 			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
@@ -836,7 +836,7 @@ func TestDynamoMQClientDeleteMessage(t *testing.T) {
 			want: nil,
 		},
 		{
-			name: "existing id do not return error",
+			name: "should succeed when id is found",
 			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
 				return setupDynamoDB(t,
 					&types.PutRequest{
@@ -858,23 +858,18 @@ func TestDynamoMQClientDeleteMessage(t *testing.T) {
 			tableName, raw, clean := tt.setup(t)
 			defer clean()
 			ctx := context.Background()
-			cfg, err := config.LoadDefaultConfig(ctx)
-			if err != nil {
-				t.Fatalf("failed to load aws config: %s\n", err)
-				return
+			optFns := []func(*ClientOptions){
+				WithTableName(tableName),
+				WithAWSDynamoDBClient(raw),
+				withClock(tt.sdkClock),
+				WithAWSVisibilityTimeout(1),
 			}
-			client, err := NewFromConfig[test.MessageData](cfg, WithTableName(tableName), WithAWSDynamoDBClient(raw), withClock(tt.sdkClock), WithAWSVisibilityTimeout(1))
-			if err != nil {
-				t.Fatalf("NewFromConfig() error = %v", err)
-				return
-			}
-			_, err = client.DeleteMessage(ctx, &DeleteMessageInput{
-				ID: tt.args.id,
+			handleTestOperation(t, ctx, optFns, func(client Client[test.MessageData]) {
+				_, err := client.DeleteMessage(ctx, &DeleteMessageInput{
+					ID: tt.args.id,
+				})
+				err = checkExpectedError(t, err, tt.want, "DeleteMessage()")
 			})
-			if !errors.Is(err, tt.want) {
-				t.Errorf("DeleteMessage() error = %v, wantErr %v", err, tt.want)
-				return
-			}
 		})
 	}
 }
