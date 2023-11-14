@@ -151,18 +151,9 @@ func TestDynamoMQClientSendMessage(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			tableName, raw, clean := tt.setup(t)
-			defer clean()
-			optFns := []func(*ClientOptions){
-				WithTableName(tableName),
-				WithAWSDynamoDBClient(raw),
-				withClock(tt.sdkClock),
-				WithAWSVisibilityTimeout(1),
-			}
-
 			ctx := context.Background()
-			client := prepareTestClient(t, ctx, optFns)
-
+			client, clean := prepareTestClient(t, ctx, tt.setup, tt.sdkClock, false)
+			defer clean()
 			result, err := client.SendMessage(ctx, tt.args)
 			err = checkExpectedError(t, err, tt.wantErr, "SendMessage()")
 			if err != nil || tt.wantErr != nil {
@@ -288,18 +279,9 @@ func TestDynamoMQClientReceiveMessage(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			tableName, raw, clean := tt.setup(t)
-			defer clean()
-			optFns := []func(*ClientOptions){
-				WithTableName(tableName),
-				WithAWSDynamoDBClient(raw),
-				withClock(tt.sdkClock),
-				WithAWSVisibilityTimeout(1),
-			}
-
 			ctx := context.Background()
-			client := prepareTestClient(t, ctx, optFns)
-
+			client, clean := prepareTestClient(t, ctx, tt.setup, tt.sdkClock, false)
+			defer clean()
 			result, err := client.ReceiveMessage(ctx, &ReceiveMessageInput{})
 			err = checkExpectedError(t, err, tt.wantErr, "ReceiveMessage()")
 			if err != nil || tt.wantErr != nil {
@@ -314,38 +296,33 @@ func TestDynamoMQClientReceiveMessage(t *testing.T) {
 
 func TestDynamoMQClientReceiveMessageUseFIFO(t *testing.T) {
 	t.Parallel()
-	tableName, raw, clean := setupDynamoDB(t,
-		&types.PutRequest{
-			Item: newTestMessageItemAsReady("A-101", date(2023, 12, 1, 0, 0, 3)).marshalMapUnsafe(),
-		},
-		&types.PutRequest{
-			Item: newTestMessageItemAsReady("A-202", date(2023, 12, 1, 0, 0, 2)).marshalMapUnsafe(),
-		},
-		&types.PutRequest{
-			Item: newTestMessageItemAsReady("A-303", date(2023, 12, 1, 0, 0, 1)).marshalMapUnsafe(),
-		},
-	)
-	defer clean()
-
 	now := date(2023, 12, 1, 0, 0, 10)
-	optFns := []func(*ClientOptions){
-		WithTableName(tableName),
-		WithAWSDynamoDBClient(raw),
-		withClock(mockClock{
-			t: now,
-		}),
-		WithAWSVisibilityTimeout(1),
-		WithUseFIFO(true),
-	}
+	ctx := context.Background()
+	client, clean := prepareTestClient(t, ctx, func(t *testing.T) (string, *dynamodb.Client, func()) {
+		return setupDynamoDB(t,
+			&types.PutRequest{
+				Item: newTestMessageItemAsReady("A-101", date(2023, 12, 1, 0, 0, 3)).
+					marshalMapUnsafe(),
+			},
+			&types.PutRequest{
+				Item: newTestMessageItemAsReady("A-202", date(2023, 12, 1, 0, 0, 2)).
+					marshalMapUnsafe(),
+			},
+			&types.PutRequest{
+				Item: newTestMessageItemAsReady("A-303", date(2023, 12, 1, 0, 0, 1)).
+					marshalMapUnsafe(),
+			},
+		)
+	}, mockClock{
+		t: now,
+	}, true)
+	defer clean()
 
 	wants := []*ReceiveMessageOutput[test.MessageData]{
 		newMessageFromReadyToProcessing("A-303", date(2023, 12, 1, 0, 0, 1), now),
 		newMessageFromReadyToProcessing("A-202", date(2023, 12, 1, 0, 0, 2), now),
 		newMessageFromReadyToProcessing("A-101", date(2023, 12, 1, 0, 0, 3), now),
 	}
-
-	ctx := context.Background()
-	client := prepareTestClient(t, ctx, optFns)
 
 	for i, want := range wants {
 		result, err := client.ReceiveMessage(ctx, &ReceiveMessageInput{})
@@ -381,41 +358,32 @@ func TestDynamoMQClientReceiveMessageUseFIFO(t *testing.T) {
 
 func TestDynamoMQClientReceiveMessageNotUseFIFO(t *testing.T) {
 	t.Parallel()
-	tableName, raw, clean := setupDynamoDB(t,
-		&types.PutRequest{
-			Item: newTestMessageItemAsReady("A-101", date(2023, 12, 1, 0, 0, 3)).
-				marshalMapUnsafe(),
-		},
-		&types.PutRequest{
-			Item: newTestMessageItemAsReady("A-202", date(2023, 12, 1, 0, 0, 2)).
-				marshalMapUnsafe(),
-		},
-		&types.PutRequest{
-			Item: newTestMessageItemAsReady("A-303", date(2023, 12, 1, 0, 0, 1)).
-				marshalMapUnsafe(),
-		},
-	)
-	defer clean()
-
 	now := date(2023, 12, 1, 0, 0, 10)
-	optFns := []func(*ClientOptions){
-		WithTableName(tableName),
-		WithAWSDynamoDBClient(raw),
-		withClock(mockClock{
-			t: now,
-		}),
-		WithAWSVisibilityTimeout(1),
-	}
-
+	ctx := context.Background()
+	client, clean := prepareTestClient(t, ctx, func(t *testing.T) (string, *dynamodb.Client, func()) {
+		return setupDynamoDB(t,
+			&types.PutRequest{
+				Item: newTestMessageItemAsReady("A-101", date(2023, 12, 1, 0, 0, 3)).
+					marshalMapUnsafe(),
+			},
+			&types.PutRequest{
+				Item: newTestMessageItemAsReady("A-202", date(2023, 12, 1, 0, 0, 2)).
+					marshalMapUnsafe(),
+			},
+			&types.PutRequest{
+				Item: newTestMessageItemAsReady("A-303", date(2023, 12, 1, 0, 0, 1)).
+					marshalMapUnsafe(),
+			},
+		)
+	}, mockClock{
+		t: now,
+	}, false)
+	defer clean()
 	wants := []*ReceiveMessageOutput[test.MessageData]{
 		newMessageFromReadyToProcessing("A-303", date(2023, 12, 1, 0, 0, 1), now),
 		newMessageFromReadyToProcessing("A-202", date(2023, 12, 1, 0, 0, 2), now),
 		newMessageFromReadyToProcessing("A-101", date(2023, 12, 1, 0, 0, 3), now),
 	}
-
-	ctx := context.Background()
-	client := prepareTestClient(t, ctx, optFns)
-
 	for i, want := range wants {
 		result, err := client.ReceiveMessage(ctx, &ReceiveMessageInput{})
 		if err != nil {
@@ -520,18 +488,9 @@ func TestDynamoMQClientUpdateMessageAsVisible(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			tableName, raw, clean := tt.setup(t)
-			defer clean()
 			ctx := context.Background()
-			optFns := []func(*ClientOptions){
-				WithTableName(tableName),
-				WithAWSDynamoDBClient(raw),
-				withClock(tt.sdkClock),
-				WithAWSVisibilityTimeout(1),
-			}
-
-			client := prepareTestClient(t, ctx, optFns)
-
+			client, clean := prepareTestClient(t, ctx, tt.setup, tt.sdkClock, false)
+			defer clean()
 			result, err := client.UpdateMessageAsVisible(ctx, &UpdateMessageAsVisibleInput{
 				ID: tt.args.id,
 			})
@@ -606,18 +565,9 @@ func TestDynamoMQClientDeleteMessage(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			tableName, raw, clean := tt.setup(t)
-			defer clean()
 			ctx := context.Background()
-			optFns := []func(*ClientOptions){
-				WithTableName(tableName),
-				WithAWSDynamoDBClient(raw),
-				withClock(tt.sdkClock),
-				WithAWSVisibilityTimeout(1),
-			}
-
-			client := prepareTestClient(t, ctx, optFns)
-
+			client, clean := prepareTestClient(t, ctx, tt.setup, tt.sdkClock, false)
+			defer clean()
 			_, err := client.DeleteMessage(ctx, &DeleteMessageInput{
 				ID: tt.args.id,
 			})
@@ -734,18 +684,9 @@ func TestDynamoMQClientMoveMessageToDLQ(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			tableName, raw, clean := tt.setup(t)
-			defer clean()
 			ctx := context.Background()
-			optFns := []func(*ClientOptions){
-				WithTableName(tableName),
-				WithAWSDynamoDBClient(raw),
-				withClock(tt.sdkClock),
-				WithAWSVisibilityTimeout(1),
-			}
-
-			client := prepareTestClient(t, ctx, optFns)
-
+			client, clean := prepareTestClient(t, ctx, tt.setup, tt.sdkClock, false)
+			defer clean()
 			result, err := client.MoveMessageToDLQ(ctx, tt.args)
 			err = checkExpectedError(t, err, tt.wantErr, "MoveMessageToDLQ()")
 			if err != nil || tt.wantErr != nil {
@@ -831,18 +772,9 @@ func TestDynamoMQClientRedriveMessage(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			tableName, raw, clean := tt.setup(t)
-			defer clean()
 			ctx := context.Background()
-			optFns := []func(*ClientOptions){
-				WithTableName(tableName),
-				WithAWSDynamoDBClient(raw),
-				withClock(tt.sdkClock),
-				WithAWSVisibilityTimeout(1),
-			}
-
-			client := prepareTestClient(t, ctx, optFns)
-
+			client, clean := prepareTestClient(t, ctx, tt.setup, tt.sdkClock, false)
+			defer clean()
 			result, err := client.RedriveMessage(ctx, &RedriveMessageInput{
 				ID: tt.args.id,
 			})
@@ -944,17 +876,9 @@ func TestDynamoMQClientGetQueueStats(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			tableName, raw, clean := tt.setup(t)
-			defer clean()
 			ctx := context.Background()
-			optFns := []func(*ClientOptions){
-				WithTableName(tableName),
-				WithAWSDynamoDBClient(raw),
-				WithAWSVisibilityTimeout(1),
-			}
-
-			client := prepareTestClient(t, ctx, optFns)
-
+			client, clean := prepareTestClient(t, ctx, tt.setup, clock.RealClock{}, false)
+			defer clean()
 			got, err := client.GetQueueStats(ctx, &GetQueueStatsInput{})
 			err = checkExpectedError(t, err, tt.wantErr, "GetQueueStats()")
 			if err != nil || tt.wantErr != nil {
@@ -1030,17 +954,9 @@ func TestDynamoMQClientGetDLQStats(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			tableName, raw, clean := tt.setup(t)
-			defer clean()
 			ctx := context.Background()
-			optFns := []func(*ClientOptions){
-				WithTableName(tableName),
-				WithAWSDynamoDBClient(raw),
-				WithAWSVisibilityTimeout(1),
-			}
-
-			client := prepareTestClient(t, ctx, optFns)
-
+			client, clean := prepareTestClient(t, ctx, tt.setup, clock.RealClock{}, false)
+			defer clean()
 			got, err := client.GetDLQStats(ctx, &GetDLQStatsInput{})
 			err = checkExpectedError(t, err, tt.wantErr, "GetDLQStats()")
 			if err != nil || tt.wantErr != nil {
@@ -1121,17 +1037,9 @@ func TestDynamoMQClientGetMessage(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			tableName, raw, clean := tt.setup(t)
-			defer clean()
 			ctx := context.Background()
-			optFns := []func(*ClientOptions){
-				WithTableName(tableName),
-				WithAWSDynamoDBClient(raw),
-				WithAWSVisibilityTimeout(1),
-			}
-
-			client := prepareTestClient(t, ctx, optFns)
-
+			client, clean := prepareTestClient(t, ctx, tt.setup, clock.RealClock{}, false)
+			defer clean()
 			got, err := client.GetMessage(ctx, &GetMessageInput{
 				ID: tt.args.id,
 			})
@@ -1215,17 +1123,9 @@ func TestDynamoMQClientReplaceMessage(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			tableName, raw, clean := tt.setup(t)
-			defer clean()
 			ctx := context.Background()
-			optFns := []func(*ClientOptions){
-				WithTableName(tableName),
-				WithAWSDynamoDBClient(raw),
-				WithAWSVisibilityTimeout(1),
-			}
-
-			client := prepareTestClient(t, ctx, optFns)
-
+			client, clean := prepareTestClient(t, ctx, tt.setup, clock.RealClock{}, false)
+			defer clean()
 			_, err := client.ReplaceMessage(ctx, &ReplaceMessageInput[test.MessageData]{
 				Message: tt.args.message,
 			})
@@ -1292,18 +1192,9 @@ func TestDynamoMQClientListMessages(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			tableName, raw, clean := tt.setup(t)
-			defer clean()
 			ctx := context.Background()
-			optFns := []func(*ClientOptions){
-				WithTableName(tableName),
-				WithAWSDynamoDBClient(raw),
-				withClock(tt.sdkClock),
-				WithAWSVisibilityTimeout(1),
-			}
-
-			client := prepareTestClient(t, ctx, optFns)
-
+			client, clean := prepareTestClient(t, ctx, tt.setup, tt.sdkClock, false)
+			defer clean()
 			result, err := client.ListMessages(ctx, &ListMessagesInput{
 				Size: tt.args.size,
 			})
@@ -1355,21 +1246,30 @@ func checkExpectedError(t *testing.T, err, wantErr error, messagePrefix string) 
 	return nil
 }
 
-func prepareTestClient(t *testing.T, ctx context.Context, optFns []func(*ClientOptions)) Client[test.MessageData] {
-	client, err := setupClient(ctx, optFns...)
-	if err != nil {
-		t.Fatalf("failed to setup client: %s\n", err)
-		return nil
+func prepareTestClient(t *testing.T, ctx context.Context,
+	setupTable func(*testing.T) (string, *dynamodb.Client, func()),
+	sdkClock clock.Clock,
+	useFIFO bool,
+) (Client[test.MessageData], func()) {
+	tableName, raw, clean := setupTable(t)
+	optFns := []func(*ClientOptions){
+		WithTableName(tableName),
+		WithAWSDynamoDBClient(raw),
+		withClock(sdkClock),
+		WithUseFIFO(useFIFO),
+		WithAWSVisibilityTimeout(1),
 	}
-	return client
-}
-
-func setupClient(ctx context.Context, optFns ...func(*ClientOptions)) (Client[test.MessageData], error) {
 	cfg, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
-		return nil, err
+		t.Fatalf("failed to load aws config: %s\n", err)
+		return nil, nil
 	}
-	return NewFromConfig[test.MessageData](cfg, optFns...)
+	client, err := NewFromConfig[test.MessageData](cfg, optFns...)
+	if err != nil {
+		t.Fatalf("failed to create DynamoMQ client: %s\n", err)
+		return nil, nil
+	}
+	return client, clean
 }
 
 func date(year int, month time.Month, day, hour, min, sec int) time.Time {
