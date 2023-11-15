@@ -319,15 +319,15 @@ func testDynamoMQClientReceiveMessageSequence(t *testing.T, useFIFO bool) {
 
 	for i, want := range wants {
 		result, err := client.ReceiveMessage(ctx, &ReceiveMessageInput{})
-		_ = assertError(t, err, nil, fmt.Sprintf("ReceiveMessage() [%d]", i))
-		assertDeepEqual(t, result, want, fmt.Sprintf("ReceiveMessage() [%d]", i))
+		_ = assertError(t, err, nil, fmt.Sprintf("ReceiveMessage() [%d-1]", i))
+		assertDeepEqual(t, result, want, fmt.Sprintf("ReceiveMessage() [%d-2]", i))
 
 		if !useFIFO {
 			return
 		}
 
 		_, err = client.ReceiveMessage(ctx, &ReceiveMessageInput{})
-		_ = assertError(t, err, &EmptyQueueError{}, fmt.Sprintf("ReceiveMessage() [%d]", i))
+		_ = assertError(t, err, &EmptyQueueError{}, fmt.Sprintf("ReceiveMessage() [%d-3]", i))
 
 		_, err = client.DeleteMessage(ctx, &DeleteMessageInput{
 			ID: result.ID,
