@@ -71,6 +71,12 @@ func setupDynamoDB(t *testing.T, initialData ...*types.PutRequest) (tableName st
 	return
 }
 
+func newSetupFunc(initialData ...*types.PutRequest) func(t *testing.T) (string, *dynamodb.Client, func()) {
+	return func(t *testing.T) (string, *dynamodb.Client, func()) {
+		return setupDynamoDB(t, initialData...)
+	}
+}
+
 type TestCase[Args any, Want any] struct {
 	name     string
 	setup    func(*testing.T) (string, *dynamodb.Client, func())
@@ -82,9 +88,8 @@ type TestCase[Args any, Want any] struct {
 
 func TestDynamoMQClientShouldReturnError(t *testing.T) {
 	t.Parallel()
-	client, cancel := prepareTestClient(t, context.Background(), func(t *testing.T) (string, *dynamodb.Client, func()) {
-		return setupDynamoDB(t, newPutRequestWithReadyItem("A-101", clock.Now()))
-	}, mockClock{}, false)
+	client, cancel := prepareTestClient(t, context.Background(),
+		newSetupFunc(newPutRequestWithReadyItem("A-101", clock.Now())), mockClock{}, false)
 	defer cancel()
 	type testCase struct {
 		name      string
@@ -99,6 +104,17 @@ func TestDynamoMQClientShouldReturnError(t *testing.T) {
 				return err
 			},
 			wantError: &IDNotProvidedError{},
+		},
+		{
+			name: "SendMessage should return IDDuplicatedError",
+			operation: func() error {
+				_, err := client.SendMessage(context.Background(), &SendMessageInput[test.MessageData]{
+					ID:   "A-101",
+					Data: test.NewMessageData("A-101"),
+				})
+				return err
+			},
+			wantError: &IDDuplicatedError{},
 		},
 		{
 			name: "UpdateMessageAsVisible should return IDNotProvidedError",
@@ -184,28 +200,16 @@ func TestDynamoMQClientShouldReturnError(t *testing.T) {
 	}
 }
 
+var defaultTestDate = date(2023, 12, 1, 0, 0, 0)
+
 func TestDynamoMQClientSendMessage(t *testing.T) {
 	t.Parallel()
 	tests := []TestCase[*SendMessageInput[test.MessageData], *SendMessageOutput[test.MessageData]]{
 		{
-			name: "should return IDDuplicatedError when id is duplicated",
-			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
-				return setupDynamoDB(t, newPutRequestWithReadyItem("A-101", clock.Now()))
-			},
-			args: &SendMessageInput[test.MessageData]{
-				ID:   "A-101",
-				Data: test.NewMessageData("A-101"),
-			},
-			want:    nil,
-			wantErr: &IDDuplicatedError{},
-		},
-		{
-			name: "should succeed when id is not duplicated",
-			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
-				return setupDynamoDB(t)
-			},
+			name:  "should succeed when id is not duplicated",
+			setup: newSetupFunc(),
 			sdkClock: mockClock{
-				t: date(2023, 12, 1, 0, 0, 10),
+				t: defaultTestDate,
 			},
 			args: &SendMessageInput[test.MessageData]{
 				ID:   "A-101",
@@ -215,15 +219,14 @@ func TestDynamoMQClientSendMessage(t *testing.T) {
 				Result: &Result{
 					ID:                   "A-101",
 					Status:               StatusReady,
-					LastUpdatedTimestamp: clock.FormatRFC3339Nano(date(2023, 12, 1, 0, 0, 10)),
+					LastUpdatedTimestamp: clock.FormatRFC3339Nano(defaultTestDate),
 					Version:              1,
 				},
 				Message: func() *Message[test.MessageData] {
-					s := newTestMessageItemAsReady("A-101", date(2023, 12, 1, 0, 0, 10))
+					s := newTestMessageItemAsReady("A-101", defaultTestDate)
 					return s
 				}(),
 			},
-			wantErr: nil,
 		},
 	}
 	runTestsParallel[*SendMessageInput[test.MessageData], *SendMessageOutput[test.MessageData]](t, "SendMessage()", tests,
@@ -237,27 +240,33 @@ func TestDynamoMQClientReceiveMessage(t *testing.T) {
 	tests := []TestCase[any, *ReceiveMessageOutput[test.MessageData]]{
 		{
 			name: "should return EmptyQueueError when queue is empty",
-			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
-				return setupDynamoDB(t,
-					newPutRequestWithProcessingItem("A-202", clock.Now()),
-					newPutRequestWithDLQItem("A-303", clock.Now()),
-				)
-			},
+			setup: newSetupFunc(
+				newPutRequestWithProcessingItem("A-202", clock.Now()),
+				newPutRequestWithDLQItem("A-303", clock.Now()),
+			),
 			want:    nil,
 			wantErr: &EmptyQueueError{},
 		},
 		{
-			name: "should return message when exists ready message",
-			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
-				return setupDynamoDB(t,
-					newPutRequestWithReadyItem("B-202", date(2023, 12, 1, 0, 0, 0)))
-			},
+			name:  "should return message when exists ready message",
+			setup: newSetupFunc(newPutRequestWithReadyItem("B-202", defaultTestDate)),
 			sdkClock: mockClock{
-				t: time.Date(2023, 12, 1, 0, 0, 10, 0, time.UTC),
+				t: defaultTestDate.Add(10 * time.Second),
 			},
 			want: func() *ReceiveMessageOutput[test.MessageData] {
-				s := newTestMessageItemAsReady("B-202", date(2023, 12, 1, 0, 0, 0))
-				_ = s.markAsProcessing(date(2023, 12, 1, 0, 0, 10), 0)
+				return newMessageFromReadyToProcessing("B-202", defaultTestDate, defaultTestDate.Add(10*time.Second))
+			}(),
+			wantErr: nil,
+		},
+		{
+			name:  "should return message when exists message expired visibility timeout",
+			setup: newSetupFunc(newPutRequestWithReadyItem("B-202", defaultTestDate)),
+			sdkClock: mockClock{
+				t: defaultTestDate.Add(10 * time.Minute).Add(1 * time.Second),
+			},
+			want: func() *ReceiveMessageOutput[test.MessageData] {
+				s := newTestMessageItemAsProcessing("B-202", defaultTestDate)
+				_ = s.markAsProcessing(defaultTestDate.Add(10*time.Minute).Add(1*time.Second), 0)
 				s.Version = 2
 				s.ReceiveCount = 1
 				r := &ReceiveMessageOutput[test.MessageData]{
@@ -275,45 +284,10 @@ func TestDynamoMQClientReceiveMessage(t *testing.T) {
 			wantErr: nil,
 		},
 		{
-			name: "should return message when exists message expired visibility timeout",
-			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
-				return setupDynamoDB(t,
-					newPutRequestWithProcessingItem("B-202",
-						date(2023, 12, 1, 0, 0, 0)),
-				)
-			},
+			name:  "should return EmptyQueueError when exists message but visibility timeout is not expired",
+			setup: newSetupFunc(newPutRequestWithProcessingItem("B-202", defaultTestDate)),
 			sdkClock: mockClock{
-				t: date(2023, 12, 1, 0, 1, 1),
-			},
-			want: func() *ReceiveMessageOutput[test.MessageData] {
-				s := newTestMessageItemAsProcessing("B-202", date(2023, 12, 1, 0, 0, 0))
-				_ = s.markAsProcessing(date(2023, 12, 1, 0, 1, 1), 0)
-				s.Version = 2
-				s.ReceiveCount = 1
-				r := &ReceiveMessageOutput[test.MessageData]{
-					Result: &Result{
-						ID:                   s.ID,
-						Status:               s.Status,
-						LastUpdatedTimestamp: s.LastUpdatedTimestamp,
-						Version:              s.Version,
-					},
-					PeekFromQueueTimestamp: s.PeekFromQueueTimestamp,
-					PeekedMessageObject:    s,
-				}
-				return r
-			}(),
-			wantErr: nil,
-		},
-		{
-			name: "should return EmptyQueueError when exists message but visibility timeout is not expired",
-			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
-				return setupDynamoDB(t,
-					newPutRequestWithProcessingItem("B-202",
-						date(2023, 12, 1, 0, 0, 0)),
-				)
-			},
-			sdkClock: mockClock{
-				t: date(2023, 12, 1, 0, 0, 59),
+				t: defaultTestDate.Add(59 * time.Second),
 			},
 			want:    nil,
 			wantErr: &EmptyQueueError{},
@@ -326,31 +300,26 @@ func TestDynamoMQClientReceiveMessage(t *testing.T) {
 }
 
 func testDynamoMQClientReceiveMessageSequence(t *testing.T, useFIFO bool) {
-	now := date(2023, 12, 1, 0, 0, 10)
+	now := defaultTestDate.Add(10 * time.Second)
 	ctx := context.Background()
-	client, clean := prepareTestClient(t, ctx, func(t *testing.T) (string, *dynamodb.Client, func()) {
-		return setupDynamoDB(t,
-			newPutRequestWithReadyItem("A-101", date(2023, 12, 1, 0, 0, 3)),
-			newPutRequestWithReadyItem("A-202", date(2023, 12, 1, 0, 0, 2)),
-			newPutRequestWithReadyItem("A-303", date(2023, 12, 1, 0, 0, 1)),
-		)
-	}, mockClock{
-		t: now,
-	}, useFIFO)
+	client, clean := prepareTestClient(t, ctx, newSetupFunc(
+		newPutRequestWithReadyItem("A-101", defaultTestDate.Add(3*time.Second)),
+		newPutRequestWithReadyItem("A-202", defaultTestDate.Add(2*time.Second)),
+		newPutRequestWithReadyItem("A-303", defaultTestDate.Add(1*time.Second))),
+		mockClock{
+			t: now,
+		}, useFIFO)
 	defer clean()
 
 	wants := []*ReceiveMessageOutput[test.MessageData]{
-		newMessageFromReadyToProcessing("A-303", date(2023, 12, 1, 0, 0, 1), now),
-		newMessageFromReadyToProcessing("A-202", date(2023, 12, 1, 0, 0, 2), now),
-		newMessageFromReadyToProcessing("A-101", date(2023, 12, 1, 0, 0, 3), now),
+		newMessageFromReadyToProcessing("A-303", defaultTestDate.Add(1*time.Second), now),
+		newMessageFromReadyToProcessing("A-202", defaultTestDate.Add(2*time.Second), now),
+		newMessageFromReadyToProcessing("A-101", defaultTestDate.Add(3*time.Second), now),
 	}
 
 	for i, want := range wants {
 		result, err := client.ReceiveMessage(ctx, &ReceiveMessageInput{})
-		if err != nil {
-			t.Errorf("ReceiveMessage() [%d] error = %v", i, err)
-			return
-		}
+		_ = assertError(t, err, nil, fmt.Sprintf("ReceiveMessage() [%d]", i))
 		assertDeepEqual(t, result, want, fmt.Sprintf("ReceiveMessage() [%d]", i))
 
 		if !useFIFO {
@@ -358,23 +327,16 @@ func testDynamoMQClientReceiveMessageSequence(t *testing.T, useFIFO bool) {
 		}
 
 		_, err = client.ReceiveMessage(ctx, &ReceiveMessageInput{})
-		if !errors.Is(err, &EmptyQueueError{}) {
-			t.Errorf("ReceiveMessage() [%d] error = %v, wantErr %v", i, err, &EmptyQueueError{})
-			return
-		}
+		_ = assertError(t, err, &EmptyQueueError{}, fmt.Sprintf("ReceiveMessage() [%d]", i))
+
 		_, err = client.DeleteMessage(ctx, &DeleteMessageInput{
 			ID: result.ID,
 		})
-		if err != nil {
-			t.Errorf("DeleteMessage() [%d] error = %v", i, err)
-			return
-		}
+		_ = assertError(t, err, nil, fmt.Sprintf("DeleteMessage() [%d]", i))
 	}
+
 	_, err := client.ReceiveMessage(ctx, &ReceiveMessageInput{})
-	if !errors.Is(err, &EmptyQueueError{}) {
-		t.Errorf("ReceiveMessage() [last] error = %v, wantErr %v", err, &EmptyQueueError{})
-		return
-	}
+	_ = assertError(t, err, &EmptyQueueError{}, "ReceiveMessage() [last]")
 }
 
 func TestDynamoMQClientReceiveMessageUseFIFO(t *testing.T) {
@@ -392,36 +354,27 @@ func TestDynamoMQClientUpdateMessageAsVisible(t *testing.T) {
 	type args struct {
 		id string
 	}
+	now := defaultTestDate.Add(10 * time.Second)
 	tests := []TestCase[args, *UpdateMessageAsVisibleOutput[test.MessageData]]{
 		{
-			name: "should succeed when id is found",
-			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
-				return setupDynamoDB(t,
-					newPutRequestWithProcessingItem("A-101",
-						date(2023, 12, 1, 0, 0, 10)),
-				)
-			},
+			name:  "should succeed when id is found",
+			setup: newSetupFunc(newPutRequestWithProcessingItem("A-101", now)),
 			sdkClock: mockClock{
-				t: date(2023, 12, 1, 0, 0, 10),
+				t: now,
 			},
 			args: args{
 				id: "A-101",
 			},
 			want: &UpdateMessageAsVisibleOutput[test.MessageData]{
 				Result: &Result{
-					ID:     "A-101",
-					Status: StatusReady,
-					LastUpdatedTimestamp: clock.FormatRFC3339Nano(
-						date(2023, 12, 1, 0, 0, 10)),
-					Version: 2,
+					ID:                   "A-101",
+					Status:               StatusReady,
+					LastUpdatedTimestamp: clock.FormatRFC3339Nano(now),
+					Version:              2,
 				},
 				Message: func() *Message[test.MessageData] {
-					now := date(2023, 12, 1, 0, 0, 10)
 					message := newTestMessageItemAsProcessing("A-101", now)
-					err := message.markAsReady(now)
-					if err != nil {
-						panic(err)
-					}
+					_ = message.markAsReady(now)
 					message.Version = 2
 					return message
 				}(),
@@ -443,20 +396,16 @@ func TestDynamoMQClientDeleteMessage(t *testing.T) {
 	}
 	tests := []TestCase[args, *DeleteMessageOutput]{
 		{
-			name: "should not return error when not existing id",
-			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
-				return setupDynamoDB(t, newPutRequestWithReadyItem("A-101", clock.Now()))
-			},
+			name:  "should not return error when not existing id",
+			setup: newSetupFunc(newPutRequestWithReadyItem("A-101", clock.Now())),
 			args: args{
 				id: "B-101",
 			},
 			want: &DeleteMessageOutput{},
 		},
 		{
-			name: "should succeed when id is found",
-			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
-				return setupDynamoDB(t, newPutRequestWithReadyItem("A-101", clock.Now()))
-			},
+			name:  "should succeed when id is found",
+			setup: newSetupFunc(newPutRequestWithReadyItem("A-101", clock.Now())),
 			args: args{
 				id: "A-101",
 			},
@@ -475,17 +424,13 @@ func TestDynamoMQClientMoveMessageToDLQ(t *testing.T) {
 	t.Parallel()
 	tests := []TestCase[*MoveMessageToDLQInput, *MoveMessageToDLQOutput]{
 		{
-			name: "should succeed when id is found and queue type is standard",
-			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
-				return setupDynamoDB(t,
-					newPutRequestWithDLQItem("A-101", date(2023, 12, 1, 0, 0, 0)))
-			},
+			name:  "should succeed when id is found and queue type is standard",
+			setup: newSetupFunc(newPutRequestWithDLQItem("A-101", defaultTestDate)),
 			args: &MoveMessageToDLQInput{
 				ID: "A-101",
 			},
 			want: func() *MoveMessageToDLQOutput {
-				s := newTestMessageItemAsDLQ("A-101",
-					date(2023, 12, 1, 0, 0, 0))
+				s := newTestMessageItemAsDLQ("A-101", defaultTestDate)
 				r := &MoveMessageToDLQOutput{
 					ID:                   s.ID,
 					Status:               s.Status,
@@ -497,26 +442,17 @@ func TestDynamoMQClientMoveMessageToDLQ(t *testing.T) {
 			wantErr: nil,
 		},
 		{
-			name: "should succeed when id is found and queue type is DLQ and status is processing",
-			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
-				return setupDynamoDB(t,
-					newPutRequestWithProcessingItem("A-101",
-						date(2023, 12, 1, 0, 0, 0)),
-				)
-			},
+			name:  "should succeed when id is found and queue type is DLQ and status is processing",
+			setup: newSetupFunc(newPutRequestWithReadyItem("A-101", defaultTestDate)),
 			sdkClock: mockClock{
-				t: date(2023, 12, 1, 0, 0, 10),
+				t: defaultTestDate.Add(10 * time.Second),
 			},
 			args: &MoveMessageToDLQInput{
 				ID: "A-101",
 			},
 			want: func() *MoveMessageToDLQOutput {
-				s := newTestMessageItemAsReady("A-101",
-					date(2023, 12, 1, 0, 0, 0))
-				err := s.markAsMovedToDLQ(date(2023, 12, 1, 0, 0, 10))
-				if err != nil {
-					panic(err)
-				}
+				s := newTestMessageItemAsReady("A-101", defaultTestDate)
+				_ = s.markAsMovedToDLQ(defaultTestDate.Add(10 * time.Second))
 				s.Version = 2
 				r := &MoveMessageToDLQOutput{
 					ID:                   s.ID,
@@ -542,23 +478,19 @@ func TestDynamoMQClientRedriveMessage(t *testing.T) {
 	}
 	tests := []TestCase[args, *RedriveMessageOutput]{
 		{
-			name: "should succeed when id is found and status is ready",
-			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
-				return setupDynamoDB(t,
-					newPutRequestWithDLQItem("A-101", date(2023, 12, 1, 0, 0, 0)))
-			},
+			name:  "should succeed when id is found and status is ready",
+			setup: newSetupFunc(newPutRequestWithDLQItem("A-101", defaultTestDate)),
 			sdkClock: mockClock{
-				t: date(2023, 12, 1, 0, 0, 10),
+				t: defaultTestDate.Add(10 * time.Second),
 			},
 			args: args{
 				id: "A-101",
 			},
 			want: &RedriveMessageOutput{
-				ID:     "A-101",
-				Status: StatusReady,
-				LastUpdatedTimestamp: clock.FormatRFC3339Nano(
-					date(2023, 12, 1, 0, 0, 10)),
-				Version: 2,
+				ID:                   "A-101",
+				Status:               StatusReady,
+				LastUpdatedTimestamp: clock.FormatRFC3339Nano(defaultTestDate.Add(10 * time.Second)),
+				Version:              2,
 			},
 		},
 	}
@@ -574,10 +506,8 @@ func TestDynamoMQClientGetQueueStats(t *testing.T) {
 	t.Parallel()
 	tests := []TestCase[any, *GetQueueStatsOutput]{
 		{
-			name: "should return empty items stats when no item in standard queue",
-			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
-				return setupDynamoDB(t)
-			},
+			name:  "should return empty items stats when no item in standard queue",
+			setup: newSetupFunc(),
 			want: &GetQueueStatsOutput{
 				First100IDsInQueue:         []string{},
 				First100SelectedIDsInQueue: []string{},
@@ -587,10 +517,8 @@ func TestDynamoMQClientGetQueueStats(t *testing.T) {
 			},
 		},
 		{
-			name: "should return one item stats when one item in standard queue",
-			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
-				return setupDynamoDB(t, newPutRequestWithReadyItem("A-101", clock.Now()))
-			},
+			name:  "should return one item stats when one item in standard queue",
+			setup: newSetupFunc(newPutRequestWithReadyItem("A-101", clock.Now())),
 			want: &GetQueueStatsOutput{
 				First100IDsInQueue:         []string{"A-101"},
 				First100SelectedIDsInQueue: []string{},
@@ -600,10 +528,8 @@ func TestDynamoMQClientGetQueueStats(t *testing.T) {
 			},
 		},
 		{
-			name: "should return one processing item stats when one item in standard queue",
-			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
-				return setupDynamoDB(t, newPutRequestWithProcessingItem("A-101", clock.Now()))
-			},
+			name:  "should return one processing item stats when one item in standard queue",
+			setup: newSetupFunc(newPutRequestWithProcessingItem("A-101", clock.Now())),
 			want: &GetQueueStatsOutput{
 				First100IDsInQueue:         []string{"A-101"},
 				First100SelectedIDsInQueue: []string{"A-101"},
@@ -614,14 +540,12 @@ func TestDynamoMQClientGetQueueStats(t *testing.T) {
 		},
 		{
 			name: "should return two items stats when two items in standard queue",
-			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
-				return setupDynamoDB(t,
-					newPutRequestWithReadyItem("A-101", clock.Now()),
-					newPutRequestWithReadyItem("B-202", clock.Now().Add(1*time.Second)),
-					newPutRequestWithProcessingItem("C-303", clock.Now().Add(2*time.Second)),
-					newPutRequestWithProcessingItem("D-404", clock.Now().Add(3*time.Second)),
-				)
-			},
+			setup: newSetupFunc(
+				newPutRequestWithReadyItem("A-101", clock.Now()),
+				newPutRequestWithReadyItem("B-202", clock.Now().Add(1*time.Second)),
+				newPutRequestWithProcessingItem("C-303", clock.Now().Add(2*time.Second)),
+				newPutRequestWithProcessingItem("D-404", clock.Now().Add(3*time.Second)),
+			),
 			want: &GetQueueStatsOutput{
 				First100IDsInQueue:         []string{"A-101", "B-202", "C-303", "D-404"},
 				First100SelectedIDsInQueue: []string{"C-303", "D-404"},
@@ -642,13 +566,11 @@ func TestDynamoMQClientGetDLQStats(t *testing.T) {
 	tests := []TestCase[any, *GetDLQStatsOutput]{
 		{
 			name: "should return empty items when no items in DLQ",
-			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
-				return setupDynamoDB(t,
-					newPutRequestWithReadyItem("A-101", clock.Now().Add(time.Second)),
-					newPutRequestWithReadyItem("B-202", clock.Now().Add(time.Second)),
-					newPutRequestWithProcessingItem("C-303", clock.Now().Add(2*time.Second)),
-				)
-			},
+			setup: newSetupFunc(
+				newPutRequestWithReadyItem("A-101", clock.Now().Add(time.Second)),
+				newPutRequestWithReadyItem("B-202", clock.Now().Add(time.Second)),
+				newPutRequestWithProcessingItem("C-303", clock.Now().Add(2*time.Second)),
+			),
 			want: &GetDLQStatsOutput{
 				First100IDsInQueue: []string{},
 				TotalRecordsInDLQ:  0,
@@ -656,16 +578,14 @@ func TestDynamoMQClientGetDLQStats(t *testing.T) {
 		},
 		{
 			name: "should return three DLQ items when items in DLQ",
-			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
-				return setupDynamoDB(t,
-					newPutRequestWithReadyItem("A-101", clock.Now().Add(time.Second)),
-					newPutRequestWithReadyItem("B-202", clock.Now().Add(time.Second)),
-					newPutRequestWithProcessingItem("C-303", clock.Now().Add(2*time.Second)),
-					newPutRequestWithDLQItem("D-404", clock.Now().Add(3*time.Second)),
-					newPutRequestWithDLQItem("E-505", clock.Now().Add(4*time.Second)),
-					newPutRequestWithDLQItem("F-606", clock.Now().Add(5*time.Second)),
-				)
-			},
+			setup: newSetupFunc(
+				newPutRequestWithReadyItem("A-101", clock.Now().Add(time.Second)),
+				newPutRequestWithReadyItem("B-202", clock.Now().Add(time.Second)),
+				newPutRequestWithProcessingItem("C-303", clock.Now().Add(2*time.Second)),
+				newPutRequestWithDLQItem("D-404", clock.Now().Add(3*time.Second)),
+				newPutRequestWithDLQItem("E-505", clock.Now().Add(4*time.Second)),
+				newPutRequestWithDLQItem("F-606", clock.Now().Add(5*time.Second)),
+			),
 			want: &GetDLQStatsOutput{
 				First100IDsInQueue: []string{"D-404", "E-505", "F-606"},
 				TotalRecordsInDLQ:  3,
@@ -685,10 +605,8 @@ func TestDynamoMQClientGetMessage(t *testing.T) {
 	}
 	tests := []TestCase[args, *Message[test.MessageData]]{
 		{
-			name: "should not return message when id is not found",
-			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
-				return setupDynamoDB(t, newPutRequestWithReadyItem("A-101", clock.Now()))
-			},
+			name:  "should not return message when id is not found",
+			setup: newSetupFunc(newPutRequestWithReadyItem("A-101", clock.Now())),
 			args: args{
 				id: "B-202",
 			},
@@ -697,17 +615,14 @@ func TestDynamoMQClientGetMessage(t *testing.T) {
 		},
 		{
 			name: "should return message when id is found",
-			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
-				return setupDynamoDB(t,
-					newPutRequestWithReadyItem("A-101", date(2023, 12, 1, 0, 0, 0)),
-					newPutRequestWithReadyItem("B-202", clock.Now()),
-				)
-			},
+			setup: newSetupFunc(
+				newPutRequestWithReadyItem("A-101", defaultTestDate),
+				newPutRequestWithReadyItem("B-202", clock.Now()),
+			),
 			args: args{
 				id: "A-101",
 			},
-			want: newTestMessageItemAsReady("A-101",
-				date(2023, 12, 1, 0, 0, 0)),
+			want:    newTestMessageItemAsReady("A-101", defaultTestDate),
 			wantErr: nil,
 		},
 	}
@@ -727,29 +642,21 @@ func TestDynamoMQClientReplaceMessage(t *testing.T) {
 	}
 	tests := []TestCase[args, *Message[test.MessageData]]{
 		{
-			name: "should return message when id is duplicated",
-			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
-				return setupDynamoDB(t, newPutRequestWithReadyItem("A-101", clock.Now()))
-			},
+			name:  "should return message when id is duplicated",
+			setup: newSetupFunc(newPutRequestWithReadyItem("A-101", clock.Now())),
 			args: args{
-				message: newTestMessageItemAsReady("A-101",
-					date(2023, 12, 1, 0, 0, 0)),
+				message: newTestMessageItemAsReady("A-101", defaultTestDate),
 			},
-			want: newTestMessageItemAsReady("A-101",
-				date(2023, 12, 1, 0, 0, 0)),
+			want:    newTestMessageItemAsReady("A-101", defaultTestDate),
 			wantErr: nil,
 		},
 		{
-			name: "should return message when id is unique",
-			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
-				return setupDynamoDB(t, newPutRequestWithReadyItem("A-101", clock.Now()))
-			},
+			name:  "should return message when id is unique",
+			setup: newSetupFunc(newPutRequestWithReadyItem("A-101", clock.Now())),
 			args: args{
-				message: newTestMessageItemAsReady("B-202",
-					date(2023, 12, 1, 0, 0, 0)),
+				message: newTestMessageItemAsReady("B-202", defaultTestDate),
 			},
-			want: newTestMessageItemAsReady("B-202",
-				date(2023, 12, 1, 0, 0, 0)),
+			want:    newTestMessageItemAsReady("B-202", defaultTestDate),
 			wantErr: nil,
 		},
 	}
@@ -779,10 +686,8 @@ func TestDynamoMQClientListMessages(t *testing.T) {
 	}
 	tests := []TestCase[args, []*Message[test.MessageData]]{
 		{
-			name: "should return empty list when no messages",
-			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
-				return setupDynamoDB(t)
-			},
+			name:  "should return empty list when no messages",
+			setup: newSetupFunc(),
 			args: args{
 				size: 10,
 			},
@@ -792,8 +697,7 @@ func TestDynamoMQClientListMessages(t *testing.T) {
 		{
 			name: "should return list of messages when messages exist",
 			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
-				messages := generateExpectedMessages("A",
-					date(2023, 12, 1, 0, 0, 0), 10)
+				messages := generateExpectedMessages("A", defaultTestDate, 10)
 				puts := generatePutRequests(messages)
 				return setupDynamoDB(t, puts...)
 			},
@@ -801,7 +705,7 @@ func TestDynamoMQClientListMessages(t *testing.T) {
 				size: 10,
 			},
 			want: generateExpectedMessages("A",
-				date(2023, 12, 1, 0, 0, 0), 10),
+				defaultTestDate, 10),
 			wantErr: nil,
 		},
 	}
