@@ -8,12 +8,14 @@ import (
 
 func NewProducer[T any](client Client[T]) *Producer[T] {
 	return &Producer[T]{
-		client: client,
+		client:        client,
+		uuidGenerator: uuid.NewV4().String,
 	}
 }
 
 type Producer[T any] struct {
-	client Client[T]
+	client        Client[T]
+	uuidGenerator func() string
 }
 
 type ProduceInput[T any] struct {
@@ -29,7 +31,7 @@ func (c *Producer[T]) Produce(ctx context.Context, params *ProduceInput[T]) (*Pr
 		params = &ProduceInput[T]{}
 	}
 	out, err := c.client.SendMessage(ctx, &SendMessageInput[T]{
-		ID:   uuid.NewV4().String(),
+		ID:   c.uuidGenerator(),
 		Data: params.Data,
 	})
 	if err != nil {
