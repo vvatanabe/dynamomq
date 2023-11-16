@@ -9,7 +9,7 @@ import (
 	"github.com/vvatanabe/dynamomq/internal/test"
 )
 
-func TestProducer_Produce(t *testing.T) {
+func TestProducerProduce(t *testing.T) {
 	type args[T any] struct {
 		params *ProduceInput[T]
 	}
