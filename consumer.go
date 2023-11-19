@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	defaultPollingInterval = time.Second * 10
+	defaultPollingInterval = time.Second
 	defaultMaximumReceives = 0 // unlimited
 	defaultQueueType       = QueueTypeStandard
 )
@@ -87,6 +87,12 @@ type MessageProcessor[T any] interface {
 	Process(msg *Message[T]) error
 }
 
+type MessageProcessorFunc[T any] func(msg *Message[T]) error
+
+func (f MessageProcessorFunc[T]) Process(msg *Message[T]) error {
+	return f(msg)
+}
+
 type Consumer[T any] struct {
 	client           Client[T]
 	messageProcessor MessageProcessor[T]
@@ -117,7 +123,7 @@ func (c *Consumer[T]) StartConsuming() error {
 				return ErrConsumerClosed
 			}
 			if !isTemporary(err) {
-				return fmt.Errorf("DynamoMQ: Failed to peek a message. %s", err)
+				return fmt.Errorf("DynamoMQ: Failed to receive a message. %s", err)
 			}
 			time.Sleep(c.pollingInterval)
 			continue
@@ -189,9 +195,6 @@ func (c *Consumer[T]) deleteMessage(ctx context.Context, msg *Message[T]) {
 func (c *Consumer[T]) trackMessage(msg *Message[T], add bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.activeMessages == nil {
-		c.activeMessages = make(map[*Message[T]]struct{})
-	}
 	if add {
 		if !c.shuttingDown() {
 			c.activeMessages[msg] = struct{}{}
@@ -231,28 +234,14 @@ func (c *Consumer[T]) Shutdown(ctx context.Context) error {
 	}
 }
 
-func (c *Consumer[T]) getDoneChan() <-chan struct{} {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.getDoneChanLocked()
-}
-
-func (c *Consumer[T]) getDoneChanLocked() chan struct{} {
-	if c.doneChan == nil {
-		c.doneChan = make(chan struct{})
-	}
-	return c.doneChan
-}
-
 func (c *Consumer[T]) closeDoneChanLocked() {
-	ch := c.getDoneChanLocked()
 	select {
-	case <-ch:
+	case <-c.doneChan:
 		// It's already closed. Don't close it again.
 	default:
 		// We can safely close it here.
 		// We are the only closers and are protected by srv.mu."
-		close(ch)
+		close(c.doneChan)
 	}
 }
 
@@ -265,8 +254,19 @@ func (c *Consumer[T]) logf(format string, args ...any) {
 }
 
 func isTemporary(err error) bool {
-	switch err.(type) {
-	case ConditionalCheckFailedError, DynamoDBAPIError, EmptyQueueError, IDNotProvidedError, IDNotFoundError:
+	var (
+		conditionalCheckFailedError *ConditionalCheckFailedError
+		dynamoDBAPIError            *DynamoDBAPIError
+		emptyQueueError             *EmptyQueueError
+		idNotProvidedError          *IDNotProvidedError
+		idNotFoundError             *IDNotFoundError
+	)
+	switch {
+	case errors.As(err, &conditionalCheckFailedError),
+		errors.As(err, &dynamoDBAPIError),
+		errors.As(err, &emptyQueueError),
+		errors.As(err, &idNotProvidedError),
+		errors.As(err, &idNotFoundError):
 		return true
 	default:
 		return false

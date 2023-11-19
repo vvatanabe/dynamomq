@@ -7,7 +7,11 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 )
 
-var ErrNotImplemented = errors.New("not implemented")
+var (
+	ErrNotImplemented = errors.New("not implemented")
+	ErrorTest         = errors.New("test error")
+	DefaultTestDate   = Date(2023, 12, 1, 0, 0, 0)
+)
 
 type MockClient[T any] struct {
 	SendMessageFunc            func(ctx context.Context, params *SendMessageInput[T]) (*SendMessageOutput[T], error)
