@@ -6,13 +6,20 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
 jobs:
-  sonarcloud:
-    name: SonarCloud
+  build:
+    name: Build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
+      - uses: actions/setup-go@v4
+        with:
+          go-version: '^1.21' # The Go version to download (if necessary) and use.
+      - name: Build
+        run: go build -v ./...
+      - name: Test
+        run: go test -race -json -covermode=atomic -coverprofile=cover.out -p=10 ./... > result.json
       - name: SonarCloud Scan
         uses: SonarSource/sonarcloud-github-action@master
         env:
