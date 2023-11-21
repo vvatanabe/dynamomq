@@ -1,4 +1,4 @@
-package dynamomq
+package dynamomq_test
 
 import (
 	"context"
@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	. "github.com/vvatanabe/dynamomq"
 	"github.com/vvatanabe/dynamomq/internal/test"
 )
 
@@ -199,7 +200,7 @@ func TestConsumerShutdown(t *testing.T) {
 		},
 		{
 			Name:              "should timeout during a graceful shutdown",
-			ProcessorSleep:    2 * time.Second,
+			ProcessorSleep:    3 * time.Second,
 			MessageSize:       100,
 			WantShutdownError: true,
 		},

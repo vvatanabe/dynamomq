@@ -6,16 +6,32 @@ import (
 	uuid "github.com/satori/go.uuid"
 )
 
-func NewProducer[T any](client Client[T]) *Producer[T] {
+type ProducerOptions struct {
+	IDGenerator func() string
+}
+
+func WithIDGenerator(idGenerator func() string) func(o *ProducerOptions) {
+	return func(o *ProducerOptions) {
+		o.IDGenerator = idGenerator
+	}
+}
+
+func NewProducer[T any](client Client[T], opts ...func(o *ProducerOptions)) *Producer[T] {
+	o := &ProducerOptions{
+		IDGenerator: uuid.NewV4().String,
+	}
+	for _, opt := range opts {
+		opt(o)
+	}
 	return &Producer[T]{
-		client:        client,
-		uuidGenerator: uuid.NewV4().String,
+		client:      client,
+		idGenerator: o.IDGenerator,
 	}
 }
 
 type Producer[T any] struct {
-	client        Client[T]
-	uuidGenerator func() string
+	client      Client[T]
+	idGenerator func() string
 }
 
 type ProduceInput[T any] struct {
@@ -31,7 +47,7 @@ func (c *Producer[T]) Produce(ctx context.Context, params *ProduceInput[T]) (*Pr
 		params = &ProduceInput[T]{}
 	}
 	out, err := c.client.SendMessage(ctx, &SendMessageInput[T]{
-		ID:   c.uuidGenerator(),
+		ID:   c.idGenerator(),
 		Data: params.Data,
 	})
 	if err != nil {

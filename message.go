@@ -98,11 +98,6 @@ func (m *Message[T]) MarshalMap() (map[string]types.AttributeValue, error) {
 	return item, nil
 }
 
-func (m *Message[T]) marshalMapUnsafe() map[string]types.AttributeValue {
-	item, _ := m.MarshalMap()
-	return item
-}
-
 func (m *Message[T]) isQueueSelected(now time.Time, visibilityTimeout time.Duration) bool {
 	if m.Status != StatusProcessing {
 		return false

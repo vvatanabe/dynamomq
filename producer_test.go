@@ -1,4 +1,4 @@
-package dynamomq
+package dynamomq_test
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"testing"
 
+	. "github.com/vvatanabe/dynamomq"
 	"github.com/vvatanabe/dynamomq/internal/test"
 )
 
@@ -31,12 +32,9 @@ func TestProducerProduce(t *testing.T) {
 			}, nil
 		},
 	}
-	defaultTestProducer := &Producer[test.MessageData]{
-		client: defaultMockClient,
-		uuidGenerator: func() string {
-			return "A-101"
-		},
-	}
+	defaultTestProducer := NewProducer[test.MessageData](defaultMockClient, WithIDGenerator(func() string {
+		return "A-101"
+	}))
 	tests := []testCase[test.MessageData]{
 		{
 			name: "should success to produce a message",

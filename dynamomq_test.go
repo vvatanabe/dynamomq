@@ -1,10 +1,11 @@
-package dynamomq
+package dynamomq_test
 
 import (
 	"context"
 	"errors"
 
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	. "github.com/vvatanabe/dynamomq"
 )
 
 var (

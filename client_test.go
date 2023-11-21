@@ -1,4 +1,4 @@
-package dynamomq
+package dynamomq_test
 
 import (
 	"context"
@@ -15,6 +15,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	uuid "github.com/satori/go.uuid"
 	"github.com/upsidr/dynamotest"
+	. "github.com/vvatanabe/dynamomq"
 	"github.com/vvatanabe/dynamomq/internal/clock"
 	"github.com/vvatanabe/dynamomq/internal/test"
 )
@@ -263,19 +264,19 @@ func TestDynamoMQClientReceiveMessage(t *testing.T) {
 				t: DefaultTestDate.Add(10 * time.Minute).Add(1 * time.Second),
 			},
 			want: func() *ReceiveMessageOutput[test.MessageData] {
-				s := NewTestMessageItemAsProcessing("B-202", DefaultTestDate)
-				_ = s.markAsProcessing(DefaultTestDate.Add(10*time.Minute).Add(1*time.Second), 0)
-				s.Version = 2
-				s.ReceiveCount = 1
+				m := NewTestMessageItemAsProcessing("B-202", DefaultTestDate)
+				markAsProcessing(m, DefaultTestDate.Add(10*time.Minute).Add(1*time.Second))
+				m.Version = 2
+				m.ReceiveCount = 1
 				r := &ReceiveMessageOutput[test.MessageData]{
 					Result: &Result{
-						ID:                   s.ID,
-						Status:               s.Status,
-						LastUpdatedTimestamp: s.LastUpdatedTimestamp,
-						Version:              s.Version,
+						ID:                   m.ID,
+						Status:               m.Status,
+						LastUpdatedTimestamp: m.LastUpdatedTimestamp,
+						Version:              m.Version,
 					},
-					PeekFromQueueTimestamp: s.PeekFromQueueTimestamp,
-					PeekedMessageObject:    s,
+					PeekFromQueueTimestamp: m.PeekFromQueueTimestamp,
+					PeekedMessageObject:    m,
 				}
 				return r
 			}(),
@@ -371,10 +372,10 @@ func TestDynamoMQClientUpdateMessageAsVisible(t *testing.T) {
 					Version:              2,
 				},
 				Message: func() *Message[test.MessageData] {
-					message := NewTestMessageItemAsProcessing("A-101", now)
-					_ = message.markAsReady(now)
-					message.Version = 2
-					return message
+					m := NewTestMessageItemAsProcessing("A-101", now)
+					markAsReady(m, now)
+					m.Version = 2
+					return m
 				}(),
 			},
 		},
@@ -449,14 +450,14 @@ func TestDynamoMQClientMoveMessageToDLQ(t *testing.T) {
 				ID: "A-101",
 			},
 			want: func() *MoveMessageToDLQOutput {
-				s := NewTestMessageItemAsReady("A-101", DefaultTestDate)
-				_ = s.markAsMovedToDLQ(DefaultTestDate.Add(10 * time.Second))
-				s.Version = 2
+				m := NewTestMessageItemAsReady("A-101", DefaultTestDate)
+				markAsMovedToDLQ(m, DefaultTestDate.Add(10*time.Second))
+				m.Version = 2
 				r := &MoveMessageToDLQOutput{
-					ID:                   s.ID,
-					Status:               s.Status,
-					LastUpdatedTimestamp: s.LastUpdatedTimestamp,
-					Version:              s.Version,
+					ID:                   m.ID,
+					Status:               m.Status,
+					LastUpdatedTimestamp: m.LastUpdatedTimestamp,
+					Version:              m.Version,
 				}
 				return r
 			}(),
@@ -793,57 +794,56 @@ func NewTestMessageItemAsReady(id string, now time.Time) *Message[test.MessageDa
 }
 
 func NewTestMessageItemAsProcessing(id string, now time.Time) *Message[test.MessageData] {
-	message := NewMessage[test.MessageData](id, test.NewMessageData(id), now)
-	err := message.markAsProcessing(now, 0)
-	if err != nil {
-		panic(err)
-	}
-	return message
+	m := NewMessage[test.MessageData](id, test.NewMessageData(id), now)
+	markAsProcessing(m, now)
+	return m
 }
 
 func NewTestMessageItemAsDLQ(id string, now time.Time) *Message[test.MessageData] {
-	message := NewMessage[test.MessageData](id, test.NewMessageData(id), now)
-	err := message.markAsMovedToDLQ(now)
-	if err != nil {
-		panic(err)
-	}
-	return message
+	m := NewMessage[test.MessageData](id, test.NewMessageData(id), now)
+	markAsMovedToDLQ(m, now)
+	return m
 }
 
 func NewMessageFromReadyToProcessing(id string,
 	readyTime time.Time, processingTime time.Time) *ReceiveMessageOutput[test.MessageData] {
-	s := NewTestMessageItemAsReady(id, readyTime)
-	_ = s.markAsProcessing(processingTime, 0)
-	s.Version = 2
-	s.ReceiveCount = 1
+	m := NewTestMessageItemAsReady(id, readyTime)
+	markAsProcessing(m, processingTime)
+	m.Version = 2
+	m.ReceiveCount = 1
 	r := &ReceiveMessageOutput[test.MessageData]{
 		Result: &Result{
-			ID:                   s.ID,
-			Status:               s.Status,
-			LastUpdatedTimestamp: s.LastUpdatedTimestamp,
-			Version:              s.Version,
+			ID:                   m.ID,
+			Status:               m.Status,
+			LastUpdatedTimestamp: m.LastUpdatedTimestamp,
+			Version:              m.Version,
 		},
-		PeekFromQueueTimestamp: s.PeekFromQueueTimestamp,
-		PeekedMessageObject:    s,
+		PeekFromQueueTimestamp: m.PeekFromQueueTimestamp,
+		PeekedMessageObject:    m,
 	}
 	return r
 }
 
+func marshalMapUnsafe[T any](m *Message[T]) map[string]types.AttributeValue {
+	item, _ := m.MarshalMap()
+	return item
+}
+
 func NewPutRequestWithReadyItem(id string, now time.Time) *types.PutRequest {
 	return &types.PutRequest{
-		Item: NewTestMessageItemAsReady(id, now).marshalMapUnsafe(),
+		Item: marshalMapUnsafe(NewTestMessageItemAsReady(id, now)),
 	}
 }
 
 func NewPutRequestWithProcessingItem(id string, now time.Time) *types.PutRequest {
 	return &types.PutRequest{
-		Item: NewTestMessageItemAsProcessing(id, now).marshalMapUnsafe(),
+		Item: marshalMapUnsafe(NewTestMessageItemAsProcessing(id, now)),
 	}
 }
 
 func NewPutRequestWithDLQItem(id string, now time.Time) *types.PutRequest {
 	return &types.PutRequest{
-		Item: NewTestMessageItemAsDLQ(id, now).marshalMapUnsafe(),
+		Item: marshalMapUnsafe(NewTestMessageItemAsDLQ(id, now)),
 	}
 }
 
@@ -860,10 +860,33 @@ func GeneratePutRequests(messages []*Message[test.MessageData]) []*types.PutRequ
 	var puts []*types.PutRequest
 	for _, message := range messages {
 		puts = append(puts, &types.PutRequest{
-			Item: message.marshalMapUnsafe(),
+			Item: marshalMapUnsafe(message),
 		})
 	}
 	return puts
+}
+
+func markAsReady[T any](m *Message[T], now time.Time) {
+	ts := clock.FormatRFC3339Nano(now)
+	m.Status = StatusReady
+	m.LastUpdatedTimestamp = ts
+}
+
+func markAsProcessing[T any](m *Message[T], now time.Time) {
+	ts := clock.FormatRFC3339Nano(now)
+	m.Status = StatusProcessing
+	m.LastUpdatedTimestamp = ts
+	m.PeekFromQueueTimestamp = ts
+}
+
+func markAsMovedToDLQ[T any](m *Message[T], now time.Time) {
+	ts := clock.FormatRFC3339Nano(now)
+	m.QueueType = QueueTypeDLQ
+	m.Status = StatusReady
+	m.ReceiveCount = 0
+	m.LastUpdatedTimestamp = ts
+	m.AddToQueueTimestamp = ts
+	m.PeekFromQueueTimestamp = ""
 }
 
 type MockClock struct {
