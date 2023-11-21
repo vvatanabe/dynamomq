@@ -7,38 +7,32 @@ import (
 	"github.com/vvatanabe/dynamomq"
 )
 
-var deleteCmd = &cobra.Command{
-	Use:   "delete",
-	Short: "Delete a message by ID",
-	Long:  `Delete a message by ID.`,
-	Run: func(cmd *cobra.Command, args []string) {
-		ctx := context.Background()
-		client, _, err := createDynamoMQClient[any](ctx, flgs)
-		if err != nil {
-			printError(err)
-			return
-		}
-		id := flgs.ID
-		_, err = client.DeleteMessage(ctx, &dynamomq.DeleteMessageInput{
-			ID: id,
-		})
-		if err != nil {
-			printError(err)
-			return
-		}
-		printMessageWithData("", DeleteResult{ID: id})
-		return
-	},
-}
-
-type DeleteResult struct {
-	ID string `json:"id"`
+func (f CommandFactory) CreateDeleteCommand(flgs *Flags) *cobra.Command {
+	return &cobra.Command{
+		Use:   "delete",
+		Short: "Delete a message by ID",
+		Long:  `Delete a message by ID.`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := context.Background()
+			client, _, err := f.CreateDynamoMQClient(ctx, flgs)
+			if err != nil {
+				return err
+			}
+			_, err = client.DeleteMessage(ctx, &dynamomq.DeleteMessageInput{
+				ID: flgs.ID,
+			})
+			if err != nil {
+				return err
+			}
+			return nil
+		},
+	}
 }
 
 func init() {
-	rootCmd.AddCommand(deleteCmd)
-	deleteCmd.Flags().StringVar(&flgs.TableName, flagMap.TableName.Name, flagMap.TableName.Value, flagMap.TableName.Usage)
-	deleteCmd.Flags().StringVar(&flgs.QueueingIndexName, flagMap.QueueingIndexName.Name, flagMap.QueueingIndexName.Value, flagMap.QueueingIndexName.Usage)
-	deleteCmd.Flags().StringVar(&flgs.EndpointURL, flagMap.EndpointURL.Name, flagMap.EndpointURL.Value, flagMap.EndpointURL.Usage)
-	deleteCmd.Flags().StringVar(&flgs.ID, flagMap.ID.Name, flagMap.ID.Value, flagMap.ID.Usage)
+	c := defaultCommandFactory.CreateDeleteCommand(flgs)
+	c.Flags().StringVar(&flgs.TableName, flagMap.TableName.Name, flagMap.TableName.Value, flagMap.TableName.Usage)
+	c.Flags().StringVar(&flgs.EndpointURL, flagMap.EndpointURL.Name, flagMap.EndpointURL.Value, flagMap.EndpointURL.Usage)
+	c.Flags().StringVar(&flgs.ID, flagMap.ID.Name, flagMap.ID.Value, flagMap.ID.Usage)
+	rootCmd.AddCommand(c)
 }

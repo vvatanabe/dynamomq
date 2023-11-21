@@ -13,6 +13,14 @@ import (
 	"github.com/vvatanabe/dynamomq"
 )
 
+type CommandFactory struct {
+	CreateDynamoMQClient func(ctx context.Context, flags *Flags) (dynamomq.Client[any], aws.Config, error)
+}
+
+var defaultCommandFactory = CommandFactory{
+	CreateDynamoMQClient: createDynamoMQClient[any],
+}
+
 var rootCmd = &cobra.Command{
 	Use:     "dynamomq",
 	Short:   "DynamoMQ is a tool for implementing message queueing with Amazon DynamoDB in Go",
