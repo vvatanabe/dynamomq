@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	. "github.com/vvatanabe/dynamomq"
+	"github.com/vvatanabe/dynamomq/internal/mock"
 	"github.com/vvatanabe/dynamomq/internal/test"
 )
 
@@ -21,7 +22,7 @@ func TestProducerProduce(t *testing.T) {
 		want    *ProduceOutput[T]
 		wantErr bool
 	}
-	defaultMockClient := &MockClient[test.MessageData]{
+	defaultMockClient := &mock.Client[test.MessageData]{
 		SendMessageFunc: func(ctx context.Context,
 			params *SendMessageInput[test.MessageData]) (*SendMessageOutput[test.MessageData], error) {
 			return &SendMessageOutput[test.MessageData]{
@@ -67,7 +68,7 @@ func TestProducerProduce(t *testing.T) {
 		},
 		{
 			name: "should re to produce a message when params is nil",
-			c: NewProducer[test.MessageData](&MockClient[test.MessageData]{
+			c: NewProducer[test.MessageData](&mock.Client[test.MessageData]{
 				SendMessageFunc: func(ctx context.Context,
 					params *SendMessageInput[test.MessageData]) (*SendMessageOutput[test.MessageData], error) {
 					return nil, errors.New("for error case")

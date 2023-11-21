@@ -11,6 +11,7 @@ import (
 	"time"
 
 	. "github.com/vvatanabe/dynamomq"
+	"github.com/vvatanabe/dynamomq/internal/mock"
 	"github.com/vvatanabe/dynamomq/internal/test"
 )
 
@@ -83,7 +84,7 @@ func TestConsumerStartConsuming(t *testing.T) {
 		tt := tt
 		t.Run(tt.Name, func(t *testing.T) {
 			t.Parallel()
-			queue, dlq, store := PrepareQueueAndStore(tt.MessageSize, tt.MessageReceiveCount)
+			queue, dlq, store := prepareQueueAndStore(tt.MessageSize, tt.MessageReceiveCount)
 			client := NewClientForConsumerTest(queue, dlq, store, tt.ClientForConsumerTestConfig)
 			processor := &CountProcessor[test.MessageData]{
 				SimulateProcessError: tt.WantMessageProcessError,
@@ -121,68 +122,6 @@ func TestConsumerStartConsuming(t *testing.T) {
 	}
 }
 
-type CountProcessor[T any] struct {
-	Count                atomic.Int32
-	SimulateProcessError bool
-	Sleep                time.Duration
-}
-
-func (p *CountProcessor[T]) Process(_ *Message[T]) error {
-	if p.SimulateProcessError {
-		return ErrorTest
-	}
-	time.Sleep(p.Sleep)
-	p.Count.Add(1)
-	return nil
-}
-
-type ClientForConsumerTestConfig struct {
-	SimulateReceiveMessageError   bool
-	SimulateDeleteMessageError    bool
-	SimulateMessageAsVisibleError bool
-	SimulateMoveMessageToDLQError bool
-}
-
-func NewClientForConsumerTest(queue, dlq chan *Message[test.MessageData], store *sync.Map,
-	cfg ClientForConsumerTestConfig) Client[test.MessageData] {
-	return &MockClient[test.MessageData]{
-		ReceiveMessageFunc: func(ctx context.Context, params *ReceiveMessageInput) (*ReceiveMessageOutput[test.MessageData], error) {
-			if cfg.SimulateReceiveMessageError {
-				return nil, &DynamoDBAPIError{Cause: ErrorTest}
-			}
-			message := <-queue
-			return &ReceiveMessageOutput[test.MessageData]{PeekedMessageObject: message}, nil
-		},
-		DeleteMessageFunc: func(ctx context.Context, params *DeleteMessageInput) (*DeleteMessageOutput, error) {
-			if cfg.SimulateDeleteMessageError {
-				return nil, ErrorTest
-			}
-			store.Delete(params.ID)
-			return &DeleteMessageOutput{}, nil
-		},
-		UpdateMessageAsVisibleFunc: func(ctx context.Context, params *UpdateMessageAsVisibleInput) (*UpdateMessageAsVisibleOutput[test.MessageData], error) {
-			if cfg.SimulateMessageAsVisibleError {
-				return nil, ErrorTest
-			}
-			return &UpdateMessageAsVisibleOutput[test.MessageData]{}, nil
-		},
-		MoveMessageToDLQFunc: func(ctx context.Context, params *MoveMessageToDLQInput) (*MoveMessageToDLQOutput, error) {
-			if cfg.SimulateMoveMessageToDLQError {
-				return nil, ErrorTest
-			}
-			v, _ := store.Load(params.ID)
-			msg := v.(*Message[test.MessageData])
-			dlq <- msg
-			return &MoveMessageToDLQOutput{
-				ID:                   msg.ID,
-				Status:               msg.Status,
-				LastUpdatedTimestamp: msg.LastUpdatedTimestamp,
-				Version:              2,
-			}, nil
-		},
-	}
-}
-
 func TestConsumerShutdown(t *testing.T) {
 	t.Parallel()
 	type testCase struct {
@@ -209,7 +148,7 @@ func TestConsumerShutdown(t *testing.T) {
 		tt := tt
 		t.Run(tt.Name, func(t *testing.T) {
 			t.Parallel()
-			queue, dlq, store := PrepareQueueAndStore(tt.MessageSize, 0)
+			queue, dlq, store := prepareQueueAndStore(tt.MessageSize, 0)
 			client := NewClientForConsumerTest(queue, dlq, store, ClientForConsumerTestConfig{})
 			processor := &CountProcessor[test.MessageData]{
 				SimulateProcessError: false,
@@ -255,15 +194,77 @@ func TestConsumerShutdown(t *testing.T) {
 	}
 }
 
-func PrepareQueueAndStore(size, receiveCount int) (queue, dlq chan *Message[test.MessageData], store *sync.Map) {
+func prepareQueueAndStore(size, receiveCount int) (queue, dlq chan *Message[test.MessageData], store *sync.Map) {
 	var storeMap sync.Map
 	queue = make(chan *Message[test.MessageData], size)
 	for i := 1; i <= size; i++ {
 		id := fmt.Sprintf("A-%d", i)
-		msg := NewMessage(id, test.NewMessageData(id), DefaultTestDate)
+		msg := NewMessage(id, test.NewMessageData(id), test.DefaultTestDate)
 		msg.ReceiveCount = receiveCount
 		storeMap.Store(id, msg)
 		queue <- msg
 	}
 	return queue, make(chan *Message[test.MessageData], size), &storeMap
+}
+
+type CountProcessor[T any] struct {
+	Count                atomic.Int32
+	SimulateProcessError bool
+	Sleep                time.Duration
+}
+
+func (p *CountProcessor[T]) Process(_ *Message[T]) error {
+	if p.SimulateProcessError {
+		return test.ErrorTest
+	}
+	time.Sleep(p.Sleep)
+	p.Count.Add(1)
+	return nil
+}
+
+type ClientForConsumerTestConfig struct {
+	SimulateReceiveMessageError   bool
+	SimulateDeleteMessageError    bool
+	SimulateMessageAsVisibleError bool
+	SimulateMoveMessageToDLQError bool
+}
+
+func NewClientForConsumerTest(queue, dlq chan *Message[test.MessageData], store *sync.Map,
+	cfg ClientForConsumerTestConfig) Client[test.MessageData] {
+	return &mock.Client[test.MessageData]{
+		ReceiveMessageFunc: func(ctx context.Context, params *ReceiveMessageInput) (*ReceiveMessageOutput[test.MessageData], error) {
+			if cfg.SimulateReceiveMessageError {
+				return nil, &DynamoDBAPIError{Cause: test.ErrorTest}
+			}
+			message := <-queue
+			return &ReceiveMessageOutput[test.MessageData]{PeekedMessageObject: message}, nil
+		},
+		DeleteMessageFunc: func(ctx context.Context, params *DeleteMessageInput) (*DeleteMessageOutput, error) {
+			if cfg.SimulateDeleteMessageError {
+				return nil, test.ErrorTest
+			}
+			store.Delete(params.ID)
+			return &DeleteMessageOutput{}, nil
+		},
+		UpdateMessageAsVisibleFunc: func(ctx context.Context, params *UpdateMessageAsVisibleInput) (*UpdateMessageAsVisibleOutput[test.MessageData], error) {
+			if cfg.SimulateMessageAsVisibleError {
+				return nil, test.ErrorTest
+			}
+			return &UpdateMessageAsVisibleOutput[test.MessageData]{}, nil
+		},
+		MoveMessageToDLQFunc: func(ctx context.Context, params *MoveMessageToDLQInput) (*MoveMessageToDLQOutput, error) {
+			if cfg.SimulateMoveMessageToDLQError {
+				return nil, test.ErrorTest
+			}
+			v, _ := store.Load(params.ID)
+			msg := v.(*Message[test.MessageData])
+			dlq <- msg
+			return &MoveMessageToDLQOutput{
+				ID:                   msg.ID,
+				Status:               msg.Status,
+				LastUpdatedTimestamp: msg.LastUpdatedTimestamp,
+				Version:              2,
+			}, nil
+		},
+	}
 }
