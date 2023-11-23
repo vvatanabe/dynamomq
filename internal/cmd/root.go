@@ -21,6 +21,11 @@ var defaultCommandFactory = CommandFactory{
 	CreateDynamoMQClient: createDynamoMQClient[any],
 }
 
+func setDefaultFlags(c *cobra.Command, flgs *Flags) {
+	c.Flags().StringVar(&flgs.TableName, flagMap.TableName.Name, flagMap.TableName.Value, flagMap.TableName.Usage)
+	c.Flags().StringVar(&flgs.EndpointURL, flagMap.EndpointURL.Name, flagMap.EndpointURL.Value, flagMap.EndpointURL.Usage)
+}
+
 var rootCmd = &cobra.Command{
 	Use:     "dynamomq",
 	Short:   "DynamoMQ is a tool for implementing message queueing with Amazon DynamoDB in Go",
