@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/vvatanabe/dynamomq"
 	"github.com/vvatanabe/dynamomq/internal/clock"
 	"github.com/vvatanabe/dynamomq/internal/test"
@@ -119,22 +117,16 @@ func (c *Interactive) enqueueTest(ctx context.Context, _ []string) {
 	fmt.Println("Send a message with IDs:")
 	ids := []string{"A-101", "A-202", "A-303", "A-404"}
 	for _, id := range ids {
-		message := dynamomq.NewMessage[test.MessageData](id, test.NewMessageData(id), clock.Now())
-		item, err := message.MarshalMap()
-		if err != nil {
-			printErrorWithID(err, id)
-			continue
-		}
-		_, err = c.Client.DeleteMessage(ctx, &dynamomq.DeleteMessageInput{
+		_, err := c.Client.DeleteMessage(ctx, &dynamomq.DeleteMessageInput{
 			ID: id,
 		})
 		if err != nil {
 			printErrorWithID(err, id)
 			continue
 		}
-		_, err = c.Client.GetDynamodbClient().PutItem(ctx, &dynamodb.PutItemInput{
-			TableName: aws.String(c.TableName),
-			Item:      item,
+		_, err = c.Client.SendMessage(ctx, &dynamomq.SendMessageInput[any]{
+			ID:   id,
+			Data: test.NewMessageData(id),
 		})
 		if err != nil {
 			printErrorWithID(err, id)
