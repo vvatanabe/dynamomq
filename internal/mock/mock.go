@@ -5,7 +5,6 @@ import (
 	"errors"
 	"time"
 
-	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/vvatanabe/dynamomq"
 	"github.com/vvatanabe/dynamomq/internal/clock"
 )
@@ -24,7 +23,6 @@ type Client[T any] struct {
 	GetDLQStatsFunc            func(ctx context.Context, params *dynamomq.GetDLQStatsInput) (*dynamomq.GetDLQStatsOutput, error)
 	ListMessagesFunc           func(ctx context.Context, params *dynamomq.ListMessagesInput) (*dynamomq.ListMessagesOutput[T], error)
 	ReplaceMessageFunc         func(ctx context.Context, params *dynamomq.ReplaceMessageInput[T]) (*dynamomq.ReplaceMessageOutput, error)
-	GetDynamodbClientFunc      func() *dynamodb.Client
 }
 
 func (m Client[T]) SendMessage(ctx context.Context, params *dynamomq.SendMessageInput[T]) (*dynamomq.SendMessageOutput[T], error) {
@@ -102,13 +100,6 @@ func (m Client[T]) ReplaceMessage(ctx context.Context, params *dynamomq.ReplaceM
 		return m.ReplaceMessageFunc(ctx, params)
 	}
 	return nil, ErrNotImplemented
-}
-
-func (m Client[T]) GetDynamodbClient() *dynamodb.Client {
-	if m.GetDynamodbClientFunc != nil {
-		return m.GetDynamodbClientFunc()
-	}
-	return nil
 }
 
 type Clock struct {

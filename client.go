@@ -33,7 +33,6 @@ type Client[T any] interface {
 	GetDLQStats(ctx context.Context, params *GetDLQStatsInput) (*GetDLQStatsOutput, error)
 	ListMessages(ctx context.Context, params *ListMessagesInput) (*ListMessagesOutput[T], error)
 	ReplaceMessage(ctx context.Context, params *ReplaceMessageInput[T]) (*ReplaceMessageOutput, error)
-	GetDynamodbClient() *dynamodb.Client
 }
 
 type ClientOptions struct {
@@ -807,10 +806,6 @@ func (c *client[T]) put(ctx context.Context, message *Message[T]) error {
 		return handleDynamoDBError(err)
 	}
 	return nil
-}
-
-func (c *client[T]) GetDynamodbClient() *dynamodb.Client {
-	return c.dynamoDB
 }
 
 func (c *client[T]) updateDynamoDBItem(ctx context.Context,
