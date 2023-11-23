@@ -31,8 +31,7 @@ func (f CommandFactory) CreateDeleteCommand(flgs *Flags) *cobra.Command {
 
 func init() {
 	c := defaultCommandFactory.CreateDeleteCommand(flgs)
-	c.Flags().StringVar(&flgs.TableName, flagMap.TableName.Name, flagMap.TableName.Value, flagMap.TableName.Usage)
-	c.Flags().StringVar(&flgs.EndpointURL, flagMap.EndpointURL.Name, flagMap.EndpointURL.Value, flagMap.EndpointURL.Usage)
+	setDefaultFlags(c, flgs)
 	c.Flags().StringVar(&flgs.ID, flagMap.ID.Name, flagMap.ID.Value, flagMap.ID.Usage)
 	rootCmd.AddCommand(c)
 }
