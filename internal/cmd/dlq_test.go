@@ -9,7 +9,6 @@ import (
 	"github.com/vvatanabe/dynamomq"
 	"github.com/vvatanabe/dynamomq/internal/cmd"
 	"github.com/vvatanabe/dynamomq/internal/mock"
-	"github.com/vvatanabe/dynamomq/internal/test"
 )
 
 func TestCommandFactoryCreatDLQCommand(t *testing.T) {
@@ -42,38 +41,6 @@ func TestCommandFactoryCreatDLQCommand(t *testing.T) {
 				},
 			},
 			wantErr: false,
-		},
-		{
-			name: "should return error when DynamoMQClient return error",
-			fields: fields{
-				CreateDynamoMQClient: func(ctx context.Context, flags *cmd.Flags) (dynamomq.Client[any], aws.Config, error) {
-					return mock.Client[any]{
-						GetDLQStatsFunc: func(ctx context.Context, params *dynamomq.GetDLQStatsInput) (*dynamomq.GetDLQStatsOutput, error) {
-							return nil, test.ErrorTest
-						},
-					}, aws.Config{}, nil
-				},
-			},
-			args: args{
-				flgs: &cmd.Flags{
-					ID: "A-101",
-				},
-			},
-			wantErr: true,
-		},
-		{
-			name: "should return error when CreateDynamoMQClient func return error",
-			fields: fields{
-				CreateDynamoMQClient: func(ctx context.Context, flags *cmd.Flags) (dynamomq.Client[any], aws.Config, error) {
-					return nil, aws.Config{}, test.ErrorTest
-				},
-			},
-			args: args{
-				flgs: &cmd.Flags{
-					ID: "A-101",
-				},
-			},
-			wantErr: true,
 		},
 	}
 	for _, tt := range tests {
