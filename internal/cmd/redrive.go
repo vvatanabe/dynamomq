@@ -7,34 +7,32 @@ import (
 	"github.com/vvatanabe/dynamomq"
 )
 
-var redriveCmd = &cobra.Command{
-	Use:   "redrive",
-	Short: "Redrive a message to STANDARD from DLQ",
-	Long:  `Redrive a message to STANDARD from DLQ.`,
-	Run: func(cmd *cobra.Command, args []string) {
-		ctx := context.Background()
-		client, _, err := createDynamoMQClient[any](ctx, flgs)
-		if err != nil {
-			printError(err)
-			return
-		}
-		id := flgs.ID
-		result, err := client.RedriveMessage(ctx, &dynamomq.RedriveMessageInput{
-			ID: id,
-		})
-		if err != nil {
-			printError(err)
-			return
-		}
-		printMessageWithData("", result)
-		return
-	},
+func (f CommandFactory) CreateRedriveCommand(flgs *Flags) *cobra.Command {
+	return &cobra.Command{
+		Use:   "redrive",
+		Short: "Redrive a message to STANDARD from DLQ",
+		Long:  `Redrive a message to STANDARD from DLQ.`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := context.Background()
+			client, _, err := f.CreateDynamoMQClient(ctx, flgs)
+			if err != nil {
+				return err
+			}
+			result, err := client.RedriveMessage(ctx, &dynamomq.RedriveMessageInput{
+				ID: flgs.ID,
+			})
+			if err != nil {
+				return err
+			}
+			printMessageWithData("", result)
+			return nil
+		},
+	}
 }
 
 func init() {
-	rootCmd.AddCommand(redriveCmd)
-	redriveCmd.Flags().StringVar(&flgs.TableName, flagMap.TableName.Name, flagMap.TableName.Value, flagMap.TableName.Usage)
-	redriveCmd.Flags().StringVar(&flgs.QueueingIndexName, flagMap.QueueingIndexName.Name, flagMap.QueueingIndexName.Value, flagMap.QueueingIndexName.Usage)
-	redriveCmd.Flags().StringVar(&flgs.EndpointURL, flagMap.EndpointURL.Name, flagMap.EndpointURL.Value, flagMap.EndpointURL.Usage)
-	redriveCmd.Flags().StringVar(&flgs.ID, flagMap.ID.Name, flagMap.ID.Value, flagMap.ID.Usage)
+	c := defaultCommandFactory.CreateRedriveCommand(flgs)
+	setDefaultFlags(c, flgs)
+	c.Flags().StringVar(&flgs.QueueingIndexName, flagMap.QueueingIndexName.Name, flagMap.QueueingIndexName.Value, flagMap.QueueingIndexName.Usage)
+	rootCmd.AddCommand(c)
 }
