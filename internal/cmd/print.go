@@ -32,10 +32,10 @@ func printError(err any) {
 	fmt.Printf("ERROR: %v\n", err)
 }
 
-func printErrorWithID(err error, id string) {
-	fmt.Printf("ERROR: %v, ID: %s\n", err, id)
-}
-
 func printQueueStatus(stats *dynamomq.GetQueueStatsOutput) {
 	printMessageWithData("Queue status:\n", stats)
+}
+
+func errorWithID(err error, id string) error {
+	return fmt.Errorf("%v, ID: %s", err, id)
 }

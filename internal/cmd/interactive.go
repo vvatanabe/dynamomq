@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/vvatanabe/dynamomq"
@@ -10,55 +11,55 @@ import (
 )
 
 type Interactive struct {
-	TableName string
-	Client    dynamomq.Client[any]
-	Message   *dynamomq.Message[any]
+	Client  dynamomq.Client[any]
+	Message *dynamomq.Message[any]
 }
 
-func (c *Interactive) Run(ctx context.Context, command string, params []string) {
+func (c *Interactive) Run(ctx context.Context, command string, params []string) (err error) {
 	switch command {
 	case "h", "?", "help":
-		c.help(ctx, params)
+		err = c.help(ctx, params)
 	case "qstat", "qstats":
-		c.qstat(ctx, params)
+		err = c.qstat(ctx, params)
 	case "dlq":
-		c.dlq(ctx, params)
+		err = c.dlq(ctx, params)
 	case "enqueue-test", "et":
-		c.enqueueTest(ctx, params)
+		err = c.enqueueTest(ctx, params)
 	case "purge":
-		c.purge(ctx, params)
+		err = c.purge(ctx, params)
 	case "ls":
-		c.ls(ctx, params)
+		err = c.ls(ctx, params)
 	case "receive":
-		c.receive(ctx, params)
+		err = c.receive(ctx, params)
 	case "id":
-		c.id(ctx, params)
+		err = c.id(ctx, params)
 	case "sys", "system":
-		c.system(ctx, params)
+		err = c.system(ctx, params)
 	case "data":
-		c.data(ctx, params)
+		err = c.data(ctx, params)
 	case "info":
-		c.info(ctx, params)
+		err = c.info(ctx, params)
 	case "reset":
-		c.reset(ctx, params)
+		err = c.reset(ctx, params)
 	case "redrive":
-		c.redrive(ctx, params)
+		err = c.redrive(ctx, params)
 	case "delete":
-		c.delete(ctx, params)
+		err = c.delete(ctx, params)
 	case "fail":
-		c.fail(ctx, params)
+		err = c.fail(ctx, params)
 	case "invalid":
-		c.invalid(ctx, params)
+		err = c.invalid(ctx, params)
 	default:
 		fmt.Println(" ... unrecognized command!")
 	}
+	return
 }
 
-func (c *Interactive) help(_ context.Context, _ []string) {
+func (c *Interactive) help(_ context.Context, _ []string) error {
 	fmt.Println(`... this is Interactive HELP!
-  > qstat | qstats                                [Retrieves the queue statistics]
+  > qstat                                         [Retrieves the queue statistics]
   > dlq                                           [Retrieves the Dead Letter Queue (DLQ) statistics]
-  > enqueue-test | et                             [Send test messages in DynamoDB table: A-101, A-202, A-303 and A-404; if already exists, it will overwrite it]
+  > enqueue-test                                  [Send test messages in DynamoDB table: A-101, A-202, A-303 and A-404; if already exists, it will overwrite it]
   > purge                                         [It will remove all message from DynamoMQ table]
   > ls                                            [List all message IDs ... max 10 elements]
   > receive                                       [Receive a message from the queue .. it will replace the current ID with the peeked one]
@@ -72,33 +73,60 @@ func (c *Interactive) help(_ context.Context, _ []string) {
     > fail                                        [Simulate failed message's processing ... put back to the queue; needs to be receive again]
     > invalid                                     [Remove a message from the standard queue to dead letter queue (DLQ) for manual fix]
   > id`)
+	return nil
 }
 
-func (c *Interactive) ls(ctx context.Context, _ []string) {
+func (c *Interactive) info(_ context.Context, _ []string) error {
+	if c.Message == nil {
+		printCLIModeRestriction("`info`")
+		return nil
+	}
+	printMessageWithData("Record's dump:\n", c.Message)
+	return nil
+}
+
+func (c *Interactive) data(_ context.Context, _ []string) error {
+	if c.Message == nil {
+		printCLIModeRestriction("`data`")
+		return nil
+	}
+	printMessageWithData("Data info:\n", c.Message.Data)
+	return nil
+}
+
+func (c *Interactive) system(_ context.Context, _ []string) error {
+	if c.Message == nil {
+		printCLIModeRestriction("`system` or `sys`")
+		return nil
+	}
+	printMessageWithData("ID's system info:\n", c.Message.GetSystemInfo())
+	return nil
+}
+
+func (c *Interactive) ls(ctx context.Context, _ []string) error {
 	out, err := c.Client.ListMessages(ctx, &dynamomq.ListMessagesInput{Size: 10})
 	if err != nil {
-		printError(err)
-		return
+		return err
 	}
 	if len(out.Messages) == 0 {
 		fmt.Println("Queue is empty!")
-		return
+		return nil
 	}
 	fmt.Println("List messages of first 10 IDs:")
 	for _, m := range out.Messages {
 		fmt.Printf("* ID: %s, status: %s", m.ID, m.Status)
 	}
+	return nil
 }
 
-func (c *Interactive) purge(ctx context.Context, _ []string) {
+func (c *Interactive) purge(ctx context.Context, _ []string) error {
 	out, err := c.Client.ListMessages(ctx, &dynamomq.ListMessagesInput{Size: 10})
 	if err != nil {
-		printError(err)
-		return
+		return err
 	}
 	if len(out.Messages) == 0 {
 		fmt.Println("Message table is empty ... nothing to remove!")
-		return
+		return nil
 	}
 	fmt.Println("List messages of removed IDs:")
 	for _, m := range out.Messages {
@@ -106,14 +134,14 @@ func (c *Interactive) purge(ctx context.Context, _ []string) {
 			ID: m.ID,
 		})
 		if err != nil {
-			printError(err)
-			continue
+			return errorWithID(err, m.ID)
 		}
 		fmt.Printf("* ID: %s\n", m.ID)
 	}
+	return nil
 }
 
-func (c *Interactive) enqueueTest(ctx context.Context, _ []string) {
+func (c *Interactive) enqueueTest(ctx context.Context, _ []string) error {
 	fmt.Println("Send a message with IDs:")
 	ids := []string{"A-101", "A-202", "A-303", "A-404"}
 	for _, id := range ids {
@@ -121,44 +149,42 @@ func (c *Interactive) enqueueTest(ctx context.Context, _ []string) {
 			ID: id,
 		})
 		if err != nil {
-			printErrorWithID(err, id)
-			continue
+			return errorWithID(err, id)
 		}
 		_, err = c.Client.SendMessage(ctx, &dynamomq.SendMessageInput[any]{
 			ID:   id,
 			Data: test.NewMessageData(id),
 		})
 		if err != nil {
-			printErrorWithID(err, id)
-			continue
+			return errorWithID(err, id)
 		}
 		fmt.Printf("* ID: %s\n", id)
 	}
+	return nil
 }
 
-func (c *Interactive) qstat(ctx context.Context, _ []string) {
+func (c *Interactive) qstat(ctx context.Context, _ []string) error {
 	stats, err := c.Client.GetQueueStats(ctx, &dynamomq.GetQueueStatsInput{})
 	if err != nil {
-		printError(err)
-		return
+		return err
 	}
 	printQueueStatus(stats)
+	return nil
 }
 
-func (c *Interactive) dlq(ctx context.Context, _ []string) {
+func (c *Interactive) dlq(ctx context.Context, _ []string) error {
 	stats, err := c.Client.GetDLQStats(ctx, &dynamomq.GetDLQStatsInput{})
 	if err != nil {
-		printError(err)
-		return
+		return err
 	}
 	printMessageWithData("DLQ status:\n", stats)
+	return nil
 }
 
-func (c *Interactive) receive(ctx context.Context, _ []string) {
+func (c *Interactive) receive(ctx context.Context, _ []string) error {
 	rr, err := c.Client.ReceiveMessage(ctx, &dynamomq.ReceiveMessageInput{})
 	if err != nil {
-		printError(fmt.Sprintf("ReceiveMessage has failed! message: %s", err))
-		return
+		return err
 	}
 	c.Message = rr.PeekedMessageObject
 	printMessageWithData(
@@ -166,160 +192,128 @@ func (c *Interactive) receive(ctx context.Context, _ []string) {
 		c.Message.GetSystemInfo())
 	stats, err := c.Client.GetQueueStats(ctx, &dynamomq.GetQueueStatsInput{})
 	if err != nil {
-		printError(err)
-		return
+		return err
 	}
 	printMessageWithData("Queue stats:\n", stats)
+	return nil
 }
 
-func (c *Interactive) id(ctx context.Context, params []string) {
+func (c *Interactive) id(ctx context.Context, params []string) error {
 	if len(params) == 0 {
 		c.Message = nil
 		fmt.Println("Going back to standard Interactive mode!")
-		return
+		return nil
 	}
 	id := params[0]
-	var err error
 	retrieved, err := c.Client.GetMessage(ctx, &dynamomq.GetMessageInput{
 		ID: id,
 	})
 	if err != nil {
-		printError(err)
-		return
+		return err
 	}
 	if retrieved.Message == nil {
-		printError(fmt.Sprintf("Message's [%s] not found!", id))
-		return
+		return errorWithID(errors.New("message not found"), id)
 	}
 	c.Message = retrieved.Message
 	printMessageWithData(fmt.Sprintf("Message's [%s] record dump:\n", id), c.Message)
+	return nil
 }
 
-func (c *Interactive) system(_ context.Context, _ []string) {
-	if c.Message == nil {
-		printCLIModeRestriction("`system` or `sys`")
-		return
-	}
-	printMessageWithData("ID's system info:\n", c.Message.GetSystemInfo())
-}
-
-func (c *Interactive) reset(ctx context.Context, _ []string) {
+func (c *Interactive) reset(ctx context.Context, _ []string) error {
 	if c.Message == nil {
 		printCLIModeRestriction("`reset`")
-		return
+		return nil
 	}
 	c.Message.ResetSystemInfo(clock.Now())
 	_, err := c.Client.ReplaceMessage(ctx, &dynamomq.ReplaceMessageInput[any]{
 		Message: c.Message,
 	})
 	if err != nil {
-		printError(err)
-		return
+		return err
 	}
 	printMessageWithData("Reset system info:\n", c.Message.GetSystemInfo())
+	return nil
 }
 
-func (c *Interactive) redrive(ctx context.Context, _ []string) {
+func (c *Interactive) redrive(ctx context.Context, _ []string) error {
 	if c.Message == nil {
 		printCLIModeRestriction("`redrive`")
-		return
+		return nil
 	}
 	result, err := c.Client.RedriveMessage(ctx, &dynamomq.RedriveMessageInput{
 		ID: c.Message.ID,
 	})
 	if err != nil {
-		printError(err)
-		return
+		return err
 	}
 	printMessageWithData("Ready system info:\n", result)
+	return nil
 }
 
-func (c *Interactive) delete(ctx context.Context, _ []string) {
+func (c *Interactive) delete(ctx context.Context, _ []string) error {
 	if c.Message == nil {
-		printCLIModeRestriction("`done`")
-		return
+		printCLIModeRestriction("`delete`")
+		return nil
 	}
 	_, err := c.Client.DeleteMessage(ctx, &dynamomq.DeleteMessageInput{
 		ID: c.Message.ID,
 	})
-
 	if err != nil {
-		printError(err)
-		return
+		return err
 	}
 	fmt.Printf("Processing for ID [%s] is deleted successfully! Remove from the queue!\n", c.Message.ID)
 	stats, err := c.Client.GetQueueStats(ctx, &dynamomq.GetQueueStatsInput{})
 	if err != nil {
-		printError(err)
-		return
+		return err
 	}
 	printQueueStatus(stats)
+	return nil
 }
 
-func (c *Interactive) fail(ctx context.Context, _ []string) {
+func (c *Interactive) fail(ctx context.Context, _ []string) error {
 	if c.Message == nil {
 		printCLIModeRestriction("`fail`")
-		return
+		return nil
 	}
 	_, err := c.Client.UpdateMessageAsVisible(ctx, &dynamomq.UpdateMessageAsVisibleInput{
 		ID: c.Message.ID,
 	})
 	if err != nil {
-		printError(err)
-		return
+		return err
 	}
 	retrieved, err := c.Client.GetMessage(ctx, &dynamomq.GetMessageInput{ID: c.Message.ID})
 	if err != nil {
-		printError(err)
-		return
+		return err
 	}
 	if retrieved.Message == nil {
-		printError(fmt.Sprintf("Message's [%s] not found!", c.Message.ID))
-		return
+		return errorWithID(errors.New("message not found"), c.Message.ID)
 	}
 	c.Message = retrieved.Message
 	fmt.Printf("Processing for ID [%s] has failed! ReplaceMessage the record back to the queue!\n", c.Message.ID)
 	stats, err := c.Client.GetQueueStats(ctx, &dynamomq.GetQueueStatsInput{})
 	if err != nil {
-		printError(err)
-		return
+		return err
 	}
 	printQueueStatus(stats)
+	return nil
 }
 
-func (c *Interactive) invalid(ctx context.Context, _ []string) {
+func (c *Interactive) invalid(ctx context.Context, _ []string) error {
 	if c.Message == nil {
 		printCLIModeRestriction("`invalid`")
-		return
+		return nil
 	}
 	_, err := c.Client.MoveMessageToDLQ(ctx, &dynamomq.MoveMessageToDLQInput{
 		ID: c.Message.ID,
 	})
 	if err != nil {
-		printError(err)
-		return
+		return err
 	}
 	fmt.Printf("Processing for ID [%s] has failed .. invalid data! Send record to DLQ!\n", c.Message.ID)
 	stats, err := c.Client.GetQueueStats(ctx, &dynamomq.GetQueueStatsInput{})
 	if err != nil {
-		printError(err)
-		return
+		return err
 	}
 	printQueueStatus(stats)
-}
-
-func (c *Interactive) data(_ context.Context, _ []string) {
-	if c.Message == nil {
-		printCLIModeRestriction("`data`")
-		return
-	}
-	printMessageWithData("Data info:\n", c.Message.Data)
-}
-
-func (c *Interactive) info(_ context.Context, _ []string) {
-	if c.Message == nil {
-		printCLIModeRestriction("`info`")
-		return
-	}
-	printMessageWithData("Record's dump:\n", c.Message)
+	return nil
 }

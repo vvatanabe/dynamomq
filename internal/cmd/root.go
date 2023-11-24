@@ -58,9 +58,8 @@ func (f CommandFactory) CreateRootCommand(flgs *Flags) *cobra.Command {
 			fmt.Println("")
 
 			c := Interactive{
-				TableName: flgs.TableName,
-				Client:    client,
-				Message:   nil,
+				Client:  client,
+				Message: nil,
 			}
 
 			// 1. Create a Scanner using the InputStream available.
@@ -94,7 +93,10 @@ func (f CommandFactory) CreateRootCommand(flgs *Flags) *cobra.Command {
 				default:
 					// 4. Now, you can do anything with the input string that you need to.
 					// Like, output it to the user.
-					c.Run(context.Background(), command, params)
+					err := c.Run(context.Background(), command, params)
+					if err != nil {
+						printError(err)
+					}
 				}
 			}
 			return nil
