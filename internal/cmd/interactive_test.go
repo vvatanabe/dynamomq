@@ -99,7 +99,7 @@ func TestRunInteractiveAllShouldReturnError(t *testing.T) {
 }
 
 func TestRunInteractiveAllShouldSucceed(t *testing.T) {
-	testRunInteractiveAll(t, successfulMockClient, false)
+	testRunInteractiveAll(t, mock.SuccessfulMockClient, false)
 }
 
 func TestRunInteractiveSelectedMessageID(t *testing.T) {
@@ -169,7 +169,7 @@ func TestRunInteractiveSelectedMessageID(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			c := &cmd.Interactive{
-				Client:  successfulMockClient,
+				Client:  mock.SuccessfulMockClient,
 				Message: tt.message,
 			}
 			err := c.Run(context.Background(), tt.command, []string{})

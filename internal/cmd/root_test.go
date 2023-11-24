@@ -167,7 +167,7 @@ func TestRunAllCommandShouldDynamoMQClientError(t *testing.T) {
 func TestRunAllCommandShouldDynamoMQClientSucceed(t *testing.T) {
 	testRunAllCommand(t, cmd.CommandFactory{
 		CreateDynamoMQClient: func(ctx context.Context, flags *cmd.Flags) (dynamomq.Client[any], aws.Config, error) {
-			return successfulMockClient, aws.Config{}, nil
+			return mock.SuccessfulMockClient, aws.Config{}, nil
 		},
 	}, nil)
 }
@@ -196,51 +196,4 @@ func TestParseInput(t *testing.T) {
 			}
 		})
 	}
-}
-
-var successfulMockClient = &mock.Client[any]{
-	SendMessageFunc: func(ctx context.Context, params *dynamomq.SendMessageInput[any]) (*dynamomq.SendMessageOutput[any], error) {
-		return &dynamomq.SendMessageOutput[any]{
-			Result:  &dynamomq.Result{},
-			Message: &dynamomq.Message[any]{},
-		}, nil
-	},
-	ReceiveMessageFunc: func(ctx context.Context, params *dynamomq.ReceiveMessageInput) (*dynamomq.ReceiveMessageOutput[any], error) {
-		return &dynamomq.ReceiveMessageOutput[any]{
-			Result:              &dynamomq.Result{},
-			PeekedMessageObject: &dynamomq.Message[any]{},
-		}, nil
-	},
-	UpdateMessageAsVisibleFunc: func(ctx context.Context, params *dynamomq.UpdateMessageAsVisibleInput) (*dynamomq.UpdateMessageAsVisibleOutput[any], error) {
-		return &dynamomq.UpdateMessageAsVisibleOutput[any]{
-			Result:  &dynamomq.Result{},
-			Message: &dynamomq.Message[any]{},
-		}, nil
-	},
-	DeleteMessageFunc: func(ctx context.Context, params *dynamomq.DeleteMessageInput) (*dynamomq.DeleteMessageOutput, error) {
-		return &dynamomq.DeleteMessageOutput{}, nil
-	},
-	MoveMessageToDLQFunc: func(ctx context.Context, params *dynamomq.MoveMessageToDLQInput) (*dynamomq.MoveMessageToDLQOutput, error) {
-		return &dynamomq.MoveMessageToDLQOutput{}, nil
-	},
-	RedriveMessageFunc: func(ctx context.Context, params *dynamomq.RedriveMessageInput) (*dynamomq.RedriveMessageOutput, error) {
-		return &dynamomq.RedriveMessageOutput{}, nil
-	},
-	GetMessageFunc: func(ctx context.Context, params *dynamomq.GetMessageInput) (*dynamomq.GetMessageOutput[any], error) {
-		return &dynamomq.GetMessageOutput[any]{
-			Message: &dynamomq.Message[any]{},
-		}, nil
-	},
-	GetQueueStatsFunc: func(ctx context.Context, params *dynamomq.GetQueueStatsInput) (*dynamomq.GetQueueStatsOutput, error) {
-		return &dynamomq.GetQueueStatsOutput{}, nil
-	},
-	GetDLQStatsFunc: func(ctx context.Context, params *dynamomq.GetDLQStatsInput) (*dynamomq.GetDLQStatsOutput, error) {
-		return &dynamomq.GetDLQStatsOutput{}, nil
-	},
-	ListMessagesFunc: func(ctx context.Context, params *dynamomq.ListMessagesInput) (*dynamomq.ListMessagesOutput[any], error) {
-		return &dynamomq.ListMessagesOutput[any]{}, nil
-	},
-	ReplaceMessageFunc: func(ctx context.Context, params *dynamomq.ReplaceMessageInput[any]) (*dynamomq.ReplaceMessageOutput, error) {
-		return &dynamomq.ReplaceMessageOutput{}, nil
-	},
 }
