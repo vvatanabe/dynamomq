@@ -88,7 +88,7 @@ func (f CommandFactory) CreateRootCommand(flgs *Flags) *cobra.Command {
 				}
 
 				var quit bool
-				command, params := parseInput(input)
+				command, params := ParseInput(input)
 				switch command {
 				case "":
 					continue
@@ -126,7 +126,7 @@ func createDynamoMQClient[T any](ctx context.Context, flags *Flags) (dynamomq.Cl
 	return client, cfg, nil
 }
 
-func parseInput(input string) (command string, params []string) {
+func ParseInput(input string) (command string, params []string) {
 	input = strings.TrimSpace(input)
 	arr := strings.Fields(input)
 
@@ -147,7 +147,7 @@ func parseInput(input string) (command string, params []string) {
 
 func Execute() {
 	if err := root.Execute(); err != nil {
-		fmt.Println(err)
+		printError(err)
 		os.Exit(1)
 	}
 }

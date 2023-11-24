@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -14,6 +15,10 @@ import (
 	"github.com/vvatanabe/dynamomq/internal/mock"
 	"github.com/vvatanabe/dynamomq/internal/test"
 )
+
+func TestExecute(t *testing.T) {
+	cmd.Execute()
+}
 
 func TestRunRootCommand(t *testing.T) {
 	type testCase struct {
@@ -165,6 +170,32 @@ func TestRunAllCommandShouldDynamoMQClientSucceed(t *testing.T) {
 			return successfulMockClient, aws.Config{}, nil
 		},
 	}, nil)
+}
+
+func TestParseInput(t *testing.T) {
+	tests := []struct {
+		name            string
+		input           string
+		expectedCommand string
+		expectedParams  []string
+	}{
+		{"Empty Input", "", "", nil},
+		{"Single Command", "Command", "command", nil},
+		{"Command with Parameters", "Command param1 param2", "command", []string{"param1", "param2"}},
+		{"Extra Spaces", "  Command  param1  param2  ", "command", []string{"param1", "param2"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			command, params := cmd.ParseInput(tt.input)
+			if command != tt.expectedCommand {
+				t.Errorf("ParseInput(%q) got command %q, want %q", tt.input, command, tt.expectedCommand)
+			}
+			if !reflect.DeepEqual(params, tt.expectedParams) {
+				t.Errorf("ParseInput(%q) got params %v, want %v", tt.input, params, tt.expectedParams)
+			}
+		})
+	}
 }
 
 var successfulMockClient = &mock.Client[any]{
