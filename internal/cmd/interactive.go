@@ -19,11 +19,11 @@ func (c *Interactive) Run(ctx context.Context, command string, params []string) 
 	switch command {
 	case "h", "?", "help":
 		err = c.help(ctx, params)
-	case "qstat", "qstats":
+	case "qstat":
 		err = c.qstat(ctx, params)
 	case "dlq":
 		err = c.dlq(ctx, params)
-	case "enqueue-test", "et":
+	case "enqueue-test":
 		err = c.enqueueTest(ctx, params)
 	case "purge":
 		err = c.purge(ctx, params)
@@ -33,7 +33,7 @@ func (c *Interactive) Run(ctx context.Context, command string, params []string) 
 		err = c.receive(ctx, params)
 	case "id":
 		err = c.id(ctx, params)
-	case "sys", "system":
+	case "system":
 		err = c.system(ctx, params)
 	case "data":
 		err = c.data(ctx, params)

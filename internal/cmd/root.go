@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -15,10 +16,12 @@ import (
 
 type CommandFactory struct {
 	CreateDynamoMQClient func(ctx context.Context, flags *Flags) (dynamomq.Client[any], aws.Config, error)
+	Stdin                io.Reader
 }
 
 var defaultCommandFactory = CommandFactory{
 	CreateDynamoMQClient: createDynamoMQClient[any],
+	Stdin:                os.Stdin,
 }
 
 var root = defaultCommandFactory.CreateRootCommand(flgs)
@@ -45,7 +48,7 @@ func (f CommandFactory) CreateRootCommand(flgs *Flags) *cobra.Command {
 			fmt.Println("")
 
 			ctx := context.Background()
-			client, cfg, err := createDynamoMQClient[any](ctx, flgs)
+			client, cfg, err := f.CreateDynamoMQClient(ctx, flgs)
 			if err != nil {
 				return fmt.Errorf("... %v\n", err)
 			}
@@ -63,7 +66,7 @@ func (f CommandFactory) CreateRootCommand(flgs *Flags) *cobra.Command {
 			}
 
 			// 1. Create a Scanner using the InputStream available.
-			scanner := bufio.NewScanner(os.Stdin)
+			scanner := bufio.NewScanner(f.Stdin)
 
 			for {
 				// 2. Don't forget to prompt the user
@@ -84,12 +87,13 @@ func (f CommandFactory) CreateRootCommand(flgs *Flags) *cobra.Command {
 					continue
 				}
 
+				var quit bool
 				command, params := parseInput(input)
 				switch command {
 				case "":
 					continue
 				case "quit", "q":
-					return nil
+					quit = true
 				default:
 					// 4. Now, you can do anything with the input string that you need to.
 					// Like, output it to the user.
@@ -97,6 +101,9 @@ func (f CommandFactory) CreateRootCommand(flgs *Flags) *cobra.Command {
 					if err != nil {
 						printError(err)
 					}
+				}
+				if quit {
+					break
 				}
 			}
 			return nil

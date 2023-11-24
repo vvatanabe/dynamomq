@@ -3,6 +3,8 @@ package cmd_test
 import (
 	"context"
 	"errors"
+	"io"
+	"strings"
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -12,6 +14,70 @@ import (
 	"github.com/vvatanabe/dynamomq/internal/mock"
 	"github.com/vvatanabe/dynamomq/internal/test"
 )
+
+func TestRunRootCommand(t *testing.T) {
+	type testCase struct {
+		name                 string
+		createDynamoMQClient func(ctx context.Context, flags *cmd.Flags) (dynamomq.Client[any], aws.Config, error)
+		command              io.Reader
+		wantErr              bool
+	}
+	tests := []testCase{
+		{
+			name: "should return error when create dynamomq client failed",
+			createDynamoMQClient: func(ctx context.Context, flags *cmd.Flags) (dynamomq.Client[any], aws.Config, error) {
+				return nil, aws.Config{}, test.ErrorTest
+			},
+			wantErr: true,
+		},
+		{
+			name: "should return nil when send quit command",
+			createDynamoMQClient: func(ctx context.Context, flags *cmd.Flags) (dynamomq.Client[any], aws.Config, error) {
+				return &mock.Client[any]{}, aws.Config{}, nil
+			},
+			command: strings.NewReader("quit\n"),
+		},
+		{
+			name: "should return nil when send whitespace",
+			createDynamoMQClient: func(ctx context.Context, flags *cmd.Flags) (dynamomq.Client[any], aws.Config, error) {
+				return &mock.Client[any]{}, aws.Config{}, nil
+			},
+			command: strings.NewReader(" \n"),
+		},
+		{
+			name: "should return nil when send empty string",
+			createDynamoMQClient: func(ctx context.Context, flags *cmd.Flags) (dynamomq.Client[any], aws.Config, error) {
+				return &mock.Client[any]{}, aws.Config{}, nil
+			},
+			command: strings.NewReader("\n"),
+		},
+		{
+			name: "should return nil when send unknown command",
+			createDynamoMQClient: func(ctx context.Context, flags *cmd.Flags) (dynamomq.Client[any], aws.Config, error) {
+				return &mock.Client[any]{}, aws.Config{}, nil
+			},
+			command: strings.NewReader("foo\n"),
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := cmd.CommandFactory{
+				CreateDynamoMQClient: tt.createDynamoMQClient,
+				Stdin:                tt.command,
+			}
+			err := f.CreateRootCommand(&cmd.Flags{}).RunE(&cobra.Command{}, []string{})
+			if tt.wantErr {
+				if err == nil {
+					t.Error("RunE() error should not nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Errorf("RunE() error = %v", err)
+			}
+		})
+	}
+}
 
 func testRunAllCommand(t *testing.T, f cmd.CommandFactory, wantErr error) {
 	type testCase struct {
