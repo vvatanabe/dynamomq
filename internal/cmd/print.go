@@ -24,16 +24,16 @@ func marshalIndent(v any) ([]byte, error) {
 	return dump, nil
 }
 
-func printCLIModeRestriction(command string) {
-	printError(fmt.Sprintf("%s command can be only used in the Interactive's App mode. Call first `id <record-id>", command))
-}
-
 func printError(err any) {
 	fmt.Printf("ERROR: %v\n", err)
 }
 
 func printQueueStatus(stats *dynamomq.GetQueueStatsOutput) {
 	printMessageWithData("Queue status:\n", stats)
+}
+
+func errorCLIModeRestriction(command string) error {
+	return fmt.Errorf("%s command can be only used in the Interactive mode. Call first `id", command)
 }
 
 func errorWithID(err error, id string) error {

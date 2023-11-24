@@ -50,7 +50,7 @@ func (c *Interactive) Run(ctx context.Context, command string, params []string) 
 	case "invalid":
 		err = c.invalid(ctx, params)
 	default:
-		fmt.Println(" ... unrecognized command!")
+		err = errors.New(" ... unrecognized command!")
 	}
 	return
 }
@@ -64,7 +64,7 @@ func (c *Interactive) help(_ context.Context, _ []string) error {
   > ls                                            [List all message IDs ... max 10 elements]
   > receive                                       [Receive a message from the queue .. it will replace the current ID with the peeked one]
   > id <id>                                       [Get a message the application object from DynamoDB by app domain ID; Interactive is in the app mode, from that point on]
-    > sys                                         [Show system info data in a JSON format]
+    > system                                      [Show system info data in a JSON format]
     > data                                        [Print the data as JSON for the current message record]
     > info                                        [Print all info regarding Message record: system_info and data as JSON]
     > reset                                       [Reset the system info of the message]
@@ -78,8 +78,7 @@ func (c *Interactive) help(_ context.Context, _ []string) error {
 
 func (c *Interactive) info(_ context.Context, _ []string) error {
 	if c.Message == nil {
-		printCLIModeRestriction("`info`")
-		return nil
+		return errorCLIModeRestriction("`info`")
 	}
 	printMessageWithData("Record's dump:\n", c.Message)
 	return nil
@@ -87,8 +86,7 @@ func (c *Interactive) info(_ context.Context, _ []string) error {
 
 func (c *Interactive) data(_ context.Context, _ []string) error {
 	if c.Message == nil {
-		printCLIModeRestriction("`data`")
-		return nil
+		return errorCLIModeRestriction("`data`")
 	}
 	printMessageWithData("Data info:\n", c.Message.Data)
 	return nil
@@ -96,8 +94,7 @@ func (c *Interactive) data(_ context.Context, _ []string) error {
 
 func (c *Interactive) system(_ context.Context, _ []string) error {
 	if c.Message == nil {
-		printCLIModeRestriction("`system` or `sys`")
-		return nil
+		return errorCLIModeRestriction("`system`")
 	}
 	printMessageWithData("ID's system info:\n", c.Message.GetSystemInfo())
 	return nil
@@ -221,8 +218,7 @@ func (c *Interactive) id(ctx context.Context, params []string) error {
 
 func (c *Interactive) reset(ctx context.Context, _ []string) error {
 	if c.Message == nil {
-		printCLIModeRestriction("`reset`")
-		return nil
+		return errorCLIModeRestriction("`reset`")
 	}
 	c.Message.ResetSystemInfo(clock.Now())
 	_, err := c.Client.ReplaceMessage(ctx, &dynamomq.ReplaceMessageInput[any]{
@@ -237,8 +233,7 @@ func (c *Interactive) reset(ctx context.Context, _ []string) error {
 
 func (c *Interactive) redrive(ctx context.Context, _ []string) error {
 	if c.Message == nil {
-		printCLIModeRestriction("`redrive`")
-		return nil
+		return errorCLIModeRestriction("`redrive`")
 	}
 	result, err := c.Client.RedriveMessage(ctx, &dynamomq.RedriveMessageInput{
 		ID: c.Message.ID,
@@ -252,8 +247,7 @@ func (c *Interactive) redrive(ctx context.Context, _ []string) error {
 
 func (c *Interactive) delete(ctx context.Context, _ []string) error {
 	if c.Message == nil {
-		printCLIModeRestriction("`delete`")
-		return nil
+		return errorCLIModeRestriction("`delete`")
 	}
 	_, err := c.Client.DeleteMessage(ctx, &dynamomq.DeleteMessageInput{
 		ID: c.Message.ID,
@@ -272,8 +266,7 @@ func (c *Interactive) delete(ctx context.Context, _ []string) error {
 
 func (c *Interactive) fail(ctx context.Context, _ []string) error {
 	if c.Message == nil {
-		printCLIModeRestriction("`fail`")
-		return nil
+		return errorCLIModeRestriction("`fail`")
 	}
 	_, err := c.Client.UpdateMessageAsVisible(ctx, &dynamomq.UpdateMessageAsVisibleInput{
 		ID: c.Message.ID,
@@ -300,8 +293,7 @@ func (c *Interactive) fail(ctx context.Context, _ []string) error {
 
 func (c *Interactive) invalid(ctx context.Context, _ []string) error {
 	if c.Message == nil {
-		printCLIModeRestriction("`invalid`")
-		return nil
+		return errorCLIModeRestriction("`invalid`")
 	}
 	_, err := c.Client.MoveMessageToDLQ(ctx, &dynamomq.MoveMessageToDLQInput{
 		ID: c.Message.ID,
