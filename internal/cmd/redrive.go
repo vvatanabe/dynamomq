@@ -33,6 +33,6 @@ func (f CommandFactory) CreateRedriveCommand(flgs *Flags) *cobra.Command {
 func init() {
 	c := defaultCommandFactory.CreateRedriveCommand(flgs)
 	setDefaultFlags(c, flgs)
-	c.Flags().StringVar(&flgs.QueueingIndexName, flagMap.QueueingIndexName.Name, flagMap.QueueingIndexName.Value, flagMap.QueueingIndexName.Usage)
-	rootCmd.AddCommand(c)
+	c.Flags().StringVar(&flgs.IndexName, flagMap.IndexName.Name, flagMap.IndexName.Value, flagMap.IndexName.Usage)
+	root.AddCommand(c)
 }

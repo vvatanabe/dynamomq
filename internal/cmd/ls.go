@@ -49,5 +49,5 @@ type Status struct {
 func init() {
 	c := defaultCommandFactory.CreateLSCommand(flgs)
 	setDefaultFlags(c, flgs)
-	rootCmd.AddCommand(c)
+	root.AddCommand(c)
 }

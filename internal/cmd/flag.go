@@ -5,9 +5,9 @@ import "github.com/vvatanabe/dynamomq"
 var flgs = &Flags{}
 
 type Flags struct {
-	TableName         string
-	QueueingIndexName string
-	EndpointURL       string
+	TableName   string
+	IndexName   string
+	EndpointURL string
 
 	ID string
 }
@@ -18,8 +18,8 @@ var flagMap = FlagMap{
 		Usage: "The name of the table to contain the item.",
 		Value: dynamomq.DefaultTableName,
 	},
-	QueueingIndexName: FlagSet[string]{
-		Name:  "queueing-index-name",
+	IndexName: FlagSet[string]{
+		Name:  "index-name",
 		Usage: "The name of the queueing index.",
 		Value: dynamomq.DefaultQueueingIndexName,
 	},
@@ -42,8 +42,8 @@ type FlagSet[T any] struct {
 }
 
 type FlagMap struct {
-	TableName         FlagSet[string]
-	QueueingIndexName FlagSet[string]
-	EndpointURL       FlagSet[string]
-	ID                FlagSet[string]
+	TableName   FlagSet[string]
+	IndexName   FlagSet[string]
+	EndpointURL FlagSet[string]
+	ID          FlagSet[string]
 }

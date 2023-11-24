@@ -59,5 +59,5 @@ type Failure struct {
 func init() {
 	c := defaultCommandFactory.CreatePurgeCommand(flgs)
 	setDefaultFlags(c, flgs)
-	rootCmd.AddCommand(c)
+	root.AddCommand(c)
 }

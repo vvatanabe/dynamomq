@@ -48,5 +48,5 @@ func init() {
 	c := defaultCommandFactory.CreateResetCommand(flgs)
 	setDefaultFlags(c, flgs)
 	c.Flags().StringVar(&flgs.ID, flagMap.ID.Name, flagMap.ID.Value, flagMap.ID.Usage)
-	rootCmd.AddCommand(c)
+	root.AddCommand(c)
 }

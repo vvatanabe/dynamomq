@@ -31,6 +31,6 @@ func (f CommandFactory) CreatReceiveCommand(flgs *Flags) *cobra.Command {
 func init() {
 	c := defaultCommandFactory.CreatReceiveCommand(flgs)
 	setDefaultFlags(c, flgs)
-	c.Flags().StringVar(&flgs.QueueingIndexName, flagMap.QueueingIndexName.Name, flagMap.QueueingIndexName.Value, flagMap.QueueingIndexName.Usage)
-	rootCmd.AddCommand(c)
+	c.Flags().StringVar(&flgs.IndexName, flagMap.IndexName.Name, flagMap.IndexName.Value, flagMap.IndexName.Usage)
+	root.AddCommand(c)
 }
