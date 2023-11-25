@@ -96,7 +96,7 @@ func (c *Interactive) system(_ context.Context, _ []string) error {
 	if c.Message == nil {
 		return errorCLIModeRestriction("`system`")
 	}
-	printMessageWithData("ID's system info:\n", c.Message.GetSystemInfo())
+	printMessageWithData("ID's system info:\n", GetSystemInfo(c.Message))
 	return nil
 }
 
@@ -186,7 +186,7 @@ func (c *Interactive) receive(ctx context.Context, _ []string) error {
 	c.Message = rr.PeekedMessageObject
 	printMessageWithData(
 		fmt.Sprintf("ReceiveMessage was successful ... record peeked is: [%s]\n", c.Message.ID),
-		c.Message.GetSystemInfo())
+		GetSystemInfo(c.Message))
 	stats, err := c.Client.GetQueueStats(ctx, &dynamomq.GetQueueStatsInput{})
 	if err != nil {
 		return err
@@ -220,14 +220,14 @@ func (c *Interactive) reset(ctx context.Context, _ []string) error {
 	if c.Message == nil {
 		return errorCLIModeRestriction("`reset`")
 	}
-	c.Message.ResetSystemInfo(clock.Now())
+	ResetSystemInfo(c.Message, clock.Now())
 	_, err := c.Client.ReplaceMessage(ctx, &dynamomq.ReplaceMessageInput[any]{
 		Message: c.Message,
 	})
 	if err != nil {
 		return err
 	}
-	printMessageWithData("Reset system info:\n", c.Message.GetSystemInfo())
+	printMessageWithData("Reset system info:\n", GetSystemInfo(c.Message))
 	return nil
 }
 

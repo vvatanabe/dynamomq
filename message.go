@@ -8,10 +8,11 @@ import (
 	"github.com/vvatanabe/dynamomq/internal/clock"
 )
 
-func newDefaultSystemInfo(id string, now time.Time) *SystemInfo {
+func NewMessage[T any](id string, data T, now time.Time) *Message[T] {
 	ts := clock.FormatRFC3339Nano(now)
-	return &SystemInfo{
+	return &Message[T]{
 		ID:                     id,
+		Data:                   data,
 		Status:                 StatusReady,
 		ReceiveCount:           0,
 		QueueType:              QueueTypeStandard,
@@ -20,34 +21,6 @@ func newDefaultSystemInfo(id string, now time.Time) *SystemInfo {
 		LastUpdatedTimestamp:   ts,
 		AddToQueueTimestamp:    ts,
 		PeekFromQueueTimestamp: "",
-	}
-}
-
-type SystemInfo struct {
-	ID                     string    `json:"id" dynamodbav:"id"`
-	Status                 Status    `json:"status" dynamodbav:"status"`
-	ReceiveCount           int       `json:"receive_count" dynamodbav:"receive_count"`
-	QueueType              QueueType `json:"queue_type" dynamodbav:"queue_type"`
-	Version                int       `json:"version" dynamodbav:"version"`
-	CreationTimestamp      string    `json:"creation_timestamp" dynamodbav:"creation_timestamp"`
-	LastUpdatedTimestamp   string    `json:"last_updated_timestamp" dynamodbav:"last_updated_timestamp"`
-	AddToQueueTimestamp    string    `json:"queue_add_timestamp" dynamodbav:"queue_add_timestamp"`
-	PeekFromQueueTimestamp string    `json:"queue_peek_timestamp" dynamodbav:"queue_peek_timestamp"`
-}
-
-func NewMessage[T any](id string, data T, now time.Time) *Message[T] {
-	system := newDefaultSystemInfo(id, now)
-	return &Message[T]{
-		ID:                     id,
-		Data:                   data,
-		Status:                 system.Status,
-		QueueType:              system.QueueType,
-		ReceiveCount:           system.ReceiveCount,
-		Version:                system.Version,
-		CreationTimestamp:      system.CreationTimestamp,
-		LastUpdatedTimestamp:   system.LastUpdatedTimestamp,
-		AddToQueueTimestamp:    system.AddToQueueTimestamp,
-		PeekFromQueueTimestamp: system.PeekFromQueueTimestamp,
 	}
 }
 
@@ -64,33 +37,7 @@ type Message[T any] struct {
 	PeekFromQueueTimestamp string    `json:"queue_peek_timestamp" dynamodbav:"queue_peek_timestamp"`
 }
 
-func (m *Message[T]) GetSystemInfo() *SystemInfo {
-	return &SystemInfo{
-		ID:                     m.ID,
-		Status:                 m.Status,
-		ReceiveCount:           m.ReceiveCount,
-		QueueType:              m.QueueType,
-		Version:                m.Version,
-		CreationTimestamp:      m.CreationTimestamp,
-		LastUpdatedTimestamp:   m.LastUpdatedTimestamp,
-		AddToQueueTimestamp:    m.AddToQueueTimestamp,
-		PeekFromQueueTimestamp: m.PeekFromQueueTimestamp,
-	}
-}
-
-func (m *Message[T]) ResetSystemInfo(now time.Time) {
-	system := newDefaultSystemInfo(m.ID, now)
-	m.Status = system.Status
-	m.QueueType = system.QueueType
-	m.ReceiveCount = system.ReceiveCount
-	m.Version = system.Version
-	m.CreationTimestamp = system.CreationTimestamp
-	m.LastUpdatedTimestamp = system.LastUpdatedTimestamp
-	m.AddToQueueTimestamp = system.AddToQueueTimestamp
-	m.PeekFromQueueTimestamp = system.PeekFromQueueTimestamp
-}
-
-func (m *Message[T]) MarshalMap() (map[string]types.AttributeValue, error) {
+func (m *Message[T]) marshalMap() (map[string]types.AttributeValue, error) {
 	item, err := attributevalue.MarshalMap(m)
 	if err != nil {
 		return nil, MarshalingAttributeError{Cause: err}

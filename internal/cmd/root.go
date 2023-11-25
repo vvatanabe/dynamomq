@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -150,6 +151,44 @@ func Execute() {
 		printError(err)
 		os.Exit(1)
 	}
+}
+
+type SystemInfo struct {
+	ID                     string             `json:"id"`
+	Status                 dynamomq.Status    `json:"status"`
+	ReceiveCount           int                `json:"receive_count"`
+	QueueType              dynamomq.QueueType `json:"queue_type"`
+	Version                int                `json:"version"`
+	CreationTimestamp      string             `json:"creation_timestamp"`
+	LastUpdatedTimestamp   string             `json:"last_updated_timestamp"`
+	AddToQueueTimestamp    string             `json:"queue_add_timestamp"`
+	PeekFromQueueTimestamp string             `json:"queue_peek_timestamp"`
+}
+
+func GetSystemInfo[T any](m *dynamomq.Message[T]) *SystemInfo {
+	return &SystemInfo{
+		ID:                     m.ID,
+		Status:                 m.Status,
+		ReceiveCount:           m.ReceiveCount,
+		QueueType:              m.QueueType,
+		Version:                m.Version,
+		CreationTimestamp:      m.CreationTimestamp,
+		LastUpdatedTimestamp:   m.LastUpdatedTimestamp,
+		AddToQueueTimestamp:    m.AddToQueueTimestamp,
+		PeekFromQueueTimestamp: m.PeekFromQueueTimestamp,
+	}
+}
+
+func ResetSystemInfo[T any](m *dynamomq.Message[T], now time.Time) {
+	msg := dynamomq.NewMessage[T](m.ID, m.Data, now)
+	m.Status = msg.Status
+	m.QueueType = msg.QueueType
+	m.ReceiveCount = msg.ReceiveCount
+	m.Version = msg.Version
+	m.CreationTimestamp = msg.CreationTimestamp
+	m.LastUpdatedTimestamp = msg.LastUpdatedTimestamp
+	m.AddToQueueTimestamp = msg.AddToQueueTimestamp
+	m.PeekFromQueueTimestamp = msg.PeekFromQueueTimestamp
 }
 
 func init() {

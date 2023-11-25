@@ -31,7 +31,7 @@ func (f CommandFactory) CreateResetCommand(flgs *Flags) *cobra.Command {
 			if retrieved.Message == nil {
 				return fmt.Errorf("not found message: %s", id)
 			}
-			retrieved.Message.ResetSystemInfo(clock.Now())
+			ResetSystemInfo(retrieved.Message, clock.Now())
 			_, err = client.ReplaceMessage(ctx, &dynamomq.ReplaceMessageInput[any]{
 				Message: retrieved.Message,
 			})
