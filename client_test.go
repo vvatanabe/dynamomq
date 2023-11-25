@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
@@ -528,8 +529,7 @@ func TestDynamoMQClientRedriveMessage(t *testing.T) {
 				Item: func() map[string]types.AttributeValue {
 					msg := test.NewTestMessageItemAsDLQ("A-101", test.DefaultTestDate)
 					test.MarkAsProcessing(msg, test.DefaultTestDate)
-					attr, _ := msg.MarshalMap()
-					return attr
+					return marshalMapUnsafe(msg)
 				}(),
 			}),
 			sdkClock: mock.Clock{
@@ -851,6 +851,14 @@ func generatePutRequests(messages []*Message[test.MessageData]) []*types.PutRequ
 }
 
 func marshalMapUnsafe[T any](m *Message[T]) map[string]types.AttributeValue {
-	item, _ := m.MarshalMap()
+	item, _ := marshalMap(m)
 	return item
+}
+
+func marshalMap[T any](m *Message[T]) (map[string]types.AttributeValue, error) {
+	item, err := attributevalue.MarshalMap(m)
+	if err != nil {
+		return nil, MarshalingAttributeError{Cause: err}
+	}
+	return item, nil
 }

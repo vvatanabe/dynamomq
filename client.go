@@ -791,7 +791,7 @@ func (c *client[T]) ReplaceMessage(ctx context.Context, params *ReplaceMessageIn
 }
 
 func (c *client[T]) put(ctx context.Context, message *Message[T]) error {
-	item, err := message.MarshalMap()
+	item, err := message.marshalMap()
 	if err != nil {
 		return err
 	}
