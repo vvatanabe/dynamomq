@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	uuid "github.com/satori/go.uuid"
@@ -795,10 +795,13 @@ func prepareTestClient(t *testing.T, ctx context.Context,
 	tableName, raw, clean := setupTable(t)
 	optFns := []func(*ClientOptions){
 		WithTableName(tableName),
+		WithQueueingIndexName(DefaultQueueingIndexName),
+		WithAWSBaseEndpoint(""),
 		WithAWSDynamoDBClient(raw),
 		mock.WithClock(sdkClock),
 		WithUseFIFO(useFIFO),
 		WithAWSVisibilityTimeout(1),
+		WithAWSRetryMaxAttempts(DefaultRetryMaxAttempts),
 	}
 	cfg, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
