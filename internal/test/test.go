@@ -6,9 +6,6 @@ import (
 	"reflect"
 	"testing"
 	"time"
-
-	"github.com/vvatanabe/dynamomq"
-	"github.com/vvatanabe/dynamomq/internal/clock"
 )
 
 func NewMessageData(id string) MessageData {
@@ -40,85 +37,23 @@ type MessageItem struct {
 
 var (
 	ErrorTest       = errors.New("test")
-	DefaultTestDate = Date(2023, 12, 1, 0, 0, 0)
+	DefaultTestDate = time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)
 )
 
-func Date(year int, month time.Month, day, hour, min, sec int) time.Time {
-	return time.Date(year, month, day, hour, min, sec, 0, time.UTC)
-}
-
-func MarkAsReady[T any](m *dynamomq.Message[T], now time.Time) {
-	ts := clock.FormatRFC3339Nano(now)
-	m.Status = dynamomq.StatusReady
-	m.LastUpdatedTimestamp = ts
-}
-
-func MarkAsProcessing[T any](m *dynamomq.Message[T], now time.Time) {
-	ts := clock.FormatRFC3339Nano(now)
-	m.Status = dynamomq.StatusProcessing
-	m.LastUpdatedTimestamp = ts
-	m.PeekFromQueueTimestamp = ts
-}
-
-func MarkAsMovedToDLQ[T any](m *dynamomq.Message[T], now time.Time) {
-	ts := clock.FormatRFC3339Nano(now)
-	m.QueueType = dynamomq.QueueTypeDLQ
-	m.Status = dynamomq.StatusReady
-	m.ReceiveCount = 0
-	m.LastUpdatedTimestamp = ts
-	m.AddToQueueTimestamp = ts
-	m.PeekFromQueueTimestamp = ""
-}
-
-func NewTestMessageItemAsReady(id string, now time.Time) *dynamomq.Message[MessageData] {
-	return dynamomq.NewMessage[MessageData](id, NewMessageData(id), now)
-}
-
-func NewTestMessageItemAsProcessing(id string, now time.Time) *dynamomq.Message[MessageData] {
-	m := dynamomq.NewMessage[MessageData](id, NewMessageData(id), now)
-	MarkAsProcessing(m, now)
-	return m
-}
-
-func NewTestMessageItemAsDLQ(id string, now time.Time) *dynamomq.Message[MessageData] {
-	m := dynamomq.NewMessage[MessageData](id, NewMessageData(id), now)
-	MarkAsMovedToDLQ(m, now)
-	return m
-}
-
-func NewMessageFromReadyToProcessing(id string,
-	readyTime time.Time, processingTime time.Time) *dynamomq.ReceiveMessageOutput[MessageData] {
-	m := NewTestMessageItemAsReady(id, readyTime)
-	MarkAsProcessing(m, processingTime)
-	m.Version = 2
-	m.ReceiveCount = 1
-	r := &dynamomq.ReceiveMessageOutput[MessageData]{
-		Result: &dynamomq.Result{
-			ID:                   m.ID,
-			Status:               m.Status,
-			LastUpdatedTimestamp: m.LastUpdatedTimestamp,
-			Version:              m.Version,
-		},
-		PeekFromQueueTimestamp: m.PeekFromQueueTimestamp,
-		PeekedMessageObject:    m,
-	}
-	return r
-}
-
-func AssertError(t *testing.T, got, want error, prefix string) error {
+func AssertError(t *testing.T, got, want error, prefix string) {
 	t.Helper()
 	if want != nil {
 		if !errors.Is(got, want) {
 			t.Errorf("%s error = %v, want %v", prefix, got, want)
-			return got
+			return
 		}
-		return nil
+		return
 	}
 	if got != nil {
 		t.Errorf("%s unexpected error = %v", prefix, got)
-		return got
+		return
 	}
-	return nil
+	return
 }
 
 func AssertDeepEqual(t *testing.T, got, want any, prefix string) {

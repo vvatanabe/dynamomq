@@ -196,7 +196,7 @@ func TestDynamoMQClientShouldReturnError(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
-		_ = test.AssertError(t, tt.operation(), tt.wantError, tt.name)
+		test.AssertError(t, tt.operation(), tt.wantError, tt.name)
 	}
 }
 
@@ -221,7 +221,7 @@ func TestDynamoMQClientSendMessage(t *testing.T) {
 					Version:              1,
 				},
 				Message: func() *Message[test.MessageData] {
-					s := test.NewTestMessageItemAsReady("A-101", test.DefaultTestDate)
+					s := NewTestMessageItemAsReady("A-101", test.DefaultTestDate)
 					return s
 				}(),
 			},
@@ -252,7 +252,7 @@ func TestDynamoMQClientReceiveMessage(t *testing.T) {
 				T: test.DefaultTestDate.Add(10 * time.Second),
 			},
 			want: func() *ReceiveMessageOutput[test.MessageData] {
-				return test.NewMessageFromReadyToProcessing("B-202", test.DefaultTestDate, test.DefaultTestDate.Add(10*time.Second))
+				return NewMessageFromReadyToProcessing("B-202", test.DefaultTestDate, test.DefaultTestDate.Add(10*time.Second))
 			}(),
 			wantErr: nil,
 		},
@@ -263,8 +263,8 @@ func TestDynamoMQClientReceiveMessage(t *testing.T) {
 				T: test.DefaultTestDate.Add(10 * time.Minute).Add(1 * time.Second),
 			},
 			want: func() *ReceiveMessageOutput[test.MessageData] {
-				m := test.NewTestMessageItemAsProcessing("B-202", test.DefaultTestDate)
-				test.MarkAsProcessing(m, test.DefaultTestDate.Add(10*time.Minute).Add(1*time.Second))
+				m := NewTestMessageItemAsProcessing("B-202", test.DefaultTestDate)
+				MarkAsProcessing(m, test.DefaultTestDate.Add(10*time.Minute).Add(1*time.Second))
 				m.Version = 2
 				m.ReceiveCount = 1
 				r := &ReceiveMessageOutput[test.MessageData]{
@@ -310,14 +310,14 @@ func testDynamoMQClientReceiveMessageSequence(t *testing.T, useFIFO bool) {
 	defer clean()
 
 	wants := []*ReceiveMessageOutput[test.MessageData]{
-		test.NewMessageFromReadyToProcessing("A-303", test.DefaultTestDate.Add(1*time.Second), now),
-		test.NewMessageFromReadyToProcessing("A-202", test.DefaultTestDate.Add(2*time.Second), now),
-		test.NewMessageFromReadyToProcessing("A-101", test.DefaultTestDate.Add(3*time.Second), now),
+		NewMessageFromReadyToProcessing("A-303", test.DefaultTestDate.Add(1*time.Second), now),
+		NewMessageFromReadyToProcessing("A-202", test.DefaultTestDate.Add(2*time.Second), now),
+		NewMessageFromReadyToProcessing("A-101", test.DefaultTestDate.Add(3*time.Second), now),
 	}
 
 	for i, want := range wants {
 		result, err := client.ReceiveMessage(ctx, &ReceiveMessageInput{})
-		_ = test.AssertError(t, err, nil, fmt.Sprintf("ReceiveMessage() [%d-1]", i))
+		test.AssertError(t, err, nil, fmt.Sprintf("ReceiveMessage() [%d-1]", i))
 		test.AssertDeepEqual(t, result, want, fmt.Sprintf("ReceiveMessage() [%d-2]", i))
 
 		if !useFIFO {
@@ -325,16 +325,16 @@ func testDynamoMQClientReceiveMessageSequence(t *testing.T, useFIFO bool) {
 		}
 
 		_, err = client.ReceiveMessage(ctx, &ReceiveMessageInput{})
-		_ = test.AssertError(t, err, &EmptyQueueError{}, fmt.Sprintf("ReceiveMessage() [%d-3]", i))
+		test.AssertError(t, err, &EmptyQueueError{}, fmt.Sprintf("ReceiveMessage() [%d-3]", i))
 
 		_, err = client.DeleteMessage(ctx, &DeleteMessageInput{
 			ID: result.ID,
 		})
-		_ = test.AssertError(t, err, nil, fmt.Sprintf("DeleteMessage() [%d]", i))
+		test.AssertError(t, err, nil, fmt.Sprintf("DeleteMessage() [%d]", i))
 	}
 
 	_, err := client.ReceiveMessage(ctx, &ReceiveMessageInput{})
-	_ = test.AssertError(t, err, &EmptyQueueError{}, "ReceiveMessage() [last]")
+	test.AssertError(t, err, &EmptyQueueError{}, "ReceiveMessage() [last]")
 }
 
 func TestDynamoMQClientReceiveMessageUseFIFO(t *testing.T) {
@@ -371,8 +371,8 @@ func TestDynamoMQClientUpdateMessageAsVisible(t *testing.T) {
 					Version:              2,
 				},
 				Message: func() *Message[test.MessageData] {
-					m := test.NewTestMessageItemAsProcessing("A-101", now)
-					test.MarkAsReady(m, now)
+					m := NewTestMessageItemAsProcessing("A-101", now)
+					MarkAsReady(m, now)
 					m.Version = 2
 					return m
 				}(),
@@ -444,7 +444,7 @@ func TestDynamoMQClientMoveMessageToDLQ(t *testing.T) {
 				ID: "A-101",
 			},
 			want: func() *MoveMessageToDLQOutput {
-				s := test.NewTestMessageItemAsDLQ("A-101", test.DefaultTestDate)
+				s := NewTestMessageItemAsDLQ("A-101", test.DefaultTestDate)
 				r := &MoveMessageToDLQOutput{
 					ID:                   s.ID,
 					Status:               s.Status,
@@ -465,8 +465,8 @@ func TestDynamoMQClientMoveMessageToDLQ(t *testing.T) {
 				ID: "A-101",
 			},
 			want: func() *MoveMessageToDLQOutput {
-				m := test.NewTestMessageItemAsReady("A-101", test.DefaultTestDate)
-				test.MarkAsMovedToDLQ(m, test.DefaultTestDate.Add(10*time.Second))
+				m := NewTestMessageItemAsReady("A-101", test.DefaultTestDate)
+				MarkAsMovedToDLQ(m, test.DefaultTestDate.Add(10*time.Second))
 				m.Version = 2
 				r := &MoveMessageToDLQOutput{
 					ID:                   m.ID,
@@ -527,8 +527,8 @@ func TestDynamoMQClientRedriveMessage(t *testing.T) {
 			name: "should return InvalidStateTransitionError when message is selected in DLQ",
 			setup: NewSetupFunc(&types.PutRequest{
 				Item: func() map[string]types.AttributeValue {
-					msg := test.NewTestMessageItemAsDLQ("A-101", test.DefaultTestDate)
-					test.MarkAsProcessing(msg, test.DefaultTestDate)
+					msg := NewTestMessageItemAsDLQ("A-101", test.DefaultTestDate)
+					MarkAsProcessing(msg, test.DefaultTestDate)
 					return marshalMapUnsafe(msg)
 				}(),
 			}),
@@ -674,7 +674,7 @@ func TestDynamoMQClientGetMessage(t *testing.T) {
 			args: args{
 				id: "A-101",
 			},
-			want:    test.NewTestMessageItemAsReady("A-101", test.DefaultTestDate),
+			want:    NewTestMessageItemAsReady("A-101", test.DefaultTestDate),
 			wantErr: nil,
 		},
 	}
@@ -697,18 +697,18 @@ func TestDynamoMQClientReplaceMessage(t *testing.T) {
 			name:  "should return message when id is duplicated",
 			setup: NewSetupFunc(newPutRequestWithReadyItem("A-101", clock.Now())),
 			args: args{
-				message: test.NewTestMessageItemAsReady("A-101", test.DefaultTestDate),
+				message: NewTestMessageItemAsReady("A-101", test.DefaultTestDate),
 			},
-			want:    test.NewTestMessageItemAsReady("A-101", test.DefaultTestDate),
+			want:    NewTestMessageItemAsReady("A-101", test.DefaultTestDate),
 			wantErr: nil,
 		},
 		{
 			name:  "should return message when id is unique",
 			setup: NewSetupFunc(newPutRequestWithReadyItem("A-101", clock.Now())),
 			args: args{
-				message: test.NewTestMessageItemAsReady("B-202", test.DefaultTestDate),
+				message: NewTestMessageItemAsReady("B-202", test.DefaultTestDate),
 			},
-			want:    test.NewTestMessageItemAsReady("B-202", test.DefaultTestDate),
+			want:    NewTestMessageItemAsReady("B-202", test.DefaultTestDate),
 			wantErr: nil,
 		},
 	}
@@ -777,8 +777,8 @@ func runTestsParallel[Args any, Want any](t *testing.T, prefix string,
 			client, clean := prepareTestClient(t, context.Background(), tt.setup, tt.sdkClock, false)
 			defer clean()
 			result, err := operation(client, tt.args)
-			err = test.AssertError(t, err, tt.wantErr, prefix)
-			if err != nil || tt.wantErr != nil {
+			if tt.wantErr != nil {
+				test.AssertError(t, err, tt.wantErr, prefix)
 				return
 			}
 			test.AssertDeepEqual(t, result, tt.want, prefix)
@@ -818,19 +818,19 @@ func prepareTestClient(t *testing.T, ctx context.Context,
 
 func newPutRequestWithReadyItem(id string, now time.Time) *types.PutRequest {
 	return &types.PutRequest{
-		Item: marshalMapUnsafe(test.NewTestMessageItemAsReady(id, now)),
+		Item: marshalMapUnsafe(NewTestMessageItemAsReady(id, now)),
 	}
 }
 
 func newPutRequestWithProcessingItem(id string, now time.Time) *types.PutRequest {
 	return &types.PutRequest{
-		Item: marshalMapUnsafe(test.NewTestMessageItemAsProcessing(id, now)),
+		Item: marshalMapUnsafe(NewTestMessageItemAsProcessing(id, now)),
 	}
 }
 
 func newPutRequestWithDLQItem(id string, now time.Time) *types.PutRequest {
 	return &types.PutRequest{
-		Item: marshalMapUnsafe(test.NewTestMessageItemAsDLQ(id, now)),
+		Item: marshalMapUnsafe(NewTestMessageItemAsDLQ(id, now)),
 	}
 }
 
@@ -838,7 +838,7 @@ func generateExpectedMessages(idPrefix string, now time.Time, count int) []*Mess
 	messages := make([]*Message[test.MessageData], count)
 	for i := 0; i < count; i++ {
 		now = now.Add(time.Minute)
-		messages[i] = test.NewTestMessageItemAsReady(fmt.Sprintf("%s-%d", idPrefix, i), now)
+		messages[i] = NewTestMessageItemAsReady(fmt.Sprintf("%s-%d", idPrefix, i), now)
 	}
 	return messages
 }
