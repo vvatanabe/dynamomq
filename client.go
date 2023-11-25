@@ -227,7 +227,7 @@ func (c *client[T]) queryDynamoDB(ctx context.Context, params *ReceiveMessageInp
 		return nil, err
 	}
 
-	if selectedItem == nil || selectedItem.markAsProcessing(c.clock.Now(), c.getVisibilityTimeout()) != nil {
+	if selectedItem == nil {
 		return nil, &EmptyQueueError{}
 	}
 	return selectedItem, nil
@@ -273,7 +273,8 @@ func (c *client[T]) processQueryResult(queryResult *dynamodb.QueryOutput) (*Mess
 		if err := attributevalue.UnmarshalMap(itemMap, &item); err != nil {
 			return nil, &UnmarshalingAttributeError{Cause: err}
 		}
-		if !item.isQueueSelected(c.clock.Now(), visibilityTimeout) {
+
+		if err := item.markAsProcessing(c.clock.Now(), visibilityTimeout); err == nil {
 			selectedItem = &item
 			break
 		}
@@ -414,17 +415,13 @@ func (c *client[T]) MoveMessageToDLQ(ctx context.Context, params *MoveMessageToD
 		return &MoveMessageToDLQOutput{}, &IDNotFoundError{}
 	}
 	message := retrieved.Message
-	if message.isDLQ() {
+	if err = message.markAsMovedToDLQ(c.clock.Now()); err != nil {
 		return &MoveMessageToDLQOutput{
 			ID:                   params.ID,
 			Status:               message.Status,
 			LastUpdatedTimestamp: message.LastUpdatedTimestamp,
 			Version:              message.Version,
 		}, nil
-	}
-	err = message.markAsMovedToDLQ(c.clock.Now())
-	if err != nil {
-		return &MoveMessageToDLQOutput{}, err
 	}
 	expr, err := expression.NewBuilder().
 		WithUpdate(expression.
@@ -477,7 +474,7 @@ func (c *client[T]) RedriveMessage(ctx context.Context, params *RedriveMessageIn
 		return &RedriveMessageOutput{}, &IDNotFoundError{}
 	}
 	message := retrieved.Message
-	err = message.markAsRestoredFromDLQ(c.clock.Now())
+	err = message.markAsRestoredFromDLQ(c.clock.Now(), c.getVisibilityTimeout())
 	if err != nil {
 		return &RedriveMessageOutput{}, err
 	}

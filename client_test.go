@@ -377,6 +377,22 @@ func TestDynamoMQClientUpdateMessageAsVisible(t *testing.T) {
 				}(),
 			},
 		},
+		{
+			name:  "should return InvalidStateTransitionError when status is ready",
+			setup: NewSetupFunc(newPutRequestWithReadyItem("A-101", now)),
+			sdkClock: mock.Clock{
+				T: now,
+			},
+			args: args{
+				id: "A-101",
+			},
+			want: &UpdateMessageAsVisibleOutput[test.MessageData]{},
+			wantErr: InvalidStateTransitionError{
+				Msg:       "message is currently ready",
+				Operation: "mark as ready",
+				Current:   StatusReady,
+			},
+		},
 	}
 	runTestsParallel[args, *UpdateMessageAsVisibleOutput[test.MessageData]](t, "UpdateMessageAsVisible()", tests,
 		func(client Client[test.MessageData], args args) (*UpdateMessageAsVisibleOutput[test.MessageData], error) {
@@ -488,6 +504,45 @@ func TestDynamoMQClientRedriveMessage(t *testing.T) {
 				Status:               StatusReady,
 				LastUpdatedTimestamp: clock.FormatRFC3339Nano(test.DefaultTestDate.Add(10 * time.Second)),
 				Version:              2,
+			},
+		},
+		{
+			name:  "should return InvalidStateTransitionError when message is not DLQ",
+			setup: NewSetupFunc(newPutRequestWithReadyItem("A-101", test.DefaultTestDate)),
+			sdkClock: mock.Clock{
+				T: test.DefaultTestDate.Add(10 * time.Second),
+			},
+			args: args{
+				id: "A-101",
+			},
+			want: &RedriveMessageOutput{},
+			wantErr: InvalidStateTransitionError{
+				Msg:       "can only redrive messages from DLQ",
+				Operation: "mark as restored from DLQ",
+				Current:   StatusReady,
+			},
+		},
+		{
+			name: "should return InvalidStateTransitionError when message is selected in DLQ",
+			setup: NewSetupFunc(&types.PutRequest{
+				Item: func() map[string]types.AttributeValue {
+					msg := test.NewTestMessageItemAsDLQ("A-101", test.DefaultTestDate)
+					test.MarkAsProcessing(msg, test.DefaultTestDate)
+					attr, _ := msg.MarshalMap()
+					return attr
+				}(),
+			}),
+			sdkClock: mock.Clock{
+				T: test.DefaultTestDate,
+			},
+			args: args{
+				id: "A-101",
+			},
+			want: &RedriveMessageOutput{},
+			wantErr: InvalidStateTransitionError{
+				Msg:       "can only redrive messages from READY",
+				Operation: "mark as restored from DLQ",
+				Current:   StatusProcessing,
 			},
 		},
 	}
