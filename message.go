@@ -93,7 +93,7 @@ func (m *Message[T]) ResetSystemInfo(now time.Time) {
 func (m *Message[T]) MarshalMap() (map[string]types.AttributeValue, error) {
 	item, err := attributevalue.MarshalMap(m)
 	if err != nil {
-		return nil, &MarshalingAttributeError{Cause: err}
+		return nil, MarshalingAttributeError{Cause: err}
 	}
 	return item, nil
 }
@@ -113,7 +113,7 @@ func (m *Message[T]) isDLQ() bool {
 
 func (m *Message[T]) markAsReady(now time.Time) error {
 	if m.Status != StatusProcessing {
-		return &InvalidStateTransitionError{
+		return InvalidStateTransitionError{
 			Msg:       "message is currently ready",
 			Operation: "mark as ready",
 			Current:   m.Status,
@@ -127,7 +127,7 @@ func (m *Message[T]) markAsReady(now time.Time) error {
 
 func (m *Message[T]) markAsProcessing(now time.Time, visibilityTimeout time.Duration) error {
 	if m.isQueueSelected(now, visibilityTimeout) {
-		return &InvalidStateTransitionError{
+		return InvalidStateTransitionError{
 			Msg:       "message is currently being processed",
 			Operation: "mark as processing",
 			Current:   m.Status,
@@ -141,8 +141,8 @@ func (m *Message[T]) markAsProcessing(now time.Time, visibilityTimeout time.Dura
 }
 
 func (m *Message[T]) markAsMovedToDLQ(now time.Time) error {
-	if m.QueueType == QueueTypeDLQ {
-		return &InvalidStateTransitionError{
+	if m.isDLQ() {
+		return InvalidStateTransitionError{
 			Msg:       "message is already in DLQ",
 			Operation: "mark as moved to DLQ",
 			Current:   m.Status,
@@ -158,16 +158,16 @@ func (m *Message[T]) markAsMovedToDLQ(now time.Time) error {
 	return nil
 }
 
-func (m *Message[T]) markAsRestoredFromDLQ(now time.Time) error {
-	if m.QueueType != QueueTypeDLQ {
-		return &InvalidStateTransitionError{
+func (m *Message[T]) markAsRestoredFromDLQ(now time.Time, visibilityTimeout time.Duration) error {
+	if !m.isDLQ() {
+		return InvalidStateTransitionError{
 			Msg:       "can only redrive messages from DLQ",
 			Operation: "mark as restored from DLQ",
 			Current:   m.Status,
 		}
 	}
-	if m.Status != StatusReady {
-		return &InvalidStateTransitionError{
+	if m.isQueueSelected(now, visibilityTimeout) {
+		return InvalidStateTransitionError{
 			Msg:       "can only redrive messages from READY",
 			Operation: "mark as restored from DLQ",
 			Current:   m.Status,
