@@ -25,7 +25,7 @@ type ConditionalCheckFailedError struct {
 }
 
 func (e ConditionalCheckFailedError) Error() string {
-	return fmt.Sprintf("Condition on the 'version' attribute has failed: %v", e.Cause)
+	return fmt.Sprintf("Condition on the 'version' attribute has failed: %v.", e.Cause)
 }
 
 type BuildingExpressionError struct {
@@ -33,7 +33,7 @@ type BuildingExpressionError struct {
 }
 
 func (e BuildingExpressionError) Error() string {
-	return fmt.Sprintf("Failed to build expression: %v:", e.Cause)
+	return fmt.Sprintf("Failed to build expression: %v.", e.Cause)
 }
 
 type DynamoDBAPIError struct {
@@ -41,7 +41,7 @@ type DynamoDBAPIError struct {
 }
 
 func (e DynamoDBAPIError) Error() string {
-	return fmt.Sprintf("Failed DynamoDB API: %v:", e.Cause)
+	return fmt.Sprintf("Failed DynamoDB API: %v.", e.Cause)
 }
 
 type UnmarshalingAttributeError struct {
@@ -49,7 +49,7 @@ type UnmarshalingAttributeError struct {
 }
 
 func (e UnmarshalingAttributeError) Error() string {
-	return fmt.Sprintf("Failed to unmarshal: %v:", e.Cause)
+	return fmt.Sprintf("Failed to unmarshal: %v.", e.Cause)
 }
 
 type MarshalingAttributeError struct {
@@ -57,7 +57,7 @@ type MarshalingAttributeError struct {
 }
 
 func (e MarshalingAttributeError) Error() string {
-	return fmt.Sprintf("Failed to marshal: %v:", e.Cause)
+	return fmt.Sprintf("Failed to marshal: %v.", e.Cause)
 }
 
 type EmptyQueueError struct{}
@@ -73,5 +73,5 @@ type InvalidStateTransitionError struct {
 }
 
 func (e InvalidStateTransitionError) Error() string {
-	return fmt.Sprintf("operation %s failed for status %s: %s", e.Operation, e.Current, e.Msg)
+	return fmt.Sprintf("operation %s failed for status %s: %s.", e.Operation, e.Current, e.Msg)
 }
