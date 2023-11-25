@@ -72,6 +72,6 @@ type InvalidStateTransitionError struct {
 	Current   Status
 }
 
-func (e *InvalidStateTransitionError) Error() string {
+func (e InvalidStateTransitionError) Error() string {
 	return fmt.Sprintf("operation %s failed for status %s: %s", e.Operation, e.Current, e.Msg)
 }
