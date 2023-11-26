@@ -199,3 +199,94 @@ func TestRunInteractiveUnrecognizedCommand(t *testing.T) {
 		t.Error("Run() error is not nil")
 	}
 }
+
+var defaultTestMessages = []*dynamomq.Message[any]{
+	dynamomq.NewMessage[any]("A-101", test.NewMessageData("A-101"), clock.Now()),
+	dynamomq.NewMessage[any]("A-102", test.NewMessageData("A-102"), clock.Now()),
+	dynamomq.NewMessage[any]("A-103", test.NewMessageData("A-103"), clock.Now()),
+}
+
+func TestRunInteractiveLS(t *testing.T) {
+	c := &cmd.Interactive{
+		Client: mock.Client[any]{
+			ListMessagesFunc: func(ctx context.Context, params *dynamomq.ListMessagesInput) (*dynamomq.ListMessagesOutput[any], error) {
+				return &dynamomq.ListMessagesOutput[any]{
+					Messages: defaultTestMessages,
+				}, nil
+			},
+		},
+	}
+	if err := c.Run(context.Background(), "ls", nil); err != nil {
+		t.Errorf("Run() error = %v", err)
+	}
+}
+
+func TestRunInteractivePurge(t *testing.T) {
+	tests := []struct {
+		name    string
+		client  dynamomq.Client[any]
+		wantErr bool
+	}{
+		{
+			name: "should purge messages successfully",
+			client: mock.Client[any]{
+				ListMessagesFunc: func(ctx context.Context, params *dynamomq.ListMessagesInput) (*dynamomq.ListMessagesOutput[any], error) {
+					return &dynamomq.ListMessagesOutput[any]{
+						Messages: defaultTestMessages,
+					}, nil
+				},
+				DeleteMessageFunc: func(ctx context.Context, params *dynamomq.DeleteMessageInput) (*dynamomq.DeleteMessageOutput, error) {
+					return &dynamomq.DeleteMessageOutput{}, nil
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "should purge messages failed",
+			client: mock.Client[any]{
+				ListMessagesFunc: func(ctx context.Context, params *dynamomq.ListMessagesInput) (*dynamomq.ListMessagesOutput[any], error) {
+					return &dynamomq.ListMessagesOutput[any]{
+						Messages: defaultTestMessages,
+					}, nil
+				},
+				DeleteMessageFunc: func(ctx context.Context, params *dynamomq.DeleteMessageInput) (*dynamomq.DeleteMessageOutput, error) {
+					return &dynamomq.DeleteMessageOutput{}, test.ErrorTest
+				},
+			},
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := &cmd.Interactive{
+				Client: tt.client,
+			}
+			err := c.Run(context.Background(), "purge", nil)
+			if tt.wantErr {
+				if err == nil {
+					t.Error("Run() error is not nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Errorf("Run() error = %v", err)
+			}
+		})
+	}
+}
+
+func TestRunInteractiveEnqueueTestShouldReturnError(t *testing.T) {
+	c := &cmd.Interactive{
+		Client: mock.Client[any]{
+			DeleteMessageFunc: func(ctx context.Context, params *dynamomq.DeleteMessageInput) (*dynamomq.DeleteMessageOutput, error) {
+				return &dynamomq.DeleteMessageOutput{}, nil
+			},
+			SendMessageFunc: func(ctx context.Context, params *dynamomq.SendMessageInput[any]) (*dynamomq.SendMessageOutput[any], error) {
+				return &dynamomq.SendMessageOutput[any]{}, test.ErrorTest
+			},
+		},
+	}
+	if err := c.Run(context.Background(), "enqueue-test", nil); err == nil {
+		t.Error("Run() error is not nil")
+	}
+}
