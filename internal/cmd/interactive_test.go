@@ -2,6 +2,7 @@ package cmd_test
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/vvatanabe/dynamomq"
@@ -287,6 +288,161 @@ func TestRunInteractiveEnqueueTestShouldReturnError(t *testing.T) {
 		},
 	}
 	if err := c.Run(context.Background(), "enqueue-test", nil); err == nil {
+		t.Error("Run() error is not nil")
+	}
+}
+
+func TestRunInteractiveReceiveShouldReturnError(t *testing.T) {
+	c := &cmd.Interactive{
+		Client: mock.Client[any]{
+			ReceiveMessageFunc: func(ctx context.Context, params *dynamomq.ReceiveMessageInput) (*dynamomq.ReceiveMessageOutput[any], error) {
+				return &dynamomq.ReceiveMessageOutput[any]{
+					Result:                 &dynamomq.Result{},
+					PeekFromQueueTimestamp: "",
+					PeekedMessageObject:    dynamomq.NewMessage[any]("A-101", test.NewMessageData("A-101"), clock.Now()),
+				}, nil
+			},
+			GetQueueStatsFunc: func(ctx context.Context, params *dynamomq.GetQueueStatsInput) (*dynamomq.GetQueueStatsOutput, error) {
+				return &dynamomq.GetQueueStatsOutput{}, test.ErrorTest
+			},
+		},
+	}
+	if err := c.Run(context.Background(), "receive", nil); err == nil {
+		t.Error("Run() error is not nil")
+	}
+}
+
+func TestRunInteractiveDeleteShouldReturnError(t *testing.T) {
+	c := &cmd.Interactive{
+		Client: mock.Client[any]{
+			DeleteMessageFunc: func(ctx context.Context, params *dynamomq.DeleteMessageInput) (*dynamomq.DeleteMessageOutput, error) {
+				return &dynamomq.DeleteMessageOutput{}, nil
+			},
+			GetQueueStatsFunc: func(ctx context.Context, params *dynamomq.GetQueueStatsInput) (*dynamomq.GetQueueStatsOutput, error) {
+				return &dynamomq.GetQueueStatsOutput{}, test.ErrorTest
+			},
+		},
+		Message: dynamomq.NewMessage[any]("A-101", test.NewMessageData("A-101"), clock.Now()),
+	}
+	if err := c.Run(context.Background(), "delete", nil); err == nil {
+		t.Error("Run() error is not nil")
+	}
+}
+
+func TestRunInteractiveID(t *testing.T) {
+	tests := []struct {
+		name    string
+		client  dynamomq.Client[any]
+		params  []string
+		wantErr bool
+	}{
+		{
+			name:    "should successfully when id is not specified",
+			wantErr: false,
+		},
+		{
+			name:   "should failed when message is not found",
+			params: []string{"A-101"},
+			client: mock.Client[any]{
+				GetMessageFunc: func(ctx context.Context, params *dynamomq.GetMessageInput) (*dynamomq.GetMessageOutput[any], error) {
+					fmt.Print("debug1")
+					return &dynamomq.GetMessageOutput[any]{
+						Message: nil,
+					}, nil
+				},
+			},
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := &cmd.Interactive{
+				Client: tt.client,
+			}
+			err := c.Run(context.Background(), "id", tt.params)
+			if tt.wantErr {
+				if err == nil {
+					t.Error("Run() error is not nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Errorf("Run() error = %v", err)
+			}
+		})
+	}
+}
+
+func TestRunInteractiveFailReturnError(t *testing.T) {
+	tests := []struct {
+		name   string
+		client dynamomq.Client[any]
+	}{
+		{
+			name: "should failed when fail to get message",
+			client: mock.Client[any]{
+				UpdateMessageAsVisibleFunc: func(ctx context.Context, params *dynamomq.UpdateMessageAsVisibleInput) (*dynamomq.UpdateMessageAsVisibleOutput[any], error) {
+					return &dynamomq.UpdateMessageAsVisibleOutput[any]{}, nil
+				},
+				GetMessageFunc: func(ctx context.Context, params *dynamomq.GetMessageInput) (*dynamomq.GetMessageOutput[any], error) {
+					return &dynamomq.GetMessageOutput[any]{}, test.ErrorTest
+				},
+			},
+		},
+		{
+			name: "should failed when message is not found",
+			client: mock.Client[any]{
+				UpdateMessageAsVisibleFunc: func(ctx context.Context, params *dynamomq.UpdateMessageAsVisibleInput) (*dynamomq.UpdateMessageAsVisibleOutput[any], error) {
+					return &dynamomq.UpdateMessageAsVisibleOutput[any]{}, nil
+				},
+				GetMessageFunc: func(ctx context.Context, params *dynamomq.GetMessageInput) (*dynamomq.GetMessageOutput[any], error) {
+					return &dynamomq.GetMessageOutput[any]{}, nil
+				},
+			},
+		},
+		{
+			name: "should failed when fail to get queue stats",
+			client: mock.Client[any]{
+				UpdateMessageAsVisibleFunc: func(ctx context.Context, params *dynamomq.UpdateMessageAsVisibleInput) (*dynamomq.UpdateMessageAsVisibleOutput[any], error) {
+					return &dynamomq.UpdateMessageAsVisibleOutput[any]{}, nil
+				},
+				GetMessageFunc: func(ctx context.Context, params *dynamomq.GetMessageInput) (*dynamomq.GetMessageOutput[any], error) {
+					return &dynamomq.GetMessageOutput[any]{
+						Message: dynamomq.NewMessage[any]("A-101", test.NewMessageData("A-101"), clock.Now()),
+					}, nil
+				},
+				GetQueueStatsFunc: func(ctx context.Context, params *dynamomq.GetQueueStatsInput) (*dynamomq.GetQueueStatsOutput, error) {
+					return &dynamomq.GetQueueStatsOutput{}, test.ErrorTest
+				},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := &cmd.Interactive{
+				Client:  tt.client,
+				Message: defaultTestMessages[0],
+			}
+			if err := c.Run(context.Background(), "fail", nil); err == nil {
+				t.Error("Run() error is not nil")
+			}
+		})
+	}
+}
+
+func TestRunInteractiveInvalidShouldReturnError(t *testing.T) {
+	c := &cmd.Interactive{
+		Client: mock.Client[any]{
+			MoveMessageToDLQFunc: func(ctx context.Context, params *dynamomq.MoveMessageToDLQInput) (*dynamomq.MoveMessageToDLQOutput, error) {
+				return &dynamomq.MoveMessageToDLQOutput{}, nil
+			},
+			GetQueueStatsFunc: func(ctx context.Context, params *dynamomq.GetQueueStatsInput) (*dynamomq.GetQueueStatsOutput, error) {
+				return &dynamomq.GetQueueStatsOutput{}, test.ErrorTest
+			},
+		},
+		Message: dynamomq.NewMessage[any]("A-101", test.NewMessageData("A-101"), clock.Now()),
+	}
+	if err := c.Run(context.Background(), "invalid", nil); err == nil {
 		t.Error("Run() error is not nil")
 	}
 }
