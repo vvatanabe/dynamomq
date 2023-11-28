@@ -2,7 +2,9 @@ package dynamomq_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"reflect"
 	"testing"
 	"time"
 
@@ -1009,6 +1011,76 @@ func TestTestDynamoMQClientReturnMarshalingAttributeError(t *testing.T) {
 			Cause: test.ErrorTest,
 		}, tt.name)
 	}
+}
+
+func TestTestDynamoMQClientReturnDynamoDBAPIError(t *testing.T) {
+	t.Parallel()
+	client, err := NewFromConfig[test.MessageData](aws.Config{})
+	if err != nil {
+		t.Fatalf("failed to create DynamoMQ client: %s\n", err)
+	}
+	type testCase struct {
+		name      string
+		operation func() (any, error)
+	}
+	tests := []testCase{
+		{
+			name: "ReceiveMessage should return DynamoDBAPIError",
+			operation: func() (any, error) {
+				return client.ReceiveMessage(context.Background(), &ReceiveMessageInput{})
+			},
+		},
+		{
+			name: "DeleteMessage should return DynamoDBAPIError",
+			operation: func() (any, error) {
+				return client.DeleteMessage(context.Background(), &DeleteMessageInput{
+					ID: "A-101",
+				})
+			},
+		},
+		{
+			name: "GetQueueStats should return DynamoDBAPIError",
+			operation: func() (any, error) {
+				return client.GetQueueStats(context.Background(), &GetQueueStatsInput{})
+			},
+		},
+		{
+			name: "GetDLQStats should return DynamoDBAPIError",
+			operation: func() (any, error) {
+				return client.GetDLQStats(context.Background(), &GetDLQStatsInput{})
+			},
+		},
+		{
+			name: "GetMessage should return DynamoDBAPIError",
+			operation: func() (any, error) {
+				return client.GetMessage(context.Background(), &GetMessageInput{
+					ID: "A-101",
+				})
+			},
+		},
+		{
+			name: "ListMessages should return DynamoDBAPIError",
+			operation: func() (any, error) {
+				return client.ListMessages(context.Background(), &ListMessagesInput{
+					Size: DefaultMaxListMessages,
+				})
+			},
+		},
+	}
+	for _, tt := range tests {
+		_, err := tt.operation()
+		if _, ok := assertErrorType[DynamoDBAPIError](err); !ok {
+			t.Errorf("error = %v, want %v", "DynamoDBAPIError", reflect.TypeOf(err))
+		}
+	}
+}
+
+func assertErrorType[T error](err error) (T, bool) {
+	var wantErr T
+	if errors.As(err, &wantErr) {
+		return wantErr, true
+	}
+	return wantErr, false
 }
 
 func WithUnmarshalMap(f func(m map[string]types.AttributeValue, out interface{}) error) func(s *ClientOptions) {

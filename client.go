@@ -577,7 +577,7 @@ func (c *client[T]) queryAndCalculateQueueStats(ctx context.Context, expr expres
 			ExclusiveStartKey:         exclusiveStartKey,
 		})
 		if err != nil {
-			return nil, err
+			return nil, handleDynamoDBError(err)
 		}
 		exclusiveStartKey = queryOutput.LastEvaluatedKey
 
@@ -848,7 +848,7 @@ func handleDynamoDBError(err error) error {
 	if errors.As(err, &cause) {
 		return &ConditionalCheckFailedError{Cause: cause}
 	}
-	return &DynamoDBAPIError{Cause: err}
+	return DynamoDBAPIError{Cause: err}
 }
 
 type Status string
