@@ -19,6 +19,7 @@ const (
 	DefaultQueueingIndexName          = "dynamo-mq-index-queue_type-queue_add_timestamp"
 	DefaultRetryMaxAttempts           = 10
 	DefaultVisibilityTimeoutInMinutes = 1
+	DefaultMaxListMessages            = 10
 )
 
 type Client[T any] interface {
@@ -42,10 +43,12 @@ type ClientOptions struct {
 	VisibilityTimeoutInMinutes int
 	MaximumReceives            int
 	UseFIFO                    bool
+	BaseEndpoint               string
+	RetryMaxAttempts           int
 	Clock                      clock.Clock
 
-	BaseEndpoint     string
-	RetryMaxAttempts int
+	MarshalMap   func(in interface{}) (map[string]types.AttributeValue, error)
+	UnmarshalMap func(m map[string]types.AttributeValue, out interface{}) error
 }
 
 func WithAWSDynamoDBClient(client *dynamodb.Client) func(*ClientOptions) {
@@ -98,6 +101,8 @@ func NewFromConfig[T any](cfg aws.Config, optFns ...func(*ClientOptions)) (Clien
 		VisibilityTimeoutInMinutes: DefaultVisibilityTimeoutInMinutes,
 		UseFIFO:                    false,
 		Clock:                      &clock.RealClock{},
+		MarshalMap:                 attributevalue.MarshalMap,
+		UnmarshalMap:               attributevalue.UnmarshalMap,
 	}
 	for _, opt := range optFns {
 		opt(o)
@@ -110,6 +115,8 @@ func NewFromConfig[T any](cfg aws.Config, optFns ...func(*ClientOptions)) (Clien
 		useFIFO:                    o.UseFIFO,
 		dynamoDB:                   o.DynamoDB,
 		clock:                      o.Clock,
+		marshalMap:                 o.MarshalMap,
+		unmarshalMap:               o.UnmarshalMap,
 	}
 	if c.dynamoDB != nil {
 		return c, nil
@@ -131,6 +138,8 @@ type client[T any] struct {
 	maximumReceives            int
 	useFIFO                    bool
 	clock                      clock.Clock
+	marshalMap                 func(in interface{}) (map[string]types.AttributeValue, error)
+	unmarshalMap               func(m map[string]types.AttributeValue, out interface{}) error
 }
 
 type SendMessageInput[T any] struct {
@@ -270,8 +279,8 @@ func (c *client[T]) processQueryResult(queryResult *dynamodb.QueryOutput) (*Mess
 
 	for _, itemMap := range queryResult.Items {
 		item := Message[T]{}
-		if err := attributevalue.UnmarshalMap(itemMap, &item); err != nil {
-			return nil, &UnmarshalingAttributeError{Cause: err}
+		if err := c.unmarshalMap(itemMap, &item); err != nil {
+			return nil, UnmarshalingAttributeError{Cause: err}
 		}
 
 		if err := item.markAsProcessing(c.clock.Now(), visibilityTimeout); err == nil {
@@ -572,7 +581,7 @@ func (c *client[T]) queryAndCalculateQueueStats(ctx context.Context, expr expres
 		}
 		exclusiveStartKey = queryOutput.LastEvaluatedKey
 
-		err = processQueryItemsForQueueStats[T](queryOutput.Items, stats)
+		err = c.processQueryItemsForQueueStats(queryOutput.Items, stats)
 		if err != nil {
 			return nil, err
 		}
@@ -585,13 +594,13 @@ func (c *client[T]) queryAndCalculateQueueStats(ctx context.Context, expr expres
 	return stats, nil
 }
 
-func processQueryItemsForQueueStats[T any](items []map[string]types.AttributeValue, stats *GetQueueStatsOutput) error {
+func (c *client[T]) processQueryItemsForQueueStats(items []map[string]types.AttributeValue, stats *GetQueueStatsOutput) error {
 	for _, itemMap := range items {
 		stats.TotalRecordsInQueue++
 		item := Message[T]{}
-		err := attributevalue.UnmarshalMap(itemMap, &item)
+		err := c.unmarshalMap(itemMap, &item)
 		if err != nil {
-			return &UnmarshalingAttributeError{Cause: err}
+			return UnmarshalingAttributeError{Cause: err}
 		}
 
 		updateQueueStatsFromItem[T](&item, stats)
@@ -662,7 +671,7 @@ func (c *client[T]) queryAndCalculateDLQStats(ctx context.Context, expr expressi
 		}
 		lastEvaluatedKey = queryOutput.LastEvaluatedKey
 
-		err = processQueryItemsForDLQStats[T](queryOutput.Items, stats)
+		err = c.processQueryItemsForDLQStats(queryOutput.Items, stats)
 		if err != nil {
 			return nil, err
 		}
@@ -674,14 +683,14 @@ func (c *client[T]) queryAndCalculateDLQStats(ctx context.Context, expr expressi
 	return stats, nil
 }
 
-func processQueryItemsForDLQStats[T any](items []map[string]types.AttributeValue, stats *GetDLQStatsOutput) error {
+func (c *client[T]) processQueryItemsForDLQStats(items []map[string]types.AttributeValue, stats *GetDLQStatsOutput) error {
 	for _, itemMap := range items {
 		stats.TotalRecordsInDLQ++
 		if len(stats.First100IDsInQueue) < 100 {
 			item := Message[T]{}
-			err := attributevalue.UnmarshalMap(itemMap, &item)
+			err := c.unmarshalMap(itemMap, &item)
 			if err != nil {
-				return &UnmarshalingAttributeError{Cause: err}
+				return UnmarshalingAttributeError{Cause: err}
 			}
 			stats.First100IDsInQueue = append(stats.First100IDsInQueue, item.ID)
 		}
@@ -718,9 +727,9 @@ func (c *client[T]) GetMessage(ctx context.Context, params *GetMessageInput) (*G
 		return &GetMessageOutput[T]{}, nil
 	}
 	item := Message[T]{}
-	err = attributevalue.UnmarshalMap(resp.Item, &item)
+	err = c.unmarshalMap(resp.Item, &item)
 	if err != nil {
-		return &GetMessageOutput[T]{}, &UnmarshalingAttributeError{Cause: err}
+		return &GetMessageOutput[T]{}, UnmarshalingAttributeError{Cause: err}
 	}
 	return &GetMessageOutput[T]{
 		Message: &item,
@@ -739,6 +748,9 @@ func (c *client[T]) ListMessages(ctx context.Context, params *ListMessagesInput)
 	if params == nil {
 		params = &ListMessagesInput{}
 	}
+	if params.Size <= 0 {
+		params.Size = DefaultMaxListMessages
+	}
 	output, err := c.dynamoDB.Scan(ctx, &dynamodb.ScanInput{
 		TableName: &c.tableName,
 		Limit:     aws.Int32(params.Size),
@@ -749,7 +761,7 @@ func (c *client[T]) ListMessages(ctx context.Context, params *ListMessagesInput)
 	var messages []*Message[T]
 	err = attributevalue.UnmarshalListOfMaps(output.Items, &messages)
 	if err != nil {
-		return &ListMessagesOutput[T]{}, &UnmarshalingAttributeError{Cause: err}
+		return &ListMessagesOutput[T]{}, UnmarshalingAttributeError{Cause: err}
 	}
 	sort.Slice(messages, func(i, j int) bool {
 		return messages[i].LastUpdatedTimestamp < messages[j].LastUpdatedTimestamp
@@ -791,9 +803,9 @@ func (c *client[T]) ReplaceMessage(ctx context.Context, params *ReplaceMessageIn
 }
 
 func (c *client[T]) put(ctx context.Context, message *Message[T]) error {
-	item, err := message.marshalMap()
+	item, err := c.marshalMap(message)
 	if err != nil {
-		return err
+		return MarshalingAttributeError{Cause: err}
 	}
 	_, err = c.dynamoDB.PutItem(ctx, &dynamodb.PutItemInput{
 		TableName: aws.String(c.tableName),
@@ -824,9 +836,9 @@ func (c *client[T]) updateDynamoDBItem(ctx context.Context,
 		return nil, handleDynamoDBError(err)
 	}
 	message := Message[T]{}
-	err = attributevalue.UnmarshalMap(outcome.Attributes, &message)
+	err = c.unmarshalMap(outcome.Attributes, &message)
 	if err != nil {
-		return nil, &UnmarshalingAttributeError{Cause: err}
+		return nil, UnmarshalingAttributeError{Cause: err}
 	}
 	return &message, nil
 }

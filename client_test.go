@@ -89,7 +89,7 @@ type ClientTestCase[Args any, Want any] struct {
 func TestDynamoMQClientShouldReturnError(t *testing.T) {
 	t.Parallel()
 	client, cancel := prepareTestClient(t, context.Background(),
-		NewSetupFunc(newPutRequestWithReadyItem("A-101", clock.Now())), mock.Clock{}, false)
+		NewSetupFunc(newPutRequestWithReadyItem("A-101", clock.Now())), mock.Clock{}, false, nil)
 	defer cancel()
 	type testCase struct {
 		name      string
@@ -293,7 +293,7 @@ func TestDynamoMQClientReceiveMessage(t *testing.T) {
 	}
 	runTestsParallel[any, *ReceiveMessageOutput[test.MessageData]](t, "ReceiveMessage()", tests,
 		func(client Client[test.MessageData], _ any) (*ReceiveMessageOutput[test.MessageData], error) {
-			return client.ReceiveMessage(context.Background(), &ReceiveMessageInput{})
+			return client.ReceiveMessage(context.Background(), nil)
 		})
 }
 
@@ -306,7 +306,7 @@ func testDynamoMQClientReceiveMessageSequence(t *testing.T, useFIFO bool) {
 		newPutRequestWithReadyItem("A-303", test.DefaultTestDate.Add(1*time.Second))),
 		mock.Clock{
 			T: now,
-		}, useFIFO)
+		}, useFIFO, nil)
 	defer clean()
 
 	wants := []*ReceiveMessageOutput[test.MessageData]{
@@ -609,7 +609,7 @@ func TestDynamoMQClientGetQueueStats(t *testing.T) {
 	}
 	runTestsParallel[any, *GetQueueStatsOutput](t, "GetQueueStats()", tests,
 		func(client Client[test.MessageData], _ any) (*GetQueueStatsOutput, error) {
-			return client.GetQueueStats(context.Background(), &GetQueueStatsInput{})
+			return client.GetQueueStats(context.Background(), nil)
 		})
 }
 
@@ -646,7 +646,7 @@ func TestDynamoMQClientGetDLQStats(t *testing.T) {
 	}
 	runTestsParallel[any, *GetDLQStatsOutput](t, "GetDLQStats()", tests,
 		func(client Client[test.MessageData], _ any) (*GetDLQStatsOutput, error) {
-			return client.GetDLQStats(context.Background(), &GetDLQStatsInput{})
+			return client.GetDLQStats(context.Background(), nil)
 		})
 }
 
@@ -736,11 +736,11 @@ func TestDynamoMQClientListMessages(t *testing.T) {
 	type args struct {
 		size int32
 	}
-	tests := []ClientTestCase[args, []*Message[test.MessageData]]{
+	tests := []ClientTestCase[*args, []*Message[test.MessageData]]{
 		{
 			name:  "should return empty list when no messages",
 			setup: NewSetupFunc(),
-			args: args{
+			args: &args{
 				size: 10,
 			},
 			want:    []*Message[test.MessageData]{},
@@ -753,17 +753,35 @@ func TestDynamoMQClientListMessages(t *testing.T) {
 				puts := generatePutRequests(messages)
 				return SetupDynamoDB(t, puts...)
 			},
-			args: args{
+			args: &args{
 				size: 10,
 			},
 			want: generateExpectedMessages("A",
 				test.DefaultTestDate, 10),
 			wantErr: nil,
 		},
+		{
+			name: "should return list of messages when messages exist and args is nil",
+			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
+				messages := generateExpectedMessages("A", test.DefaultTestDate, 10)
+				puts := generatePutRequests(messages)
+				return SetupDynamoDB(t, puts...)
+			},
+			args: nil,
+			want: generateExpectedMessages("A",
+				test.DefaultTestDate, 10),
+			wantErr: nil,
+		},
 	}
-	runTestsParallel[args, []*Message[test.MessageData]](t, "ListMessages()", tests,
-		func(client Client[test.MessageData], args args) ([]*Message[test.MessageData], error) {
-			out, err := client.ListMessages(context.Background(), &ListMessagesInput{Size: args.size})
+	runTestsParallel[*args, []*Message[test.MessageData]](t, "ListMessages()", tests,
+		func(client Client[test.MessageData], args *args) ([]*Message[test.MessageData], error) {
+			var in *ListMessagesInput
+			if args != nil {
+				in = &ListMessagesInput{
+					Size: args.size,
+				}
+			}
+			out, err := client.ListMessages(context.Background(), in)
 			return out.Messages, err
 		})
 }
@@ -774,7 +792,7 @@ func runTestsParallel[Args any, Want any](t *testing.T, prefix string,
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			client, clean := prepareTestClient(t, context.Background(), tt.setup, tt.sdkClock, false)
+			client, clean := prepareTestClient(t, context.Background(), tt.setup, tt.sdkClock, false, nil)
 			defer clean()
 			result, err := operation(client, tt.args)
 			if tt.wantErr != nil {
@@ -790,6 +808,7 @@ func prepareTestClient(t *testing.T, ctx context.Context,
 	setupTable func(*testing.T) (string, *dynamodb.Client, func()),
 	sdkClock clock.Clock,
 	useFIFO bool,
+	unmarshalMap func(m map[string]types.AttributeValue, out interface{}) error,
 ) (Client[test.MessageData], func()) {
 	t.Helper()
 	tableName, raw, clean := setupTable(t)
@@ -802,6 +821,7 @@ func prepareTestClient(t *testing.T, ctx context.Context,
 		WithUseFIFO(useFIFO),
 		WithAWSVisibilityTimeout(1),
 		WithAWSRetryMaxAttempts(DefaultRetryMaxAttempts),
+		WithUnmarshalMap(unmarshalMap),
 	}
 	cfg, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
@@ -864,4 +884,94 @@ func marshalMap[T any](m *Message[T]) (map[string]types.AttributeValue, error) {
 		return nil, MarshalingAttributeError{Cause: err}
 	}
 	return item, nil
+}
+
+func TestNewFromConfig(t *testing.T) {
+	_, err := NewFromConfig[any](aws.Config{}, WithAWSBaseEndpoint("https://localhost:8000"))
+	if err != nil {
+		t.Errorf("failed to new client from config: %s\n", err)
+	}
+}
+
+func TestTestDynamoMQClientReturnUnmarshalingAttributeError(t *testing.T) {
+	t.Parallel()
+	setupFunc := NewSetupFunc(
+		newPutRequestWithReadyItem("A-101", clock.Now()),
+		newPutRequestWithDLQItem("B-101", clock.Now()),
+	)
+	client, cancel := prepareTestClient(t, context.Background(), setupFunc, mock.Clock{}, false,
+		func(m map[string]types.AttributeValue, out interface{}) error {
+			return test.ErrorTest
+		})
+	defer cancel()
+	type testCase struct {
+		name      string
+		operation func() (any, error)
+	}
+	tests := []testCase{
+		{
+			name: "ReceiveMessage should return UnmarshalingAttributeError",
+			operation: func() (any, error) {
+				return client.ReceiveMessage(context.Background(), &ReceiveMessageInput{})
+			},
+		},
+		{
+			name: "GetQueueStats should return UnmarshalingAttributeError",
+			operation: func() (any, error) {
+				return client.GetQueueStats(context.Background(), &GetQueueStatsInput{})
+			},
+		},
+		{
+			name: "GetDLQStats should return UnmarshalingAttributeError",
+			operation: func() (any, error) {
+				return client.GetDLQStats(context.Background(), &GetDLQStatsInput{})
+			},
+		},
+		{
+			name: "GetMessage should return UnmarshalingAttributeError",
+			operation: func() (any, error) {
+				return client.GetMessage(context.Background(), &GetMessageInput{
+					ID: "A-101",
+				})
+			},
+		},
+		{
+			name: "UpdateMessageAsVisible should return UnmarshalingAttributeError",
+			operation: func() (any, error) {
+				return client.UpdateMessageAsVisible(context.Background(), &UpdateMessageAsVisibleInput{
+					ID: "A-101",
+				})
+			},
+		},
+		{
+			name: "MoveMessageToDLQ should return UnmarshalingAttributeError",
+			operation: func() (any, error) {
+				return client.MoveMessageToDLQ(context.Background(), &MoveMessageToDLQInput{
+					ID: "A-101",
+				})
+			},
+		},
+		{
+			name: "RedriveMessage should return UnmarshalingAttributeError",
+			operation: func() (any, error) {
+				return client.RedriveMessage(context.Background(), &RedriveMessageInput{
+					ID: "B-101",
+				})
+			},
+		},
+	}
+	for _, tt := range tests {
+		_, err := tt.operation()
+		test.AssertError(t, err, UnmarshalingAttributeError{
+			Cause: test.ErrorTest,
+		}, tt.name)
+	}
+}
+
+func WithUnmarshalMap(f func(m map[string]types.AttributeValue, out interface{}) error) func(s *ClientOptions) {
+	return func(s *ClientOptions) {
+		if f != nil {
+			s.UnmarshalMap = f
+		}
+	}
 }

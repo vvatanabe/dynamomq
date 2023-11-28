@@ -3,8 +3,6 @@ package dynamomq
 import (
 	"time"
 
-	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
-	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/vvatanabe/dynamomq/internal/clock"
 )
 
@@ -35,14 +33,6 @@ type Message[T any] struct {
 	LastUpdatedTimestamp   string    `json:"last_updated_timestamp" dynamodbav:"last_updated_timestamp"`
 	AddToQueueTimestamp    string    `json:"queue_add_timestamp" dynamodbav:"queue_add_timestamp"`
 	PeekFromQueueTimestamp string    `json:"queue_peek_timestamp" dynamodbav:"queue_peek_timestamp"`
-}
-
-func (m *Message[T]) marshalMap() (map[string]types.AttributeValue, error) {
-	item, err := attributevalue.MarshalMap(m)
-	if err != nil {
-		return nil, MarshalingAttributeError{Cause: err}
-	}
-	return item, nil
 }
 
 func (m *Message[T]) isQueueSelected(now time.Time, visibilityTimeout time.Duration) bool {
