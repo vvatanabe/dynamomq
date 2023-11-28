@@ -91,7 +91,7 @@ type ClientTestCase[Args any, Want any] struct {
 func TestDynamoMQClientShouldReturnError(t *testing.T) {
 	t.Parallel()
 	client, cancel := prepareTestClient(t, context.Background(),
-		NewSetupFunc(newPutRequestWithReadyItem("A-101", clock.Now())), mock.Clock{}, false, nil, nil)
+		NewSetupFunc(newPutRequestWithReadyItem("A-101", clock.Now())), mock.Clock{}, false, nil, nil, nil)
 	defer cancel()
 	type testCase struct {
 		name      string
@@ -308,7 +308,7 @@ func testDynamoMQClientReceiveMessageSequence(t *testing.T, useFIFO bool) {
 		newPutRequestWithReadyItem("A-303", test.DefaultTestDate.Add(1*time.Second))),
 		mock.Clock{
 			T: now,
-		}, useFIFO, nil, nil)
+		}, useFIFO, nil, nil, nil)
 	defer clean()
 
 	wants := []*ReceiveMessageOutput[test.MessageData]{
@@ -794,7 +794,7 @@ func runTestsParallel[Args any, Want any](t *testing.T, prefix string,
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			client, clean := prepareTestClient(t, context.Background(), tt.setup, tt.sdkClock, false, nil, nil)
+			client, clean := prepareTestClient(t, context.Background(), tt.setup, tt.sdkClock, false, nil, nil, nil)
 			defer clean()
 			result, err := operation(client, tt.args)
 			if tt.wantErr != nil {
@@ -812,6 +812,7 @@ func prepareTestClient(t *testing.T, ctx context.Context,
 	useFIFO bool,
 	unmarshalMap func(m map[string]types.AttributeValue, out interface{}) error,
 	marshalMap func(in interface{}) (map[string]types.AttributeValue, error),
+	unmarshalListOfMaps func(l []map[string]types.AttributeValue, out interface{}) error,
 ) (Client[test.MessageData], func()) {
 	t.Helper()
 	tableName, raw, clean := setupTable(t)
@@ -826,6 +827,7 @@ func prepareTestClient(t *testing.T, ctx context.Context,
 		WithAWSRetryMaxAttempts(DefaultRetryMaxAttempts),
 		WithUnmarshalMap(unmarshalMap),
 		WithMarshalMap(marshalMap),
+		WithUnmarshalListOfMaps(unmarshalListOfMaps),
 	}
 	cfg, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
@@ -906,7 +908,11 @@ func TestTestDynamoMQClientReturnUnmarshalingAttributeError(t *testing.T) {
 	client, cancel := prepareTestClient(t, context.Background(), setupFunc, mock.Clock{}, false,
 		func(m map[string]types.AttributeValue, out interface{}) error {
 			return test.ErrorTest
-		}, nil)
+		},
+		nil,
+		func(l []map[string]types.AttributeValue, out interface{}) error {
+			return test.ErrorTest
+		})
 	defer cancel()
 	type testCase struct {
 		name      string
@@ -963,6 +969,14 @@ func TestTestDynamoMQClientReturnUnmarshalingAttributeError(t *testing.T) {
 				})
 			},
 		},
+		{
+			name: "ListMessages should return UnmarshalingAttributeError",
+			operation: func() (any, error) {
+				return client.ListMessages(context.Background(), &ListMessagesInput{
+					Size: DefaultMaxListMessages,
+				})
+			},
+		},
 	}
 	for _, tt := range tests {
 		_, err := tt.operation()
@@ -980,7 +994,7 @@ func TestTestDynamoMQClientReturnMarshalingAttributeError(t *testing.T) {
 	client, cancel := prepareTestClient(t, context.Background(), setupFunc, mock.Clock{}, false, nil,
 		func(in interface{}) (map[string]types.AttributeValue, error) {
 			return nil, test.ErrorTest
-		})
+		}, nil)
 	defer cancel()
 	type testCase struct {
 		name      string
@@ -1087,6 +1101,14 @@ func WithUnmarshalMap(f func(m map[string]types.AttributeValue, out interface{})
 	return func(s *ClientOptions) {
 		if f != nil {
 			s.UnmarshalMap = f
+		}
+	}
+}
+
+func WithUnmarshalListOfMaps(f func(l []map[string]types.AttributeValue, out interface{}) error) func(s *ClientOptions) {
+	return func(s *ClientOptions) {
+		if f != nil {
+			s.UnmarshalListOfMaps = f
 		}
 	}
 }

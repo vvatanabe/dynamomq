@@ -47,8 +47,9 @@ type ClientOptions struct {
 	RetryMaxAttempts           int
 	Clock                      clock.Clock
 
-	MarshalMap   func(in interface{}) (map[string]types.AttributeValue, error)
-	UnmarshalMap func(m map[string]types.AttributeValue, out interface{}) error
+	MarshalMap          func(in interface{}) (map[string]types.AttributeValue, error)
+	UnmarshalMap        func(m map[string]types.AttributeValue, out interface{}) error
+	UnmarshalListOfMaps func(l []map[string]types.AttributeValue, out interface{}) error
 }
 
 func WithAWSDynamoDBClient(client *dynamodb.Client) func(*ClientOptions) {
@@ -103,6 +104,7 @@ func NewFromConfig[T any](cfg aws.Config, optFns ...func(*ClientOptions)) (Clien
 		Clock:                      &clock.RealClock{},
 		MarshalMap:                 attributevalue.MarshalMap,
 		UnmarshalMap:               attributevalue.UnmarshalMap,
+		UnmarshalListOfMaps:        attributevalue.UnmarshalListOfMaps,
 	}
 	for _, opt := range optFns {
 		opt(o)
@@ -117,6 +119,7 @@ func NewFromConfig[T any](cfg aws.Config, optFns ...func(*ClientOptions)) (Clien
 		clock:                      o.Clock,
 		marshalMap:                 o.MarshalMap,
 		unmarshalMap:               o.UnmarshalMap,
+		unmarshalListOfMaps:        o.UnmarshalListOfMaps,
 	}
 	if c.dynamoDB != nil {
 		return c, nil
@@ -140,6 +143,7 @@ type client[T any] struct {
 	clock                      clock.Clock
 	marshalMap                 func(in interface{}) (map[string]types.AttributeValue, error)
 	unmarshalMap               func(m map[string]types.AttributeValue, out interface{}) error
+	unmarshalListOfMaps        func(l []map[string]types.AttributeValue, out interface{}) error
 }
 
 type SendMessageInput[T any] struct {
@@ -759,7 +763,7 @@ func (c *client[T]) ListMessages(ctx context.Context, params *ListMessagesInput)
 		return &ListMessagesOutput[T]{}, handleDynamoDBError(err)
 	}
 	var messages []*Message[T]
-	err = attributevalue.UnmarshalListOfMaps(output.Items, &messages)
+	err = c.unmarshalListOfMaps(output.Items, &messages)
 	if err != nil {
 		return &ListMessagesOutput[T]{}, UnmarshalingAttributeError{Cause: err}
 	}
