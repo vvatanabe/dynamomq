@@ -2,6 +2,7 @@ package dynamomq_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -14,6 +15,39 @@ import (
 	"github.com/vvatanabe/dynamomq/internal/mock"
 	"github.com/vvatanabe/dynamomq/internal/test"
 )
+
+func TestConsumerStartConsumingShouldReturnErrConsumerClosed(t *testing.T) {
+	t.Parallel()
+	queue, dlq, store := prepareQueueAndStore(1, 1)
+	client := NewClientForConsumerTest(queue, dlq, store, ClientForConsumerTestConfig{
+		SimulateReceiveMessageError: true,
+	})
+	processor := &CountProcessor[test.MessageData]{
+		SimulateProcessError: false,
+	}
+	consumer := NewConsumer[test.MessageData](client, processor)
+	_ = consumer.Shutdown(context.Background())
+	if err := consumer.StartConsuming(); !errors.Is(err, ErrConsumerClosed) {
+		t.Errorf("StartConsuming() error = %v, want = %v", err, ErrConsumerClosed)
+		return
+	}
+}
+
+func TestConsumerStartConsumingShouldReturnNoTemporaryError(t *testing.T) {
+	t.Parallel()
+	queue, dlq, store := prepareQueueAndStore(1, 1)
+	client := NewClientForConsumerTest(queue, dlq, store, ClientForConsumerTestConfig{
+		SimulateReceiveMessageNoTemporaryError: true,
+	})
+	processor := &CountProcessor[test.MessageData]{
+		SimulateProcessError: false,
+	}
+	consumer := NewConsumer[test.MessageData](client, processor)
+	if err := consumer.StartConsuming(); !errors.Is(err, test.ErrorTest) {
+		t.Errorf("StartConsuming() error = %v, want = %v", err, test.ErrorTest)
+		return
+	}
+}
 
 func TestConsumerStartConsuming(t *testing.T) {
 	t.Parallel()
@@ -223,16 +257,20 @@ func (p *CountProcessor[T]) Process(_ *Message[T]) error {
 }
 
 type ClientForConsumerTestConfig struct {
-	SimulateReceiveMessageError   bool
-	SimulateDeleteMessageError    bool
-	SimulateMessageAsVisibleError bool
-	SimulateMoveMessageToDLQError bool
+	SimulateReceiveMessageError            bool
+	SimulateReceiveMessageNoTemporaryError bool
+	SimulateDeleteMessageError             bool
+	SimulateMessageAsVisibleError          bool
+	SimulateMoveMessageToDLQError          bool
 }
 
 func NewClientForConsumerTest(queue, dlq chan *Message[test.MessageData], store *sync.Map,
 	cfg ClientForConsumerTestConfig) Client[test.MessageData] {
 	return &mock.Client[test.MessageData]{
 		ReceiveMessageFunc: func(ctx context.Context, params *ReceiveMessageInput) (*ReceiveMessageOutput[test.MessageData], error) {
+			if cfg.SimulateReceiveMessageNoTemporaryError {
+				return nil, test.ErrorTest
+			}
 			if cfg.SimulateReceiveMessageError {
 				return nil, &DynamoDBAPIError{Cause: test.ErrorTest}
 			}

@@ -123,7 +123,7 @@ func (c *Consumer[T]) StartConsuming() error {
 				return ErrConsumerClosed
 			}
 			if !isTemporary(err) {
-				return fmt.Errorf("DynamoMQ: Failed to receive a message. %s", err)
+				return fmt.Errorf("DynamoMQ: Failed to receive a message: %w", err)
 			}
 			time.Sleep(c.pollingInterval)
 			continue
