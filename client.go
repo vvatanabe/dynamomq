@@ -45,11 +45,12 @@ type ClientOptions struct {
 	UseFIFO                    bool
 	BaseEndpoint               string
 	RetryMaxAttempts           int
+	
 	Clock                      clock.Clock
-
 	MarshalMap          func(in interface{}) (map[string]types.AttributeValue, error)
 	UnmarshalMap        func(m map[string]types.AttributeValue, out interface{}) error
 	UnmarshalListOfMaps func(l []map[string]types.AttributeValue, out interface{}) error
+	BuildExpression     func(b expression.Builder) (expression.Expression, error)
 }
 
 func WithAWSDynamoDBClient(client *dynamodb.Client) func(*ClientOptions) {
@@ -105,6 +106,9 @@ func NewFromConfig[T any](cfg aws.Config, optFns ...func(*ClientOptions)) (Clien
 		MarshalMap:                 attributevalue.MarshalMap,
 		UnmarshalMap:               attributevalue.UnmarshalMap,
 		UnmarshalListOfMaps:        attributevalue.UnmarshalListOfMaps,
+		BuildExpression: func(b expression.Builder) (expression.Expression, error) {
+			return b.Build()
+		},
 	}
 	for _, opt := range optFns {
 		opt(o)
@@ -120,6 +124,7 @@ func NewFromConfig[T any](cfg aws.Config, optFns ...func(*ClientOptions)) (Clien
 		marshalMap:                 o.MarshalMap,
 		unmarshalMap:               o.UnmarshalMap,
 		unmarshalListOfMaps:        o.UnmarshalListOfMaps,
+		buildExpression:            o.BuildExpression,
 	}
 	if c.dynamoDB != nil {
 		return c, nil
@@ -144,6 +149,7 @@ type client[T any] struct {
 	marshalMap                 func(in interface{}) (map[string]types.AttributeValue, error)
 	unmarshalMap               func(m map[string]types.AttributeValue, out interface{}) error
 	unmarshalListOfMaps        func(l []map[string]types.AttributeValue, out interface{}) error
+	buildExpression            func(b expression.Builder) (expression.Expression, error)
 }
 
 type SendMessageInput[T any] struct {
@@ -228,11 +234,11 @@ func (c *client[T]) ReceiveMessage(ctx context.Context, params *ReceiveMessageIn
 }
 
 func (c *client[T]) queryDynamoDB(ctx context.Context, params *ReceiveMessageInput) (*Message[T], error) {
-	expr, err := expression.NewBuilder().
-		WithKeyCondition(expression.Key("queue_type").Equal(expression.Value(params.QueueType))).
-		Build()
+	builder := expression.NewBuilder().
+		WithKeyCondition(expression.Key("queue_type").Equal(expression.Value(params.QueueType)))
+	expr, err := c.buildExpression(builder)
 	if err != nil {
-		return nil, &BuildingExpressionError{Cause: err}
+		return nil, BuildingExpressionError{Cause: err}
 	}
 
 	selectedItem, err := c.executeQuery(ctx, expr)
@@ -303,17 +309,17 @@ func (c *client[T]) getVisibilityTimeout() time.Duration {
 }
 
 func (c *client[T]) processSelectedItem(ctx context.Context, item *Message[T]) (*Message[T], error) {
-	expr, err := expression.NewBuilder().
+	builder := expression.NewBuilder().
 		WithUpdate(expression.
 			Add(expression.Name("version"), expression.Value(1)).
 			Add(expression.Name("receive_count"), expression.Value(1)).
 			Set(expression.Name("last_updated_timestamp"), expression.Value(item.LastUpdatedTimestamp)).
 			Set(expression.Name("queue_peek_timestamp"), expression.Value(item.PeekFromQueueTimestamp)).
 			Set(expression.Name("status"), expression.Value(item.Status))).
-		WithCondition(expression.Name("version").Equal(expression.Value(item.Version))).
-		Build()
+		WithCondition(expression.Name("version").Equal(expression.Value(item.Version)))
+	expr, err := c.buildExpression(builder)
 	if err != nil {
-		return nil, &BuildingExpressionError{Cause: err}
+		return nil, BuildingExpressionError{Cause: err}
 	}
 	updated, err := c.updateDynamoDBItem(ctx, item.ID, &expr)
 	if err != nil {
@@ -350,15 +356,15 @@ func (c *client[T]) UpdateMessageAsVisible(ctx context.Context, params *UpdateMe
 	if err != nil {
 		return &UpdateMessageAsVisibleOutput[T]{}, err
 	}
-	expr, err := expression.NewBuilder().
+	builder := expression.NewBuilder().
 		WithUpdate(expression.
 			Add(expression.Name("version"), expression.Value(1)).
 			Set(expression.Name("last_updated_timestamp"), expression.Value(message.LastUpdatedTimestamp)).
 			Set(expression.Name("status"), expression.Value(message.Status))).
-		WithCondition(expression.Name("version").Equal(expression.Value(message.Version))).
-		Build()
+		WithCondition(expression.Name("version").Equal(expression.Value(message.Version)))
+	expr, err := c.buildExpression(builder)
 	if err != nil {
-		return &UpdateMessageAsVisibleOutput[T]{}, &BuildingExpressionError{Cause: err}
+		return &UpdateMessageAsVisibleOutput[T]{}, BuildingExpressionError{Cause: err}
 	}
 	retried, err := c.updateDynamoDBItem(ctx, message.ID, &expr)
 	if err != nil {
@@ -436,7 +442,7 @@ func (c *client[T]) MoveMessageToDLQ(ctx context.Context, params *MoveMessageToD
 			Version:              message.Version,
 		}, nil
 	}
-	expr, err := expression.NewBuilder().
+	builder := expression.NewBuilder().
 		WithUpdate(expression.
 			Add(expression.Name("version"), expression.Value(1)).
 			Set(expression.Name("status"), expression.Value(message.Status)).
@@ -445,10 +451,10 @@ func (c *client[T]) MoveMessageToDLQ(ctx context.Context, params *MoveMessageToD
 			Set(expression.Name("last_updated_timestamp"), expression.Value(message.LastUpdatedTimestamp)).
 			Set(expression.Name("queue_add_timestamp"), expression.Value(message.AddToQueueTimestamp)).
 			Set(expression.Name(" queue_peek_timestamp"), expression.Value(message.AddToQueueTimestamp))).
-		WithCondition(expression.Name("version").Equal(expression.Value(message.Version))).
-		Build()
+		WithCondition(expression.Name("version").Equal(expression.Value(message.Version)))
+	expr, err := c.buildExpression(builder)
 	if err != nil {
-		return &MoveMessageToDLQOutput{}, &BuildingExpressionError{Cause: err}
+		return &MoveMessageToDLQOutput{}, BuildingExpressionError{Cause: err}
 	}
 	item, err := c.updateDynamoDBItem(ctx, params.ID, &expr)
 	if err != nil {
@@ -491,7 +497,7 @@ func (c *client[T]) RedriveMessage(ctx context.Context, params *RedriveMessageIn
 	if err != nil {
 		return &RedriveMessageOutput{}, err
 	}
-	expr, err := expression.NewBuilder().
+	builder := expression.NewBuilder().
 		WithUpdate(expression.Add(
 			expression.Name("version"),
 			expression.Value(1),
@@ -509,10 +515,10 @@ func (c *client[T]) RedriveMessage(ctx context.Context, params *RedriveMessageIn
 			expression.Value(message.AddToQueueTimestamp),
 		)).
 		WithCondition(expression.Name("version").
-			Equal(expression.Value(message.Version))).
-		Build()
+			Equal(expression.Value(message.Version)))
+	expr, err := c.buildExpression(builder)
 	if err != nil {
-		return nil, &BuildingExpressionError{Cause: err}
+		return nil, BuildingExpressionError{Cause: err}
 	}
 	updated, err := c.updateDynamoDBItem(ctx, params.ID, &expr)
 	if err != nil {
@@ -542,11 +548,11 @@ func (c *client[T]) GetQueueStats(ctx context.Context, params *GetQueueStatsInpu
 		params = &GetQueueStatsInput{}
 	}
 
-	expr, err := expression.NewBuilder().
-		WithKeyCondition(expression.KeyEqual(expression.Key("queue_type"), expression.Value(QueueTypeStandard))).
-		Build()
+	builder := expression.NewBuilder().
+		WithKeyCondition(expression.KeyEqual(expression.Key("queue_type"), expression.Value(QueueTypeStandard)))
+	expr, err := c.buildExpression(builder)
 	if err != nil {
-		return &GetQueueStatsOutput{}, &BuildingExpressionError{Cause: err}
+		return &GetQueueStatsOutput{}, BuildingExpressionError{Cause: err}
 	}
 
 	stats, err := c.queryAndCalculateQueueStats(ctx, expr)
@@ -636,11 +642,11 @@ func (c *client[T]) GetDLQStats(ctx context.Context, params *GetDLQStatsInput) (
 	if params == nil {
 		params = &GetDLQStatsInput{}
 	}
-	expr, err := expression.NewBuilder().
-		WithKeyCondition(expression.KeyEqual(expression.Key("queue_type"), expression.Value(QueueTypeDLQ))).
-		Build()
+	builder := expression.NewBuilder().
+		WithKeyCondition(expression.KeyEqual(expression.Key("queue_type"), expression.Value(QueueTypeDLQ)))
+	expr, err := c.buildExpression(builder)
 	if err != nil {
-		return &GetDLQStatsOutput{}, &BuildingExpressionError{Cause: err}
+		return &GetDLQStatsOutput{}, BuildingExpressionError{Cause: err}
 	}
 
 	stats, err := c.queryAndCalculateDLQStats(ctx, expr)

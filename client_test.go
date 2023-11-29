@@ -11,6 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
+	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/expression"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	uuid "github.com/satori/go.uuid"
@@ -1089,6 +1090,47 @@ func TestTestDynamoMQClientReturnDynamoDBAPIError(t *testing.T) {
 	}
 }
 
+func TestTestDynamoMQClientReturnBuildingExpressionError(t *testing.T) {
+	t.Parallel()
+	buildExpression := func(b expression.Builder) (expression.Expression, error) {
+		return expression.Expression{}, BuildingExpressionError{Cause: test.ErrorTest}
+	}
+	client, err := NewFromConfig[test.MessageData](aws.Config{}, WithBuildExpression(buildExpression))
+	if err != nil {
+		t.Fatalf("failed to create DynamoMQ client: %s\n", err)
+	}
+	type testCase struct {
+		name      string
+		operation func() (any, error)
+	}
+	tests := []testCase{
+		{
+			name: "ReceiveMessage should return BuildingExpressionError",
+			operation: func() (any, error) {
+				return client.ReceiveMessage(context.Background(), &ReceiveMessageInput{})
+			},
+		},
+		{
+			name: "GetQueueStats should return BuildingExpressionError",
+			operation: func() (any, error) {
+				return client.GetQueueStats(context.Background(), &GetQueueStatsInput{})
+			},
+		},
+		{
+			name: "GetDLQStats should return BuildingExpressionError",
+			operation: func() (any, error) {
+				return client.GetDLQStats(context.Background(), &GetDLQStatsInput{})
+			},
+		},
+	}
+	for _, tt := range tests {
+		_, err := tt.operation()
+		if _, ok := assertErrorType[BuildingExpressionError](err); !ok {
+			t.Errorf("error = %v, want %v", "BuildingExpressionError", reflect.TypeOf(err))
+		}
+	}
+}
+
 func assertErrorType[T error](err error) (T, bool) {
 	var wantErr T
 	if errors.As(err, &wantErr) {
@@ -1117,6 +1159,14 @@ func WithMarshalMap(f func(in interface{}) (map[string]types.AttributeValue, err
 	return func(s *ClientOptions) {
 		if f != nil {
 			s.MarshalMap = f
+		}
+	}
+}
+
+func WithBuildExpression(f func(b expression.Builder) (expression.Expression, error)) func(s *ClientOptions) {
+	return func(s *ClientOptions) {
+		if f != nil {
+			s.BuildExpression = f
 		}
 	}
 }
