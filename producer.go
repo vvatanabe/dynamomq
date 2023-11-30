@@ -3,7 +3,7 @@ package dynamomq
 import (
 	"context"
 
-	uuid "github.com/satori/go.uuid"
+	"github.com/google/uuid"
 )
 
 type ProducerOptions struct {
@@ -18,7 +18,7 @@ func WithIDGenerator(idGenerator func() string) func(o *ProducerOptions) {
 
 func NewProducer[T any](client Client[T], opts ...func(o *ProducerOptions)) *Producer[T] {
 	o := &ProducerOptions{
-		IDGenerator: uuid.NewV4().String,
+		IDGenerator: uuid.NewString,
 	}
 	for _, opt := range opts {
 		opt(o)

@@ -14,7 +14,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/expression"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
-	uuid "github.com/satori/go.uuid"
+	"github.com/google/uuid"
 	"github.com/upsidr/dynamotest"
 	"github.com/vvatanabe/dynamomq"
 	"github.com/vvatanabe/dynamomq/internal/clock"
@@ -24,7 +24,7 @@ import (
 
 func SetupDynamoDB(t *testing.T, initialData ...*types.PutRequest) (tableName string, client *dynamodb.Client, clean func()) {
 	client, clean = dynamotest.NewDynamoDB(t)
-	tableName = dynamomq.DefaultTableName + "-" + uuid.NewV4().String()
+	tableName = dynamomq.DefaultTableName + "-" + uuid.NewString()
 	dynamotest.PrepTable(t, client, dynamotest.InitialTableSetup{
 		Table: &dynamodb.CreateTableInput{
 			AttributeDefinitions: []types.AttributeDefinition{
