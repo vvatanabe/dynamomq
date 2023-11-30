@@ -51,7 +51,7 @@ func (f CommandFactory) CreateRootCommand(flgs *Flags) *cobra.Command {
 			ctx := context.Background()
 			client, cfg, err := f.CreateDynamoMQClient(ctx, flgs)
 			if err != nil {
-				return fmt.Errorf("... %v\n", err)
+				return err
 			}
 
 			fmt.Println("... AWS session is properly established!")
@@ -98,9 +98,9 @@ func (f CommandFactory) CreateRootCommand(flgs *Flags) *cobra.Command {
 				default:
 					// 4. Now, you can do anything with the input string that you need to.
 					// Like, output it to the user.
-					err := c.Run(context.Background(), command, params)
-					if err != nil {
-						printError(err)
+					runErr := c.Run(context.Background(), command, params)
+					if runErr != nil {
+						printError(runErr)
 					}
 				}
 				if quit {
@@ -115,14 +115,14 @@ func (f CommandFactory) CreateRootCommand(flgs *Flags) *cobra.Command {
 func createDynamoMQClient[T any](ctx context.Context, flags *Flags) (dynamomq.Client[T], aws.Config, error) {
 	cfg, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
-		return nil, cfg, fmt.Errorf("failed to load aws config: %s", err)
+		return nil, cfg, fmt.Errorf("failed to load aws config: %w", err)
 	}
 	client, err := dynamomq.NewFromConfig[T](cfg,
 		dynamomq.WithTableName(flags.TableName),
 		dynamomq.WithQueueingIndexName(flags.IndexName),
 		dynamomq.WithAWSBaseEndpoint(flags.EndpointURL))
 	if err != nil {
-		return nil, cfg, fmt.Errorf("AWS session could not be established!: %v", err)
+		return nil, cfg, fmt.Errorf("AWS session could not be established!: %w", err)
 	}
 	return client, cfg, nil
 }

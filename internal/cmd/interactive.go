@@ -50,7 +50,7 @@ func (c *Interactive) Run(ctx context.Context, command string, params []string) 
 	case "invalid":
 		err = c.invalid(ctx, params)
 	default:
-		err = errors.New(" ... unrecognized command!")
+		err = errors.New("unrecognized command")
 	}
 	return
 }
@@ -101,7 +101,7 @@ func (c *Interactive) system(_ context.Context, _ []string) error {
 }
 
 func (c *Interactive) ls(ctx context.Context, _ []string) error {
-	out, err := c.Client.ListMessages(ctx, &dynamomq.ListMessagesInput{Size: 10})
+	out, err := c.Client.ListMessages(ctx, &dynamomq.ListMessagesInput{Size: dynamomq.DefaultMaxListMessages})
 	if err != nil {
 		return err
 	}
@@ -117,7 +117,7 @@ func (c *Interactive) ls(ctx context.Context, _ []string) error {
 }
 
 func (c *Interactive) purge(ctx context.Context, _ []string) error {
-	out, err := c.Client.ListMessages(ctx, &dynamomq.ListMessagesInput{Size: 10})
+	out, err := c.Client.ListMessages(ctx, &dynamomq.ListMessagesInput{Size: dynamomq.DefaultMaxListMessages})
 	if err != nil {
 		return err
 	}
@@ -127,11 +127,11 @@ func (c *Interactive) purge(ctx context.Context, _ []string) error {
 	}
 	fmt.Println("List messages of removed IDs:")
 	for _, m := range out.Messages {
-		_, err := c.Client.DeleteMessage(ctx, &dynamomq.DeleteMessageInput{
+		_, delErr := c.Client.DeleteMessage(ctx, &dynamomq.DeleteMessageInput{
 			ID: m.ID,
 		})
-		if err != nil {
-			return errorWithID(err, m.ID)
+		if delErr != nil {
+			return errorWithID(delErr, m.ID)
 		}
 		fmt.Printf("* ID: %s\n", m.ID)
 	}

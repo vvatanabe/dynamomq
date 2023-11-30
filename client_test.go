@@ -16,7 +16,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	uuid "github.com/satori/go.uuid"
 	"github.com/upsidr/dynamotest"
-	. "github.com/vvatanabe/dynamomq"
+	"github.com/vvatanabe/dynamomq"
 	"github.com/vvatanabe/dynamomq/internal/clock"
 	"github.com/vvatanabe/dynamomq/internal/mock"
 	"github.com/vvatanabe/dynamomq/internal/test"
@@ -24,7 +24,7 @@ import (
 
 func SetupDynamoDB(t *testing.T, initialData ...*types.PutRequest) (tableName string, client *dynamodb.Client, clean func()) {
 	client, clean = dynamotest.NewDynamoDB(t)
-	tableName = DefaultTableName + "-" + uuid.NewV4().String()
+	tableName = dynamomq.DefaultTableName + "-" + uuid.NewV4().String()
 	dynamotest.PrepTable(t, client, dynamotest.InitialTableSetup{
 		Table: &dynamodb.CreateTableInput{
 			AttributeDefinitions: []types.AttributeDefinition{
@@ -91,7 +91,7 @@ type ClientTestCase[Args any, Want any] struct {
 
 func TestDynamoMQClientShouldReturnError(t *testing.T) {
 	t.Parallel()
-	client, cancel := prepareTestClient(t, context.Background(),
+	client, cancel := prepareTestClient(context.Background(), t,
 		NewSetupFunc(newPutRequestWithReadyItem("A-101", clock.Now())), mock.Clock{}, false, nil, nil, nil)
 	defer cancel()
 	type testCase struct {
@@ -106,18 +106,18 @@ func TestDynamoMQClientShouldReturnError(t *testing.T) {
 				_, err := client.SendMessage(context.Background(), nil)
 				return err
 			},
-			wantError: &IDNotProvidedError{},
+			wantError: &dynamomq.IDNotProvidedError{},
 		},
 		{
 			name: "SendMessage should return IDDuplicatedError",
 			operation: func() error {
-				_, err := client.SendMessage(context.Background(), &SendMessageInput[test.MessageData]{
+				_, err := client.SendMessage(context.Background(), &dynamomq.SendMessageInput[test.MessageData]{
 					ID:   "A-101",
 					Data: test.NewMessageData("A-101"),
 				})
 				return err
 			},
-			wantError: &IDDuplicatedError{},
+			wantError: &dynamomq.IDDuplicatedError{},
 		},
 		{
 			name: "UpdateMessageAsVisible should return IDNotProvidedError",
@@ -125,17 +125,17 @@ func TestDynamoMQClientShouldReturnError(t *testing.T) {
 				_, err := client.UpdateMessageAsVisible(context.Background(), nil)
 				return err
 			},
-			wantError: &IDNotProvidedError{},
+			wantError: &dynamomq.IDNotProvidedError{},
 		},
 		{
 			name: "UpdateMessageAsVisible should return IDNotFoundError",
 			operation: func() error {
-				_, err := client.UpdateMessageAsVisible(context.Background(), &UpdateMessageAsVisibleInput{
+				_, err := client.UpdateMessageAsVisible(context.Background(), &dynamomq.UpdateMessageAsVisibleInput{
 					ID: "B-101",
 				})
 				return err
 			},
-			wantError: &IDNotFoundError{},
+			wantError: &dynamomq.IDNotFoundError{},
 		},
 		{
 			name: "MoveMessageToDLQ should return IDNotProvidedError",
@@ -143,17 +143,17 @@ func TestDynamoMQClientShouldReturnError(t *testing.T) {
 				_, err := client.MoveMessageToDLQ(context.Background(), nil)
 				return err
 			},
-			wantError: &IDNotProvidedError{},
+			wantError: &dynamomq.IDNotProvidedError{},
 		},
 		{
 			name: "MoveMessageToDLQ should return IDNotFoundError",
 			operation: func() error {
-				_, err := client.MoveMessageToDLQ(context.Background(), &MoveMessageToDLQInput{
+				_, err := client.MoveMessageToDLQ(context.Background(), &dynamomq.MoveMessageToDLQInput{
 					ID: "B-101",
 				})
 				return err
 			},
-			wantError: &IDNotFoundError{},
+			wantError: &dynamomq.IDNotFoundError{},
 		},
 		{
 			name: "RedriveMessage should return IDNotProvidedError",
@@ -161,17 +161,17 @@ func TestDynamoMQClientShouldReturnError(t *testing.T) {
 				_, err := client.RedriveMessage(context.Background(), nil)
 				return err
 			},
-			wantError: &IDNotProvidedError{},
+			wantError: &dynamomq.IDNotProvidedError{},
 		},
 		{
 			name: "RedriveMessage should return IDNotFoundError",
 			operation: func() error {
-				_, err := client.RedriveMessage(context.Background(), &RedriveMessageInput{
+				_, err := client.RedriveMessage(context.Background(), &dynamomq.RedriveMessageInput{
 					ID: "B-101",
 				})
 				return err
 			},
-			wantError: &IDNotFoundError{},
+			wantError: &dynamomq.IDNotFoundError{},
 		},
 		{
 			name: "DeleteMessage should return IDNotProvidedError",
@@ -179,7 +179,7 @@ func TestDynamoMQClientShouldReturnError(t *testing.T) {
 				_, err := client.DeleteMessage(context.Background(), nil)
 				return err
 			},
-			wantError: &IDNotProvidedError{},
+			wantError: &dynamomq.IDNotProvidedError{},
 		},
 		{
 			name: "GetMessage should return IDNotProvidedError",
@@ -187,7 +187,7 @@ func TestDynamoMQClientShouldReturnError(t *testing.T) {
 				_, err := client.GetMessage(context.Background(), nil)
 				return err
 			},
-			wantError: &IDNotProvidedError{},
+			wantError: &dynamomq.IDNotProvidedError{},
 		},
 		{
 			name: "ReplaceMessage should return IDNotProvidedError",
@@ -195,7 +195,7 @@ func TestDynamoMQClientShouldReturnError(t *testing.T) {
 				_, err := client.ReplaceMessage(context.Background(), nil)
 				return err
 			},
-			wantError: &IDNotProvidedError{},
+			wantError: &dynamomq.IDNotProvidedError{},
 		},
 	}
 	for _, tt := range tests {
@@ -205,40 +205,40 @@ func TestDynamoMQClientShouldReturnError(t *testing.T) {
 
 func TestDynamoMQClientSendMessage(t *testing.T) {
 	t.Parallel()
-	tests := []ClientTestCase[*SendMessageInput[test.MessageData], *SendMessageOutput[test.MessageData]]{
+	tests := []ClientTestCase[*dynamomq.SendMessageInput[test.MessageData], *dynamomq.SendMessageOutput[test.MessageData]]{
 		{
 			name:  "should succeed when id is not duplicated",
 			setup: NewSetupFunc(),
 			sdkClock: mock.Clock{
 				T: test.DefaultTestDate,
 			},
-			args: &SendMessageInput[test.MessageData]{
+			args: &dynamomq.SendMessageInput[test.MessageData]{
 				ID:   "A-101",
 				Data: test.NewMessageData("A-101"),
 			},
-			want: &SendMessageOutput[test.MessageData]{
-				Result: &Result{
+			want: &dynamomq.SendMessageOutput[test.MessageData]{
+				Result: &dynamomq.Result{
 					ID:                   "A-101",
-					Status:               StatusReady,
+					Status:               dynamomq.StatusReady,
 					LastUpdatedTimestamp: clock.FormatRFC3339Nano(test.DefaultTestDate),
 					Version:              1,
 				},
-				Message: func() *Message[test.MessageData] {
+				Message: func() *dynamomq.Message[test.MessageData] {
 					s := NewTestMessageItemAsReady("A-101", test.DefaultTestDate)
 					return s
 				}(),
 			},
 		},
 	}
-	runTestsParallel[*SendMessageInput[test.MessageData], *SendMessageOutput[test.MessageData]](t, "SendMessage()", tests,
-		func(client Client[test.MessageData], args *SendMessageInput[test.MessageData]) (*SendMessageOutput[test.MessageData], error) {
+	runTestsParallel[*dynamomq.SendMessageInput[test.MessageData], *dynamomq.SendMessageOutput[test.MessageData]](t, "SendMessage()", tests,
+		func(client dynamomq.Client[test.MessageData], args *dynamomq.SendMessageInput[test.MessageData]) (*dynamomq.SendMessageOutput[test.MessageData], error) {
 			return client.SendMessage(context.Background(), args)
 		})
 }
 
 func TestDynamoMQClientReceiveMessage(t *testing.T) {
 	t.Parallel()
-	tests := []ClientTestCase[any, *ReceiveMessageOutput[test.MessageData]]{
+	tests := []ClientTestCase[any, *dynamomq.ReceiveMessageOutput[test.MessageData]]{
 		{
 			name: "should return EmptyQueueError when queue is empty",
 			setup: NewSetupFunc(
@@ -246,7 +246,7 @@ func TestDynamoMQClientReceiveMessage(t *testing.T) {
 				newPutRequestWithDLQItem("A-303", clock.Now()),
 			),
 			want:    nil,
-			wantErr: &EmptyQueueError{},
+			wantErr: &dynamomq.EmptyQueueError{},
 		},
 		{
 			name:  "should return message when exists ready message",
@@ -254,7 +254,7 @@ func TestDynamoMQClientReceiveMessage(t *testing.T) {
 			sdkClock: mock.Clock{
 				T: test.DefaultTestDate.Add(10 * time.Second),
 			},
-			want: func() *ReceiveMessageOutput[test.MessageData] {
+			want: func() *dynamomq.ReceiveMessageOutput[test.MessageData] {
 				return NewMessageFromReadyToProcessing("B-202", test.DefaultTestDate, test.DefaultTestDate.Add(10*time.Second))
 			}(),
 			wantErr: nil,
@@ -265,13 +265,13 @@ func TestDynamoMQClientReceiveMessage(t *testing.T) {
 			sdkClock: mock.Clock{
 				T: test.DefaultTestDate.Add(10 * time.Minute).Add(1 * time.Second),
 			},
-			want: func() *ReceiveMessageOutput[test.MessageData] {
+			want: func() *dynamomq.ReceiveMessageOutput[test.MessageData] {
 				m := NewTestMessageItemAsProcessing("B-202", test.DefaultTestDate)
 				MarkAsProcessing(m, test.DefaultTestDate.Add(10*time.Minute).Add(1*time.Second))
 				m.Version = 2
 				m.ReceiveCount = 1
-				r := &ReceiveMessageOutput[test.MessageData]{
-					Result: &Result{
+				r := &dynamomq.ReceiveMessageOutput[test.MessageData]{
+					Result: &dynamomq.Result{
 						ID:                   m.ID,
 						Status:               m.Status,
 						LastUpdatedTimestamp: m.LastUpdatedTimestamp,
@@ -291,11 +291,11 @@ func TestDynamoMQClientReceiveMessage(t *testing.T) {
 				T: test.DefaultTestDate.Add(59 * time.Second),
 			},
 			want:    nil,
-			wantErr: &EmptyQueueError{},
+			wantErr: &dynamomq.EmptyQueueError{},
 		},
 	}
-	runTestsParallel[any, *ReceiveMessageOutput[test.MessageData]](t, "ReceiveMessage()", tests,
-		func(client Client[test.MessageData], _ any) (*ReceiveMessageOutput[test.MessageData], error) {
+	runTestsParallel[any, *dynamomq.ReceiveMessageOutput[test.MessageData]](t, "ReceiveMessage()", tests,
+		func(client dynamomq.Client[test.MessageData], _ any) (*dynamomq.ReceiveMessageOutput[test.MessageData], error) {
 			return client.ReceiveMessage(context.Background(), nil)
 		})
 }
@@ -303,7 +303,7 @@ func TestDynamoMQClientReceiveMessage(t *testing.T) {
 func testDynamoMQClientReceiveMessageSequence(t *testing.T, useFIFO bool) {
 	now := test.DefaultTestDate.Add(10 * time.Second)
 	ctx := context.Background()
-	client, clean := prepareTestClient(t, ctx, NewSetupFunc(
+	client, clean := prepareTestClient(ctx, t, NewSetupFunc(
 		newPutRequestWithReadyItem("A-101", test.DefaultTestDate.Add(3*time.Second)),
 		newPutRequestWithReadyItem("A-202", test.DefaultTestDate.Add(2*time.Second)),
 		newPutRequestWithReadyItem("A-303", test.DefaultTestDate.Add(1*time.Second))),
@@ -312,14 +312,14 @@ func testDynamoMQClientReceiveMessageSequence(t *testing.T, useFIFO bool) {
 		}, useFIFO, nil, nil, nil)
 	defer clean()
 
-	wants := []*ReceiveMessageOutput[test.MessageData]{
+	wants := []*dynamomq.ReceiveMessageOutput[test.MessageData]{
 		NewMessageFromReadyToProcessing("A-303", test.DefaultTestDate.Add(1*time.Second), now),
 		NewMessageFromReadyToProcessing("A-202", test.DefaultTestDate.Add(2*time.Second), now),
 		NewMessageFromReadyToProcessing("A-101", test.DefaultTestDate.Add(3*time.Second), now),
 	}
 
 	for i, want := range wants {
-		result, err := client.ReceiveMessage(ctx, &ReceiveMessageInput{})
+		result, err := client.ReceiveMessage(ctx, &dynamomq.ReceiveMessageInput{})
 		test.AssertError(t, err, nil, fmt.Sprintf("ReceiveMessage() [%d-1]", i))
 		test.AssertDeepEqual(t, result, want, fmt.Sprintf("ReceiveMessage() [%d-2]", i))
 
@@ -327,17 +327,17 @@ func testDynamoMQClientReceiveMessageSequence(t *testing.T, useFIFO bool) {
 			return
 		}
 
-		_, err = client.ReceiveMessage(ctx, &ReceiveMessageInput{})
-		test.AssertError(t, err, &EmptyQueueError{}, fmt.Sprintf("ReceiveMessage() [%d-3]", i))
+		_, err = client.ReceiveMessage(ctx, &dynamomq.ReceiveMessageInput{})
+		test.AssertError(t, err, &dynamomq.EmptyQueueError{}, fmt.Sprintf("ReceiveMessage() [%d-3]", i))
 
-		_, err = client.DeleteMessage(ctx, &DeleteMessageInput{
+		_, err = client.DeleteMessage(ctx, &dynamomq.DeleteMessageInput{
 			ID: result.ID,
 		})
 		test.AssertError(t, err, nil, fmt.Sprintf("DeleteMessage() [%d]", i))
 	}
 
-	_, err := client.ReceiveMessage(ctx, &ReceiveMessageInput{})
-	test.AssertError(t, err, &EmptyQueueError{}, "ReceiveMessage() [last]")
+	_, err := client.ReceiveMessage(ctx, &dynamomq.ReceiveMessageInput{})
+	test.AssertError(t, err, &dynamomq.EmptyQueueError{}, "ReceiveMessage() [last]")
 }
 
 func TestDynamoMQClientReceiveMessageUseFIFO(t *testing.T) {
@@ -356,7 +356,7 @@ func TestDynamoMQClientUpdateMessageAsVisible(t *testing.T) {
 		id string
 	}
 	now := test.DefaultTestDate.Add(10 * time.Second)
-	tests := []ClientTestCase[args, *UpdateMessageAsVisibleOutput[test.MessageData]]{
+	tests := []ClientTestCase[args, *dynamomq.UpdateMessageAsVisibleOutput[test.MessageData]]{
 		{
 			name:  "should succeed when id is found",
 			setup: NewSetupFunc(newPutRequestWithProcessingItem("A-101", now)),
@@ -366,14 +366,14 @@ func TestDynamoMQClientUpdateMessageAsVisible(t *testing.T) {
 			args: args{
 				id: "A-101",
 			},
-			want: &UpdateMessageAsVisibleOutput[test.MessageData]{
-				Result: &Result{
+			want: &dynamomq.UpdateMessageAsVisibleOutput[test.MessageData]{
+				Result: &dynamomq.Result{
 					ID:                   "A-101",
-					Status:               StatusReady,
+					Status:               dynamomq.StatusReady,
 					LastUpdatedTimestamp: clock.FormatRFC3339Nano(now),
 					Version:              2,
 				},
-				Message: func() *Message[test.MessageData] {
+				Message: func() *dynamomq.Message[test.MessageData] {
 					m := NewTestMessageItemAsProcessing("A-101", now)
 					MarkAsReady(m, now)
 					m.Version = 2
@@ -390,17 +390,17 @@ func TestDynamoMQClientUpdateMessageAsVisible(t *testing.T) {
 			args: args{
 				id: "A-101",
 			},
-			want: &UpdateMessageAsVisibleOutput[test.MessageData]{},
-			wantErr: InvalidStateTransitionError{
+			want: &dynamomq.UpdateMessageAsVisibleOutput[test.MessageData]{},
+			wantErr: dynamomq.InvalidStateTransitionError{
 				Msg:       "message is currently ready",
 				Operation: "mark as ready",
-				Current:   StatusReady,
+				Current:   dynamomq.StatusReady,
 			},
 		},
 	}
-	runTestsParallel[args, *UpdateMessageAsVisibleOutput[test.MessageData]](t, "UpdateMessageAsVisible()", tests,
-		func(client Client[test.MessageData], args args) (*UpdateMessageAsVisibleOutput[test.MessageData], error) {
-			return client.UpdateMessageAsVisible(context.Background(), &UpdateMessageAsVisibleInput{
+	runTestsParallel[args, *dynamomq.UpdateMessageAsVisibleOutput[test.MessageData]](t, "UpdateMessageAsVisible()", tests,
+		func(client dynamomq.Client[test.MessageData], args args) (*dynamomq.UpdateMessageAsVisibleOutput[test.MessageData], error) {
+			return client.UpdateMessageAsVisible(context.Background(), &dynamomq.UpdateMessageAsVisibleInput{
 				ID: args.id,
 			})
 		})
@@ -411,14 +411,14 @@ func TestDynamoMQClientDeleteMessage(t *testing.T) {
 	type args struct {
 		id string
 	}
-	tests := []ClientTestCase[args, *DeleteMessageOutput]{
+	tests := []ClientTestCase[args, *dynamomq.DeleteMessageOutput]{
 		{
 			name:  "should not return error when not existing id",
 			setup: NewSetupFunc(newPutRequestWithReadyItem("A-101", clock.Now())),
 			args: args{
 				id: "B-101",
 			},
-			want: &DeleteMessageOutput{},
+			want: &dynamomq.DeleteMessageOutput{},
 		},
 		{
 			name:  "should succeed when id is found",
@@ -426,12 +426,12 @@ func TestDynamoMQClientDeleteMessage(t *testing.T) {
 			args: args{
 				id: "A-101",
 			},
-			want: &DeleteMessageOutput{},
+			want: &dynamomq.DeleteMessageOutput{},
 		},
 	}
-	runTestsParallel[args, *DeleteMessageOutput](t, "DeleteMessage()", tests,
-		func(client Client[test.MessageData], args args) (*DeleteMessageOutput, error) {
-			return client.DeleteMessage(context.Background(), &DeleteMessageInput{
+	runTestsParallel[args, *dynamomq.DeleteMessageOutput](t, "DeleteMessage()", tests,
+		func(client dynamomq.Client[test.MessageData], args args) (*dynamomq.DeleteMessageOutput, error) {
+			return client.DeleteMessage(context.Background(), &dynamomq.DeleteMessageInput{
 				ID: args.id,
 			})
 		})
@@ -439,16 +439,16 @@ func TestDynamoMQClientDeleteMessage(t *testing.T) {
 
 func TestDynamoMQClientMoveMessageToDLQ(t *testing.T) {
 	t.Parallel()
-	tests := []ClientTestCase[*MoveMessageToDLQInput, *MoveMessageToDLQOutput]{
+	tests := []ClientTestCase[*dynamomq.MoveMessageToDLQInput, *dynamomq.MoveMessageToDLQOutput]{
 		{
 			name:  "should succeed when id is found and queue type is standard",
 			setup: NewSetupFunc(newPutRequestWithDLQItem("A-101", test.DefaultTestDate)),
-			args: &MoveMessageToDLQInput{
+			args: &dynamomq.MoveMessageToDLQInput{
 				ID: "A-101",
 			},
-			want: func() *MoveMessageToDLQOutput {
+			want: func() *dynamomq.MoveMessageToDLQOutput {
 				s := NewTestMessageItemAsDLQ("A-101", test.DefaultTestDate)
-				r := &MoveMessageToDLQOutput{
+				r := &dynamomq.MoveMessageToDLQOutput{
 					ID:                   s.ID,
 					Status:               s.Status,
 					LastUpdatedTimestamp: s.LastUpdatedTimestamp,
@@ -464,14 +464,14 @@ func TestDynamoMQClientMoveMessageToDLQ(t *testing.T) {
 			sdkClock: mock.Clock{
 				T: test.DefaultTestDate.Add(10 * time.Second),
 			},
-			args: &MoveMessageToDLQInput{
+			args: &dynamomq.MoveMessageToDLQInput{
 				ID: "A-101",
 			},
-			want: func() *MoveMessageToDLQOutput {
+			want: func() *dynamomq.MoveMessageToDLQOutput {
 				m := NewTestMessageItemAsReady("A-101", test.DefaultTestDate)
 				MarkAsMovedToDLQ(m, test.DefaultTestDate.Add(10*time.Second))
 				m.Version = 2
-				r := &MoveMessageToDLQOutput{
+				r := &dynamomq.MoveMessageToDLQOutput{
 					ID:                   m.ID,
 					Status:               m.Status,
 					LastUpdatedTimestamp: m.LastUpdatedTimestamp,
@@ -482,8 +482,8 @@ func TestDynamoMQClientMoveMessageToDLQ(t *testing.T) {
 			wantErr: nil,
 		},
 	}
-	runTestsParallel[*MoveMessageToDLQInput, *MoveMessageToDLQOutput](t, "MoveMessageToDLQ()", tests,
-		func(client Client[test.MessageData], args *MoveMessageToDLQInput) (*MoveMessageToDLQOutput, error) {
+	runTestsParallel[*dynamomq.MoveMessageToDLQInput, *dynamomq.MoveMessageToDLQOutput](t, "MoveMessageToDLQ()", tests,
+		func(client dynamomq.Client[test.MessageData], args *dynamomq.MoveMessageToDLQInput) (*dynamomq.MoveMessageToDLQOutput, error) {
 			return client.MoveMessageToDLQ(context.Background(), args)
 		})
 }
@@ -493,7 +493,7 @@ func TestDynamoMQClientRedriveMessage(t *testing.T) {
 	type args struct {
 		id string
 	}
-	tests := []ClientTestCase[args, *RedriveMessageOutput]{
+	tests := []ClientTestCase[args, *dynamomq.RedriveMessageOutput]{
 		{
 			name:  "should succeed when id is found and status is ready",
 			setup: NewSetupFunc(newPutRequestWithDLQItem("A-101", test.DefaultTestDate)),
@@ -503,9 +503,9 @@ func TestDynamoMQClientRedriveMessage(t *testing.T) {
 			args: args{
 				id: "A-101",
 			},
-			want: &RedriveMessageOutput{
+			want: &dynamomq.RedriveMessageOutput{
 				ID:                   "A-101",
-				Status:               StatusReady,
+				Status:               dynamomq.StatusReady,
 				LastUpdatedTimestamp: clock.FormatRFC3339Nano(test.DefaultTestDate.Add(10 * time.Second)),
 				Version:              2,
 			},
@@ -519,11 +519,11 @@ func TestDynamoMQClientRedriveMessage(t *testing.T) {
 			args: args{
 				id: "A-101",
 			},
-			want: &RedriveMessageOutput{},
-			wantErr: InvalidStateTransitionError{
+			want: &dynamomq.RedriveMessageOutput{},
+			wantErr: dynamomq.InvalidStateTransitionError{
 				Msg:       "can only redrive messages from DLQ",
 				Operation: "mark as restored from DLQ",
-				Current:   StatusReady,
+				Current:   dynamomq.StatusReady,
 			},
 		},
 		{
@@ -541,17 +541,17 @@ func TestDynamoMQClientRedriveMessage(t *testing.T) {
 			args: args{
 				id: "A-101",
 			},
-			want: &RedriveMessageOutput{},
-			wantErr: InvalidStateTransitionError{
+			want: &dynamomq.RedriveMessageOutput{},
+			wantErr: dynamomq.InvalidStateTransitionError{
 				Msg:       "can only redrive messages from READY",
 				Operation: "mark as restored from DLQ",
-				Current:   StatusProcessing,
+				Current:   dynamomq.StatusProcessing,
 			},
 		},
 	}
-	runTestsParallel[args, *RedriveMessageOutput](t, "RedriveMessage()", tests,
-		func(client Client[test.MessageData], args args) (*RedriveMessageOutput, error) {
-			return client.RedriveMessage(context.Background(), &RedriveMessageInput{
+	runTestsParallel[args, *dynamomq.RedriveMessageOutput](t, "RedriveMessage()", tests,
+		func(client dynamomq.Client[test.MessageData], args args) (*dynamomq.RedriveMessageOutput, error) {
+			return client.RedriveMessage(context.Background(), &dynamomq.RedriveMessageInput{
 				ID: args.id,
 			})
 		})
@@ -559,11 +559,11 @@ func TestDynamoMQClientRedriveMessage(t *testing.T) {
 
 func TestDynamoMQClientGetQueueStats(t *testing.T) {
 	t.Parallel()
-	tests := []ClientTestCase[any, *GetQueueStatsOutput]{
+	tests := []ClientTestCase[any, *dynamomq.GetQueueStatsOutput]{
 		{
 			name:  "should return empty items stats when no item in standard queue",
 			setup: NewSetupFunc(),
-			want: &GetQueueStatsOutput{
+			want: &dynamomq.GetQueueStatsOutput{
 				First100IDsInQueue:         []string{},
 				First100SelectedIDsInQueue: []string{},
 				TotalRecordsInQueue:        0,
@@ -574,7 +574,7 @@ func TestDynamoMQClientGetQueueStats(t *testing.T) {
 		{
 			name:  "should return one item stats when one item in standard queue",
 			setup: NewSetupFunc(newPutRequestWithReadyItem("A-101", clock.Now())),
-			want: &GetQueueStatsOutput{
+			want: &dynamomq.GetQueueStatsOutput{
 				First100IDsInQueue:         []string{"A-101"},
 				First100SelectedIDsInQueue: []string{},
 				TotalRecordsInQueue:        1,
@@ -585,7 +585,7 @@ func TestDynamoMQClientGetQueueStats(t *testing.T) {
 		{
 			name:  "should return one processing item stats when one item in standard queue",
 			setup: NewSetupFunc(newPutRequestWithProcessingItem("A-101", clock.Now())),
-			want: &GetQueueStatsOutput{
+			want: &dynamomq.GetQueueStatsOutput{
 				First100IDsInQueue:         []string{"A-101"},
 				First100SelectedIDsInQueue: []string{"A-101"},
 				TotalRecordsInQueue:        1,
@@ -601,7 +601,7 @@ func TestDynamoMQClientGetQueueStats(t *testing.T) {
 				newPutRequestWithProcessingItem("C-303", clock.Now().Add(2*time.Second)),
 				newPutRequestWithProcessingItem("D-404", clock.Now().Add(3*time.Second)),
 			),
-			want: &GetQueueStatsOutput{
+			want: &dynamomq.GetQueueStatsOutput{
 				First100IDsInQueue:         []string{"A-101", "B-202", "C-303", "D-404"},
 				First100SelectedIDsInQueue: []string{"C-303", "D-404"},
 				TotalRecordsInQueue:        4,
@@ -610,15 +610,15 @@ func TestDynamoMQClientGetQueueStats(t *testing.T) {
 			},
 		},
 	}
-	runTestsParallel[any, *GetQueueStatsOutput](t, "GetQueueStats()", tests,
-		func(client Client[test.MessageData], _ any) (*GetQueueStatsOutput, error) {
+	runTestsParallel[any, *dynamomq.GetQueueStatsOutput](t, "GetQueueStats()", tests,
+		func(client dynamomq.Client[test.MessageData], _ any) (*dynamomq.GetQueueStatsOutput, error) {
 			return client.GetQueueStats(context.Background(), nil)
 		})
 }
 
 func TestDynamoMQClientGetDLQStats(t *testing.T) {
 	t.Parallel()
-	tests := []ClientTestCase[any, *GetDLQStatsOutput]{
+	tests := []ClientTestCase[any, *dynamomq.GetDLQStatsOutput]{
 		{
 			name: "should return empty items when no items in DLQ",
 			setup: NewSetupFunc(
@@ -626,7 +626,7 @@ func TestDynamoMQClientGetDLQStats(t *testing.T) {
 				newPutRequestWithReadyItem("B-202", clock.Now().Add(time.Second)),
 				newPutRequestWithProcessingItem("C-303", clock.Now().Add(2*time.Second)),
 			),
-			want: &GetDLQStatsOutput{
+			want: &dynamomq.GetDLQStatsOutput{
 				First100IDsInQueue: []string{},
 				TotalRecordsInDLQ:  0,
 			},
@@ -641,14 +641,14 @@ func TestDynamoMQClientGetDLQStats(t *testing.T) {
 				newPutRequestWithDLQItem("E-505", clock.Now().Add(4*time.Second)),
 				newPutRequestWithDLQItem("F-606", clock.Now().Add(5*time.Second)),
 			),
-			want: &GetDLQStatsOutput{
+			want: &dynamomq.GetDLQStatsOutput{
 				First100IDsInQueue: []string{"D-404", "E-505", "F-606"},
 				TotalRecordsInDLQ:  3,
 			},
 		},
 	}
-	runTestsParallel[any, *GetDLQStatsOutput](t, "GetDLQStats()", tests,
-		func(client Client[test.MessageData], _ any) (*GetDLQStatsOutput, error) {
+	runTestsParallel[any, *dynamomq.GetDLQStatsOutput](t, "GetDLQStats()", tests,
+		func(client dynamomq.Client[test.MessageData], _ any) (*dynamomq.GetDLQStatsOutput, error) {
 			return client.GetDLQStats(context.Background(), nil)
 		})
 }
@@ -658,7 +658,7 @@ func TestDynamoMQClientGetMessage(t *testing.T) {
 	type args struct {
 		id string
 	}
-	tests := []ClientTestCase[args, *Message[test.MessageData]]{
+	tests := []ClientTestCase[args, *dynamomq.Message[test.MessageData]]{
 		{
 			name:  "should not return message when id is not found",
 			setup: NewSetupFunc(newPutRequestWithReadyItem("A-101", clock.Now())),
@@ -681,9 +681,9 @@ func TestDynamoMQClientGetMessage(t *testing.T) {
 			wantErr: nil,
 		},
 	}
-	runTestsParallel[args, *Message[test.MessageData]](t, "GetMessage()", tests,
-		func(client Client[test.MessageData], args args) (*Message[test.MessageData], error) {
-			got, err := client.GetMessage(context.Background(), &GetMessageInput{
+	runTestsParallel[args, *dynamomq.Message[test.MessageData]](t, "GetMessage()", tests,
+		func(client dynamomq.Client[test.MessageData], args args) (*dynamomq.Message[test.MessageData], error) {
+			got, err := client.GetMessage(context.Background(), &dynamomq.GetMessageInput{
 				ID: args.id,
 			})
 			return got.Message, err
@@ -693,9 +693,9 @@ func TestDynamoMQClientGetMessage(t *testing.T) {
 func TestDynamoMQClientReplaceMessage(t *testing.T) {
 	t.Parallel()
 	type args struct {
-		message *Message[test.MessageData]
+		message *dynamomq.Message[test.MessageData]
 	}
-	tests := []ClientTestCase[args, *Message[test.MessageData]]{
+	tests := []ClientTestCase[args, *dynamomq.Message[test.MessageData]]{
 		{
 			name:  "should return message when id is duplicated",
 			setup: NewSetupFunc(newPutRequestWithReadyItem("A-101", clock.Now())),
@@ -715,16 +715,16 @@ func TestDynamoMQClientReplaceMessage(t *testing.T) {
 			wantErr: nil,
 		},
 	}
-	runTestsParallel[args, *Message[test.MessageData]](t, "ReplaceMessage()", tests,
-		func(client Client[test.MessageData], args args) (*Message[test.MessageData], error) {
+	runTestsParallel[args, *dynamomq.Message[test.MessageData]](t, "ReplaceMessage()", tests,
+		func(client dynamomq.Client[test.MessageData], args args) (*dynamomq.Message[test.MessageData], error) {
 			ctx := context.Background()
-			_, err := client.ReplaceMessage(ctx, &ReplaceMessageInput[test.MessageData]{
+			_, err := client.ReplaceMessage(ctx, &dynamomq.ReplaceMessageInput[test.MessageData]{
 				Message: args.message,
 			})
 			if err != nil {
 				return nil, err
 			}
-			got, err := client.GetMessage(ctx, &GetMessageInput{
+			got, err := client.GetMessage(ctx, &dynamomq.GetMessageInput{
 				ID: args.message.ID,
 			})
 			if err != nil {
@@ -739,48 +739,46 @@ func TestDynamoMQClientListMessages(t *testing.T) {
 	type args struct {
 		size int32
 	}
-	tests := []ClientTestCase[*args, []*Message[test.MessageData]]{
+	tests := []ClientTestCase[*args, []*dynamomq.Message[test.MessageData]]{
 		{
 			name:  "should return empty list when no messages",
 			setup: NewSetupFunc(),
 			args: &args{
 				size: 10,
 			},
-			want:    []*Message[test.MessageData]{},
+			want:    []*dynamomq.Message[test.MessageData]{},
 			wantErr: nil,
 		},
 		{
 			name: "should return list of messages when messages exist",
 			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
-				messages := generateExpectedMessages("A", test.DefaultTestDate, 10)
+				messages := generateExpectedMessages(test.DefaultTestDate)
 				puts := generatePutRequests(messages)
 				return SetupDynamoDB(t, puts...)
 			},
 			args: &args{
 				size: 10,
 			},
-			want: generateExpectedMessages("A",
-				test.DefaultTestDate, 10),
+			want:    generateExpectedMessages(test.DefaultTestDate),
 			wantErr: nil,
 		},
 		{
 			name: "should return list of messages when messages exist and args is nil",
 			setup: func(t *testing.T) (string, *dynamodb.Client, func()) {
-				messages := generateExpectedMessages("A", test.DefaultTestDate, 10)
+				messages := generateExpectedMessages(test.DefaultTestDate)
 				puts := generatePutRequests(messages)
 				return SetupDynamoDB(t, puts...)
 			},
-			args: nil,
-			want: generateExpectedMessages("A",
-				test.DefaultTestDate, 10),
+			args:    nil,
+			want:    generateExpectedMessages(test.DefaultTestDate),
 			wantErr: nil,
 		},
 	}
-	runTestsParallel[*args, []*Message[test.MessageData]](t, "ListMessages()", tests,
-		func(client Client[test.MessageData], args *args) ([]*Message[test.MessageData], error) {
-			var in *ListMessagesInput
+	runTestsParallel[*args, []*dynamomq.Message[test.MessageData]](t, "ListMessages()", tests,
+		func(client dynamomq.Client[test.MessageData], args *args) ([]*dynamomq.Message[test.MessageData], error) {
+			var in *dynamomq.ListMessagesInput
 			if args != nil {
-				in = &ListMessagesInput{
+				in = &dynamomq.ListMessagesInput{
 					Size: args.size,
 				}
 			}
@@ -790,12 +788,12 @@ func TestDynamoMQClientListMessages(t *testing.T) {
 }
 
 func runTestsParallel[Args any, Want any](t *testing.T, prefix string,
-	tests []ClientTestCase[Args, Want], operation func(Client[test.MessageData], Args) (Want, error)) {
+	tests []ClientTestCase[Args, Want], operation func(dynamomq.Client[test.MessageData], Args) (Want, error)) {
 	for _, tt := range tests {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			client, clean := prepareTestClient(t, context.Background(), tt.setup, tt.sdkClock, false, nil, nil, nil)
+			client, clean := prepareTestClient(context.Background(), t, tt.setup, tt.sdkClock, false, nil, nil, nil)
 			defer clean()
 			result, err := operation(client, tt.args)
 			if tt.wantErr != nil {
@@ -807,25 +805,25 @@ func runTestsParallel[Args any, Want any](t *testing.T, prefix string,
 	}
 }
 
-func prepareTestClient(t *testing.T, ctx context.Context,
+func prepareTestClient(ctx context.Context, t *testing.T,
 	setupTable func(*testing.T) (string, *dynamodb.Client, func()),
 	sdkClock clock.Clock,
 	useFIFO bool,
 	unmarshalMap func(m map[string]types.AttributeValue, out interface{}) error,
 	marshalMap func(in interface{}) (map[string]types.AttributeValue, error),
 	unmarshalListOfMaps func(l []map[string]types.AttributeValue, out interface{}) error,
-) (Client[test.MessageData], func()) {
+) (dynamomq.Client[test.MessageData], func()) {
 	t.Helper()
 	tableName, raw, clean := setupTable(t)
-	optFns := []func(*ClientOptions){
-		WithTableName(tableName),
-		WithQueueingIndexName(DefaultQueueingIndexName),
-		WithAWSBaseEndpoint(""),
-		WithAWSDynamoDBClient(raw),
+	optFns := []func(*dynamomq.ClientOptions){
+		dynamomq.WithTableName(tableName),
+		dynamomq.WithQueueingIndexName(dynamomq.DefaultQueueingIndexName),
+		dynamomq.WithAWSBaseEndpoint(""),
+		dynamomq.WithAWSDynamoDBClient(raw),
 		mock.WithClock(sdkClock),
-		WithUseFIFO(useFIFO),
-		WithAWSVisibilityTimeout(1),
-		WithAWSRetryMaxAttempts(DefaultRetryMaxAttempts),
+		dynamomq.WithUseFIFO(useFIFO),
+		dynamomq.WithAWSVisibilityTimeout(1),
+		dynamomq.WithAWSRetryMaxAttempts(dynamomq.DefaultRetryMaxAttempts),
 		WithUnmarshalMap(unmarshalMap),
 		WithMarshalMap(marshalMap),
 		WithUnmarshalListOfMaps(unmarshalListOfMaps),
@@ -835,7 +833,7 @@ func prepareTestClient(t *testing.T, ctx context.Context,
 		t.Fatalf("failed to load aws config: %s\n", err)
 		return nil, nil
 	}
-	client, err := NewFromConfig[test.MessageData](cfg, optFns...)
+	client, err := dynamomq.NewFromConfig[test.MessageData](cfg, optFns...)
 	if err != nil {
 		t.Fatalf("failed to create DynamoMQ client: %s\n", err)
 		return nil, nil
@@ -861,16 +859,16 @@ func newPutRequestWithDLQItem(id string, now time.Time) *types.PutRequest {
 	}
 }
 
-func generateExpectedMessages(idPrefix string, now time.Time, count int) []*Message[test.MessageData] {
-	messages := make([]*Message[test.MessageData], count)
-	for i := 0; i < count; i++ {
+func generateExpectedMessages(now time.Time) []*dynamomq.Message[test.MessageData] {
+	messages := make([]*dynamomq.Message[test.MessageData], 10)
+	for i := 0; i < 10; i++ {
 		now = now.Add(time.Minute)
-		messages[i] = NewTestMessageItemAsReady(fmt.Sprintf("%s-%d", idPrefix, i), now)
+		messages[i] = NewTestMessageItemAsReady(fmt.Sprintf("A-%d", i), now)
 	}
 	return messages
 }
 
-func generatePutRequests(messages []*Message[test.MessageData]) []*types.PutRequest {
+func generatePutRequests(messages []*dynamomq.Message[test.MessageData]) []*types.PutRequest {
 	var puts []*types.PutRequest
 	for _, message := range messages {
 		puts = append(puts, &types.PutRequest{
@@ -880,21 +878,21 @@ func generatePutRequests(messages []*Message[test.MessageData]) []*types.PutRequ
 	return puts
 }
 
-func marshalMapUnsafe[T any](m *Message[T]) map[string]types.AttributeValue {
+func marshalMapUnsafe[T any](m *dynamomq.Message[T]) map[string]types.AttributeValue {
 	item, _ := marshalMap(m)
 	return item
 }
 
-func marshalMap[T any](m *Message[T]) (map[string]types.AttributeValue, error) {
+func marshalMap[T any](m *dynamomq.Message[T]) (map[string]types.AttributeValue, error) {
 	item, err := attributevalue.MarshalMap(m)
 	if err != nil {
-		return nil, MarshalingAttributeError{Cause: err}
+		return nil, dynamomq.MarshalingAttributeError{Cause: err}
 	}
 	return item, nil
 }
 
 func TestNewFromConfig(t *testing.T) {
-	_, err := NewFromConfig[any](aws.Config{}, WithAWSBaseEndpoint("https://localhost:8000"))
+	_, err := dynamomq.NewFromConfig[any](aws.Config{}, dynamomq.WithAWSBaseEndpoint("https://localhost:8000"))
 	if err != nil {
 		t.Errorf("failed to new client from config: %s\n", err)
 	}
@@ -906,13 +904,13 @@ func TestTestDynamoMQClientReturnUnmarshalingAttributeError(t *testing.T) {
 		newPutRequestWithReadyItem("A-101", clock.Now()),
 		newPutRequestWithDLQItem("B-101", clock.Now()),
 	)
-	client, cancel := prepareTestClient(t, context.Background(), setupFunc, mock.Clock{}, false,
+	client, cancel := prepareTestClient(context.Background(), t, setupFunc, mock.Clock{}, false,
 		func(m map[string]types.AttributeValue, out interface{}) error {
-			return test.ErrorTest
+			return test.ErrTest
 		},
 		nil,
 		func(l []map[string]types.AttributeValue, out interface{}) error {
-			return test.ErrorTest
+			return test.ErrTest
 		})
 	defer cancel()
 	type testCase struct {
@@ -923,25 +921,25 @@ func TestTestDynamoMQClientReturnUnmarshalingAttributeError(t *testing.T) {
 		{
 			name: "ReceiveMessage should return UnmarshalingAttributeError",
 			operation: func() (any, error) {
-				return client.ReceiveMessage(context.Background(), &ReceiveMessageInput{})
+				return client.ReceiveMessage(context.Background(), &dynamomq.ReceiveMessageInput{})
 			},
 		},
 		{
 			name: "GetQueueStats should return UnmarshalingAttributeError",
 			operation: func() (any, error) {
-				return client.GetQueueStats(context.Background(), &GetQueueStatsInput{})
+				return client.GetQueueStats(context.Background(), &dynamomq.GetQueueStatsInput{})
 			},
 		},
 		{
 			name: "GetDLQStats should return UnmarshalingAttributeError",
 			operation: func() (any, error) {
-				return client.GetDLQStats(context.Background(), &GetDLQStatsInput{})
+				return client.GetDLQStats(context.Background(), &dynamomq.GetDLQStatsInput{})
 			},
 		},
 		{
 			name: "GetMessage should return UnmarshalingAttributeError",
 			operation: func() (any, error) {
-				return client.GetMessage(context.Background(), &GetMessageInput{
+				return client.GetMessage(context.Background(), &dynamomq.GetMessageInput{
 					ID: "A-101",
 				})
 			},
@@ -949,7 +947,7 @@ func TestTestDynamoMQClientReturnUnmarshalingAttributeError(t *testing.T) {
 		{
 			name: "UpdateMessageAsVisible should return UnmarshalingAttributeError",
 			operation: func() (any, error) {
-				return client.UpdateMessageAsVisible(context.Background(), &UpdateMessageAsVisibleInput{
+				return client.UpdateMessageAsVisible(context.Background(), &dynamomq.UpdateMessageAsVisibleInput{
 					ID: "A-101",
 				})
 			},
@@ -957,7 +955,7 @@ func TestTestDynamoMQClientReturnUnmarshalingAttributeError(t *testing.T) {
 		{
 			name: "MoveMessageToDLQ should return UnmarshalingAttributeError",
 			operation: func() (any, error) {
-				return client.MoveMessageToDLQ(context.Background(), &MoveMessageToDLQInput{
+				return client.MoveMessageToDLQ(context.Background(), &dynamomq.MoveMessageToDLQInput{
 					ID: "A-101",
 				})
 			},
@@ -965,7 +963,7 @@ func TestTestDynamoMQClientReturnUnmarshalingAttributeError(t *testing.T) {
 		{
 			name: "RedriveMessage should return UnmarshalingAttributeError",
 			operation: func() (any, error) {
-				return client.RedriveMessage(context.Background(), &RedriveMessageInput{
+				return client.RedriveMessage(context.Background(), &dynamomq.RedriveMessageInput{
 					ID: "B-101",
 				})
 			},
@@ -973,16 +971,16 @@ func TestTestDynamoMQClientReturnUnmarshalingAttributeError(t *testing.T) {
 		{
 			name: "ListMessages should return UnmarshalingAttributeError",
 			operation: func() (any, error) {
-				return client.ListMessages(context.Background(), &ListMessagesInput{
-					Size: DefaultMaxListMessages,
+				return client.ListMessages(context.Background(), &dynamomq.ListMessagesInput{
+					Size: dynamomq.DefaultMaxListMessages,
 				})
 			},
 		},
 	}
 	for _, tt := range tests {
 		_, err := tt.operation()
-		test.AssertError(t, err, UnmarshalingAttributeError{
-			Cause: test.ErrorTest,
+		test.AssertError(t, err, dynamomq.UnmarshalingAttributeError{
+			Cause: test.ErrTest,
 		}, tt.name)
 	}
 }
@@ -992,9 +990,9 @@ func TestTestDynamoMQClientReturnMarshalingAttributeError(t *testing.T) {
 	setupFunc := NewSetupFunc(
 		newPutRequestWithReadyItem("A-101", clock.Now()),
 	)
-	client, cancel := prepareTestClient(t, context.Background(), setupFunc, mock.Clock{}, false, nil,
+	client, cancel := prepareTestClient(context.Background(), t, setupFunc, mock.Clock{}, false, nil,
 		func(in interface{}) (map[string]types.AttributeValue, error) {
-			return nil, test.ErrorTest
+			return nil, test.ErrTest
 		}, nil)
 	defer cancel()
 	type testCase struct {
@@ -1005,7 +1003,7 @@ func TestTestDynamoMQClientReturnMarshalingAttributeError(t *testing.T) {
 		{
 			name: "ReceiveMessage should return MarshalingAttributeError",
 			operation: func() (any, error) {
-				return client.SendMessage(context.Background(), &SendMessageInput[test.MessageData]{
+				return client.SendMessage(context.Background(), &dynamomq.SendMessageInput[test.MessageData]{
 					ID:   "B-101",
 					Data: test.NewMessageData("B-101"),
 				})
@@ -1014,7 +1012,7 @@ func TestTestDynamoMQClientReturnMarshalingAttributeError(t *testing.T) {
 		{
 			name: "ReceiveMessage should return MarshalingAttributeError",
 			operation: func() (any, error) {
-				return client.ReplaceMessage(context.Background(), &ReplaceMessageInput[test.MessageData]{
+				return client.ReplaceMessage(context.Background(), &dynamomq.ReplaceMessageInput[test.MessageData]{
 					Message: NewTestMessageItemAsReady("B-101", clock.Now()),
 				})
 			},
@@ -1022,15 +1020,15 @@ func TestTestDynamoMQClientReturnMarshalingAttributeError(t *testing.T) {
 	}
 	for _, tt := range tests {
 		_, err := tt.operation()
-		test.AssertError(t, err, MarshalingAttributeError{
-			Cause: test.ErrorTest,
+		test.AssertError(t, err, dynamomq.MarshalingAttributeError{
+			Cause: test.ErrTest,
 		}, tt.name)
 	}
 }
 
 func TestTestDynamoMQClientReturnDynamoDBAPIError(t *testing.T) {
 	t.Parallel()
-	client, err := NewFromConfig[test.MessageData](aws.Config{})
+	client, err := dynamomq.NewFromConfig[test.MessageData](aws.Config{})
 	if err != nil {
 		t.Fatalf("failed to create DynamoMQ client: %s\n", err)
 	}
@@ -1042,13 +1040,13 @@ func TestTestDynamoMQClientReturnDynamoDBAPIError(t *testing.T) {
 		{
 			name: "ReceiveMessage should return DynamoDBAPIError",
 			operation: func() (any, error) {
-				return client.ReceiveMessage(context.Background(), &ReceiveMessageInput{})
+				return client.ReceiveMessage(context.Background(), &dynamomq.ReceiveMessageInput{})
 			},
 		},
 		{
 			name: "DeleteMessage should return DynamoDBAPIError",
 			operation: func() (any, error) {
-				return client.DeleteMessage(context.Background(), &DeleteMessageInput{
+				return client.DeleteMessage(context.Background(), &dynamomq.DeleteMessageInput{
 					ID: "A-101",
 				})
 			},
@@ -1056,19 +1054,19 @@ func TestTestDynamoMQClientReturnDynamoDBAPIError(t *testing.T) {
 		{
 			name: "GetQueueStats should return DynamoDBAPIError",
 			operation: func() (any, error) {
-				return client.GetQueueStats(context.Background(), &GetQueueStatsInput{})
+				return client.GetQueueStats(context.Background(), &dynamomq.GetQueueStatsInput{})
 			},
 		},
 		{
 			name: "GetDLQStats should return DynamoDBAPIError",
 			operation: func() (any, error) {
-				return client.GetDLQStats(context.Background(), &GetDLQStatsInput{})
+				return client.GetDLQStats(context.Background(), &dynamomq.GetDLQStatsInput{})
 			},
 		},
 		{
 			name: "GetMessage should return DynamoDBAPIError",
 			operation: func() (any, error) {
-				return client.GetMessage(context.Background(), &GetMessageInput{
+				return client.GetMessage(context.Background(), &dynamomq.GetMessageInput{
 					ID: "A-101",
 				})
 			},
@@ -1076,16 +1074,16 @@ func TestTestDynamoMQClientReturnDynamoDBAPIError(t *testing.T) {
 		{
 			name: "ListMessages should return DynamoDBAPIError",
 			operation: func() (any, error) {
-				return client.ListMessages(context.Background(), &ListMessagesInput{
-					Size: DefaultMaxListMessages,
+				return client.ListMessages(context.Background(), &dynamomq.ListMessagesInput{
+					Size: dynamomq.DefaultMaxListMessages,
 				})
 			},
 		},
 	}
 	for _, tt := range tests {
-		_, err := tt.operation()
-		if _, ok := assertErrorType[DynamoDBAPIError](err); !ok {
-			t.Errorf("error = %v, want %v", "DynamoDBAPIError", reflect.TypeOf(err))
+		_, opeErr := tt.operation()
+		if _, ok := assertErrorType[dynamomq.DynamoDBAPIError](opeErr); !ok {
+			t.Errorf("error = %v, want %v", "DynamoDBAPIError", reflect.TypeOf(opeErr))
 		}
 	}
 }
@@ -1093,9 +1091,9 @@ func TestTestDynamoMQClientReturnDynamoDBAPIError(t *testing.T) {
 func TestTestDynamoMQClientReturnBuildingExpressionError(t *testing.T) {
 	t.Parallel()
 	buildExpression := func(b expression.Builder) (expression.Expression, error) {
-		return expression.Expression{}, BuildingExpressionError{Cause: test.ErrorTest}
+		return expression.Expression{}, dynamomq.BuildingExpressionError{Cause: test.ErrTest}
 	}
-	client, err := NewFromConfig[test.MessageData](aws.Config{}, WithBuildExpression(buildExpression))
+	client, err := dynamomq.NewFromConfig[test.MessageData](aws.Config{}, WithBuildExpression(buildExpression))
 	if err != nil {
 		t.Fatalf("failed to create DynamoMQ client: %s\n", err)
 	}
@@ -1107,26 +1105,26 @@ func TestTestDynamoMQClientReturnBuildingExpressionError(t *testing.T) {
 		{
 			name: "ReceiveMessage should return BuildingExpressionError",
 			operation: func() (any, error) {
-				return client.ReceiveMessage(context.Background(), &ReceiveMessageInput{})
+				return client.ReceiveMessage(context.Background(), &dynamomq.ReceiveMessageInput{})
 			},
 		},
 		{
 			name: "GetQueueStats should return BuildingExpressionError",
 			operation: func() (any, error) {
-				return client.GetQueueStats(context.Background(), &GetQueueStatsInput{})
+				return client.GetQueueStats(context.Background(), &dynamomq.GetQueueStatsInput{})
 			},
 		},
 		{
 			name: "GetDLQStats should return BuildingExpressionError",
 			operation: func() (any, error) {
-				return client.GetDLQStats(context.Background(), &GetDLQStatsInput{})
+				return client.GetDLQStats(context.Background(), &dynamomq.GetDLQStatsInput{})
 			},
 		},
 	}
 	for _, tt := range tests {
-		_, err := tt.operation()
-		if _, ok := assertErrorType[BuildingExpressionError](err); !ok {
-			t.Errorf("error = %v, want %v", "BuildingExpressionError", reflect.TypeOf(err))
+		_, opeErr := tt.operation()
+		if _, ok := assertErrorType[dynamomq.BuildingExpressionError](opeErr); !ok {
+			t.Errorf("error = %v, want %v", "BuildingExpressionError", reflect.TypeOf(opeErr))
 		}
 	}
 }
@@ -1139,32 +1137,32 @@ func assertErrorType[T error](err error) (T, bool) {
 	return wantErr, false
 }
 
-func WithUnmarshalMap(f func(m map[string]types.AttributeValue, out interface{}) error) func(s *ClientOptions) {
-	return func(s *ClientOptions) {
+func WithUnmarshalMap(f func(m map[string]types.AttributeValue, out interface{}) error) func(s *dynamomq.ClientOptions) {
+	return func(s *dynamomq.ClientOptions) {
 		if f != nil {
 			s.UnmarshalMap = f
 		}
 	}
 }
 
-func WithUnmarshalListOfMaps(f func(l []map[string]types.AttributeValue, out interface{}) error) func(s *ClientOptions) {
-	return func(s *ClientOptions) {
+func WithUnmarshalListOfMaps(f func(l []map[string]types.AttributeValue, out interface{}) error) func(s *dynamomq.ClientOptions) {
+	return func(s *dynamomq.ClientOptions) {
 		if f != nil {
 			s.UnmarshalListOfMaps = f
 		}
 	}
 }
 
-func WithMarshalMap(f func(in interface{}) (map[string]types.AttributeValue, error)) func(s *ClientOptions) {
-	return func(s *ClientOptions) {
+func WithMarshalMap(f func(in interface{}) (map[string]types.AttributeValue, error)) func(s *dynamomq.ClientOptions) {
+	return func(s *dynamomq.ClientOptions) {
 		if f != nil {
 			s.MarshalMap = f
 		}
 	}
 }
 
-func WithBuildExpression(f func(b expression.Builder) (expression.Expression, error)) func(s *ClientOptions) {
-	return func(s *ClientOptions) {
+func WithBuildExpression(f func(b expression.Builder) (expression.Expression, error)) func(s *dynamomq.ClientOptions) {
+	return func(s *dynamomq.ClientOptions) {
 		if f != nil {
 			s.BuildExpression = f
 		}

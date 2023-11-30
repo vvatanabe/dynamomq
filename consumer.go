@@ -141,17 +141,17 @@ func (c *Consumer[T]) trackAndProcessMessage(ctx context.Context, msg *Message[T
 
 func (c *Consumer[T]) processMessage(ctx context.Context, msg *Message[T]) {
 	if err := c.messageProcessor.Process(msg); err != nil {
-		c.handleError(ctx, msg, err)
+		c.handleError(ctx, msg)
 		return
 	}
 	c.deleteMessage(ctx, msg)
 }
 
-func (c *Consumer[T]) handleError(ctx context.Context, msg *Message[T], err error) {
+func (c *Consumer[T]) handleError(ctx context.Context, msg *Message[T]) {
 	if c.shouldRetry(msg) {
-		c.retryMessage(ctx, msg, err)
+		c.retryMessage(ctx, msg)
 	} else {
-		c.handleFailure(ctx, msg, err)
+		c.handleFailure(ctx, msg)
 	}
 }
 
@@ -165,22 +165,22 @@ func (c *Consumer[T]) shouldRetry(msg *Message[T]) bool {
 	return false
 }
 
-func (c *Consumer[T]) retryMessage(ctx context.Context, msg *Message[T], err error) {
+func (c *Consumer[T]) retryMessage(ctx context.Context, msg *Message[T]) {
 	if _, err := c.client.UpdateMessageAsVisible(ctx, &UpdateMessageAsVisibleInput{ID: msg.ID}); err != nil {
 		c.logf("DynamoMQ: Failed to update a message as visible. %s", err)
 	}
 }
 
-func (c *Consumer[T]) handleFailure(ctx context.Context, msg *Message[T], err error) {
+func (c *Consumer[T]) handleFailure(ctx context.Context, msg *Message[T]) {
 	switch c.queueType {
 	case QueueTypeStandard:
-		c.moveToDLQ(ctx, msg, err)
+		c.moveToDLQ(ctx, msg)
 	case QueueTypeDLQ:
 		c.deleteMessage(ctx, msg)
 	}
 }
 
-func (c *Consumer[T]) moveToDLQ(ctx context.Context, msg *Message[T], err error) {
+func (c *Consumer[T]) moveToDLQ(ctx context.Context, msg *Message[T]) {
 	if _, err := c.client.MoveMessageToDLQ(ctx, &MoveMessageToDLQInput{ID: msg.ID}); err != nil {
 		c.logf("DynamoMQ: Failed to move a message to DLQ. %s", err)
 	}

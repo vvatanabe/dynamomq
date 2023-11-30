@@ -251,7 +251,7 @@ func TestRunInteractivePurge(t *testing.T) {
 					}, nil
 				},
 				DeleteMessageFunc: func(ctx context.Context, params *dynamomq.DeleteMessageInput) (*dynamomq.DeleteMessageOutput, error) {
-					return &dynamomq.DeleteMessageOutput{}, test.ErrorTest
+					return &dynamomq.DeleteMessageOutput{}, test.ErrTest
 				},
 			},
 			wantErr: true,
@@ -283,7 +283,7 @@ func TestRunInteractiveEnqueueTestShouldReturnError(t *testing.T) {
 				return &dynamomq.DeleteMessageOutput{}, nil
 			},
 			SendMessageFunc: func(ctx context.Context, params *dynamomq.SendMessageInput[any]) (*dynamomq.SendMessageOutput[any], error) {
-				return &dynamomq.SendMessageOutput[any]{}, test.ErrorTest
+				return &dynamomq.SendMessageOutput[any]{}, test.ErrTest
 			},
 		},
 	}
@@ -303,7 +303,7 @@ func TestRunInteractiveReceiveShouldReturnError(t *testing.T) {
 				}, nil
 			},
 			GetQueueStatsFunc: func(ctx context.Context, params *dynamomq.GetQueueStatsInput) (*dynamomq.GetQueueStatsOutput, error) {
-				return &dynamomq.GetQueueStatsOutput{}, test.ErrorTest
+				return &dynamomq.GetQueueStatsOutput{}, test.ErrTest
 			},
 		},
 	}
@@ -319,7 +319,7 @@ func TestRunInteractiveDeleteShouldReturnError(t *testing.T) {
 				return &dynamomq.DeleteMessageOutput{}, nil
 			},
 			GetQueueStatsFunc: func(ctx context.Context, params *dynamomq.GetQueueStatsInput) (*dynamomq.GetQueueStatsOutput, error) {
-				return &dynamomq.GetQueueStatsOutput{}, test.ErrorTest
+				return &dynamomq.GetQueueStatsOutput{}, test.ErrTest
 			},
 		},
 		Message: dynamomq.NewMessage[any]("A-101", test.NewMessageData("A-101"), clock.Now()),
@@ -385,7 +385,7 @@ func TestRunInteractiveFailReturnError(t *testing.T) {
 					return &dynamomq.UpdateMessageAsVisibleOutput[any]{}, nil
 				},
 				GetMessageFunc: func(ctx context.Context, params *dynamomq.GetMessageInput) (*dynamomq.GetMessageOutput[any], error) {
-					return &dynamomq.GetMessageOutput[any]{}, test.ErrorTest
+					return &dynamomq.GetMessageOutput[any]{}, test.ErrTest
 				},
 			},
 		},
@@ -412,7 +412,7 @@ func TestRunInteractiveFailReturnError(t *testing.T) {
 					}, nil
 				},
 				GetQueueStatsFunc: func(ctx context.Context, params *dynamomq.GetQueueStatsInput) (*dynamomq.GetQueueStatsOutput, error) {
-					return &dynamomq.GetQueueStatsOutput{}, test.ErrorTest
+					return &dynamomq.GetQueueStatsOutput{}, test.ErrTest
 				},
 			},
 		},
@@ -437,7 +437,7 @@ func TestRunInteractiveInvalidShouldReturnError(t *testing.T) {
 				return &dynamomq.MoveMessageToDLQOutput{}, nil
 			},
 			GetQueueStatsFunc: func(ctx context.Context, params *dynamomq.GetQueueStatsInput) (*dynamomq.GetQueueStatsOutput, error) {
-				return &dynamomq.GetQueueStatsOutput{}, test.ErrorTest
+				return &dynamomq.GetQueueStatsOutput{}, test.ErrTest
 			},
 		},
 		Message: dynamomq.NewMessage[any]("A-101", test.NewMessageData("A-101"), clock.Now()),

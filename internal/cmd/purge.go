@@ -18,7 +18,7 @@ func (f CommandFactory) CreatePurgeCommand(flgs *Flags) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			out, err := client.ListMessages(ctx, &dynamomq.ListMessagesInput{Size: 10})
+			out, err := client.ListMessages(ctx, &dynamomq.ListMessagesInput{Size: dynamomq.DefaultMaxListMessages})
 			if err != nil {
 				return err
 			}
@@ -28,13 +28,13 @@ func (f CommandFactory) CreatePurgeCommand(flgs *Flags) *cobra.Command {
 				return nil
 			}
 			for _, m := range out.Messages {
-				_, err := client.DeleteMessage(ctx, &dynamomq.DeleteMessageInput{
+				_, delErr := client.DeleteMessage(ctx, &dynamomq.DeleteMessageInput{
 					ID: m.ID,
 				})
-				if err != nil {
+				if delErr != nil {
 					result.Failures = append(result.Failures, Failure{
 						ID:    m.ID,
-						Error: err,
+						Error: delErr,
 					})
 					continue
 				}

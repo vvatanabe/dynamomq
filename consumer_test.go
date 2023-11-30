@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	. "github.com/vvatanabe/dynamomq"
+	"github.com/vvatanabe/dynamomq"
 	"github.com/vvatanabe/dynamomq/internal/mock"
 	"github.com/vvatanabe/dynamomq/internal/test"
 )
@@ -25,10 +25,10 @@ func TestConsumerStartConsumingShouldReturnErrConsumerClosed(t *testing.T) {
 	processor := &CountProcessor[test.MessageData]{
 		SimulateProcessError: false,
 	}
-	consumer := NewConsumer[test.MessageData](client, processor)
+	consumer := dynamomq.NewConsumer[test.MessageData](client, processor)
 	_ = consumer.Shutdown(context.Background())
-	if err := consumer.StartConsuming(); !errors.Is(err, ErrConsumerClosed) {
-		t.Errorf("StartConsuming() error = %v, want = %v", err, ErrConsumerClosed)
+	if err := consumer.StartConsuming(); !errors.Is(err, dynamomq.ErrConsumerClosed) {
+		t.Errorf("StartConsuming() error = %v, want = %v", err, dynamomq.ErrConsumerClosed)
 		return
 	}
 }
@@ -42,9 +42,9 @@ func TestConsumerStartConsumingShouldReturnNoTemporaryError(t *testing.T) {
 	processor := &CountProcessor[test.MessageData]{
 		SimulateProcessError: false,
 	}
-	consumer := NewConsumer[test.MessageData](client, processor)
-	if err := consumer.StartConsuming(); !errors.Is(err, test.ErrorTest) {
-		t.Errorf("StartConsuming() error = %v, want = %v", err, test.ErrorTest)
+	consumer := dynamomq.NewConsumer[test.MessageData](client, processor)
+	if err := consumer.StartConsuming(); !errors.Is(err, test.ErrTest) {
+		t.Errorf("StartConsuming() error = %v, want = %v", err, test.ErrTest)
 		return
 	}
 }
@@ -58,7 +58,7 @@ func TestConsumerStartConsuming(t *testing.T) {
 		MessageSize                 int
 		MessageReceiveCount         int
 		MaximumReceives             int
-		QueueType                   QueueType
+		QueueType                   dynamomq.QueueType
 		ExpectedCountSize           int
 		ExpectedStoreSize           int
 		ExpectedDLQSize             int
@@ -67,7 +67,7 @@ func TestConsumerStartConsuming(t *testing.T) {
 		{
 			Name:              "should succeed message process",
 			MessageSize:       10,
-			QueueType:         QueueTypeStandard,
+			QueueType:         dynamomq.QueueTypeStandard,
 			ExpectedCountSize: 10,
 		},
 		{
@@ -75,7 +75,7 @@ func TestConsumerStartConsuming(t *testing.T) {
 			WantMessageProcessError: true,
 			MaximumReceives:         0,
 			MessageSize:             10,
-			QueueType:               QueueTypeStandard,
+			QueueType:               dynamomq.QueueTypeStandard,
 			ExpectedStoreSize:       10,
 		},
 		{
@@ -83,7 +83,7 @@ func TestConsumerStartConsuming(t *testing.T) {
 			WantMessageProcessError: true,
 			MaximumReceives:         2,
 			MessageSize:             10,
-			QueueType:               QueueTypeStandard,
+			QueueType:               dynamomq.QueueTypeStandard,
 			ExpectedStoreSize:       10,
 		},
 		{
@@ -91,7 +91,7 @@ func TestConsumerStartConsuming(t *testing.T) {
 			WantMessageProcessError: true,
 			MessageReceiveCount:     1,
 			MaximumReceives:         1,
-			QueueType:               QueueTypeStandard,
+			QueueType:               dynamomq.QueueTypeStandard,
 			MessageSize:             10,
 			ExpectedStoreSize:       10,
 			ExpectedDLQSize:         10,
@@ -101,7 +101,7 @@ func TestConsumerStartConsuming(t *testing.T) {
 			WantMessageProcessError: true,
 			MessageReceiveCount:     1,
 			MaximumReceives:         1,
-			QueueType:               QueueTypeDLQ,
+			QueueType:               dynamomq.QueueTypeDLQ,
 			MessageSize:             10,
 		},
 		{
@@ -109,7 +109,7 @@ func TestConsumerStartConsuming(t *testing.T) {
 			ClientForConsumerTestConfig: ClientForConsumerTestConfig{
 				SimulateReceiveMessageError: true,
 			},
-			QueueType:         QueueTypeStandard,
+			QueueType:         dynamomq.QueueTypeStandard,
 			MessageSize:       10,
 			ExpectedStoreSize: 10,
 		},
@@ -123,12 +123,12 @@ func TestConsumerStartConsuming(t *testing.T) {
 			processor := &CountProcessor[test.MessageData]{
 				SimulateProcessError: tt.WantMessageProcessError,
 			}
-			consumer := NewConsumer[test.MessageData](client, processor,
-				WithPollingInterval(0),
-				WithMaximumReceives(tt.MaximumReceives),
-				WithQueueType(tt.QueueType),
-				WithErrorLog(log.New(os.Stderr, "", 0)),
-				WithOnShutdown([]func(){}))
+			consumer := dynamomq.NewConsumer[test.MessageData](client, processor,
+				dynamomq.WithPollingInterval(0),
+				dynamomq.WithMaximumReceives(tt.MaximumReceives),
+				dynamomq.WithQueueType(tt.QueueType),
+				dynamomq.WithErrorLog(log.New(os.Stderr, "", 0)),
+				dynamomq.WithOnShutdown([]func(){}))
 			go func() {
 				if err := consumer.StartConsuming(); err != nil {
 					t.Errorf("StartConsuming() error = %v", err)
@@ -188,12 +188,12 @@ func TestConsumerShutdown(t *testing.T) {
 				SimulateProcessError: false,
 				Sleep:                tt.ProcessorSleep,
 			}
-			consumer := NewConsumer[test.MessageData](client, processor,
-				WithPollingInterval(0),
-				WithMaximumReceives(1),
-				WithQueueType(QueueTypeStandard),
-				WithErrorLog(log.New(os.Stderr, "", 0)),
-				WithOnShutdown([]func(){
+			consumer := dynamomq.NewConsumer[test.MessageData](client, processor,
+				dynamomq.WithPollingInterval(0),
+				dynamomq.WithMaximumReceives(1),
+				dynamomq.WithQueueType(dynamomq.QueueTypeStandard),
+				dynamomq.WithErrorLog(log.New(os.Stderr, "", 0)),
+				dynamomq.WithOnShutdown([]func(){
 					func() {},
 				}))
 			go func() {
@@ -228,17 +228,17 @@ func TestConsumerShutdown(t *testing.T) {
 	}
 }
 
-func prepareQueueAndStore(size, receiveCount int) (queue, dlq chan *Message[test.MessageData], store *sync.Map) {
+func prepareQueueAndStore(size, receiveCount int) (queue, dlq chan *dynamomq.Message[test.MessageData], store *sync.Map) {
 	var storeMap sync.Map
-	queue = make(chan *Message[test.MessageData], size)
+	queue = make(chan *dynamomq.Message[test.MessageData], size)
 	for i := 1; i <= size; i++ {
 		id := fmt.Sprintf("A-%d", i)
-		msg := NewMessage(id, test.NewMessageData(id), test.DefaultTestDate)
+		msg := dynamomq.NewMessage(id, test.NewMessageData(id), test.DefaultTestDate)
 		msg.ReceiveCount = receiveCount
 		storeMap.Store(id, msg)
 		queue <- msg
 	}
-	return queue, make(chan *Message[test.MessageData], size), &storeMap
+	return queue, make(chan *dynamomq.Message[test.MessageData], size), &storeMap
 }
 
 type CountProcessor[T any] struct {
@@ -247,9 +247,9 @@ type CountProcessor[T any] struct {
 	Sleep                time.Duration
 }
 
-func (p *CountProcessor[T]) Process(_ *Message[T]) error {
+func (p *CountProcessor[T]) Process(_ *dynamomq.Message[T]) error {
 	if p.SimulateProcessError {
-		return test.ErrorTest
+		return test.ErrTest
 	}
 	time.Sleep(p.Sleep)
 	p.Count.Add(1)
@@ -264,40 +264,40 @@ type ClientForConsumerTestConfig struct {
 	SimulateMoveMessageToDLQError          bool
 }
 
-func NewClientForConsumerTest(queue, dlq chan *Message[test.MessageData], store *sync.Map,
-	cfg ClientForConsumerTestConfig) Client[test.MessageData] {
+func NewClientForConsumerTest(queue, dlq chan *dynamomq.Message[test.MessageData], store *sync.Map,
+	cfg ClientForConsumerTestConfig) dynamomq.Client[test.MessageData] {
 	return &mock.Client[test.MessageData]{
-		ReceiveMessageFunc: func(ctx context.Context, params *ReceiveMessageInput) (*ReceiveMessageOutput[test.MessageData], error) {
+		ReceiveMessageFunc: func(ctx context.Context, params *dynamomq.ReceiveMessageInput) (*dynamomq.ReceiveMessageOutput[test.MessageData], error) {
 			if cfg.SimulateReceiveMessageNoTemporaryError {
-				return nil, test.ErrorTest
+				return nil, test.ErrTest
 			}
 			if cfg.SimulateReceiveMessageError {
-				return nil, &DynamoDBAPIError{Cause: test.ErrorTest}
+				return nil, &dynamomq.DynamoDBAPIError{Cause: test.ErrTest}
 			}
 			message := <-queue
-			return &ReceiveMessageOutput[test.MessageData]{PeekedMessageObject: message}, nil
+			return &dynamomq.ReceiveMessageOutput[test.MessageData]{PeekedMessageObject: message}, nil
 		},
-		DeleteMessageFunc: func(ctx context.Context, params *DeleteMessageInput) (*DeleteMessageOutput, error) {
+		DeleteMessageFunc: func(ctx context.Context, params *dynamomq.DeleteMessageInput) (*dynamomq.DeleteMessageOutput, error) {
 			if cfg.SimulateDeleteMessageError {
-				return nil, test.ErrorTest
+				return nil, test.ErrTest
 			}
 			store.Delete(params.ID)
-			return &DeleteMessageOutput{}, nil
+			return &dynamomq.DeleteMessageOutput{}, nil
 		},
-		UpdateMessageAsVisibleFunc: func(ctx context.Context, params *UpdateMessageAsVisibleInput) (*UpdateMessageAsVisibleOutput[test.MessageData], error) {
+		UpdateMessageAsVisibleFunc: func(ctx context.Context, params *dynamomq.UpdateMessageAsVisibleInput) (*dynamomq.UpdateMessageAsVisibleOutput[test.MessageData], error) {
 			if cfg.SimulateMessageAsVisibleError {
-				return nil, test.ErrorTest
+				return nil, test.ErrTest
 			}
-			return &UpdateMessageAsVisibleOutput[test.MessageData]{}, nil
+			return &dynamomq.UpdateMessageAsVisibleOutput[test.MessageData]{}, nil
 		},
-		MoveMessageToDLQFunc: func(ctx context.Context, params *MoveMessageToDLQInput) (*MoveMessageToDLQOutput, error) {
+		MoveMessageToDLQFunc: func(ctx context.Context, params *dynamomq.MoveMessageToDLQInput) (*dynamomq.MoveMessageToDLQOutput, error) {
 			if cfg.SimulateMoveMessageToDLQError {
-				return nil, test.ErrorTest
+				return nil, test.ErrTest
 			}
 			v, _ := store.Load(params.ID)
-			msg := v.(*Message[test.MessageData])
+			msg, _ := v.(*dynamomq.Message[test.MessageData])
 			dlq <- msg
-			return &MoveMessageToDLQOutput{
+			return &dynamomq.MoveMessageToDLQOutput{
 				ID:                   msg.ID,
 				Status:               msg.Status,
 				LastUpdatedTimestamp: msg.LastUpdatedTimestamp,

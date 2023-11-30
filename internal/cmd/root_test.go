@@ -17,6 +17,12 @@ import (
 )
 
 func TestExecute(t *testing.T) {
+	defer func() {
+		p := recover()
+		if p != nil {
+			t.Errorf("Execute() panic = %v", p)
+		}
+	}()
 	cmd.Execute()
 }
 
@@ -31,7 +37,7 @@ func TestRunRootCommand(t *testing.T) {
 		{
 			name: "should return error when create dynamomq client failed",
 			createDynamoMQClient: func(ctx context.Context, flags *cmd.Flags) (dynamomq.Client[any], aws.Config, error) {
-				return nil, aws.Config{}, test.ErrorTest
+				return nil, aws.Config{}, test.ErrTest
 			},
 			wantErr: true,
 		},
@@ -151,9 +157,9 @@ func testRunAllCommand(t *testing.T, f cmd.CommandFactory, wantErr error) {
 func TestRunAllCommandShouldReturnCommandFactoryError(t *testing.T) {
 	testRunAllCommand(t, cmd.CommandFactory{
 		CreateDynamoMQClient: func(ctx context.Context, flags *cmd.Flags) (dynamomq.Client[any], aws.Config, error) {
-			return nil, aws.Config{}, test.ErrorTest
+			return nil, aws.Config{}, test.ErrTest
 		},
-	}, test.ErrorTest)
+	}, test.ErrTest)
 }
 
 func TestRunAllCommandShouldDynamoMQClientError(t *testing.T) {

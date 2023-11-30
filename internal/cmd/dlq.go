@@ -13,17 +13,9 @@ func (f CommandFactory) CreateDLQCommand(flgs *Flags) *cobra.Command {
 		Short: "Retrieves the Dead Letter Queue (DLQ) statistics",
 		Long:  `Retrieves the Dead Letter Queue (DLQ) statistics.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := context.Background()
-			client, _, err := f.CreateDynamoMQClient(ctx, flgs)
-			if err != nil {
-				return err
-			}
-			stats, err := client.GetDLQStats(ctx, &dynamomq.GetDLQStatsInput{})
-			if err != nil {
-				return err
-			}
-			printMessageWithData("", stats)
-			return nil
+			return f.executeStatsCommand(flgs, func(ctx context.Context, client dynamomq.Client[any]) (any, error) {
+				return client.GetDLQStats(ctx, &dynamomq.GetDLQStatsInput{})
+			})
 		},
 	}
 }

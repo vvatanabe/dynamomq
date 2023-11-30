@@ -36,7 +36,7 @@ type MessageItem struct {
 }
 
 var (
-	ErrorTest       = errors.New("test")
+	ErrTest         = errors.New("test")
 	DefaultTestDate = time.Date(2023, 12, 1, 0, 0, 0, 0, time.UTC)
 )
 
@@ -53,7 +53,6 @@ func AssertError(t *testing.T, got, want error, prefix string) {
 		t.Errorf("%s unexpected error = %v", prefix, got)
 		return
 	}
-	return
 }
 
 func AssertDeepEqual(t *testing.T, got, want any, prefix string) {

@@ -42,7 +42,7 @@ func TestPurgeCommand(t *testing.T) {
 						},
 						DeleteMessageFunc: func(ctx context.Context, params *dynamomq.DeleteMessageInput) (*dynamomq.DeleteMessageOutput, error) {
 							if params.ID == "A-101" {
-								return nil, test.ErrorTest
+								return nil, test.ErrTest
 							}
 							return &dynamomq.DeleteMessageOutput{}, nil
 						},

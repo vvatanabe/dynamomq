@@ -6,34 +6,34 @@ import (
 	"reflect"
 	"testing"
 
-	. "github.com/vvatanabe/dynamomq"
+	"github.com/vvatanabe/dynamomq"
 	"github.com/vvatanabe/dynamomq/internal/mock"
 	"github.com/vvatanabe/dynamomq/internal/test"
 )
 
 func TestProducerProduce(t *testing.T) {
 	type args[T any] struct {
-		params *ProduceInput[T]
+		params *dynamomq.ProduceInput[T]
 	}
 	type testCase[T any] struct {
 		name    string
-		c       *Producer[T]
+		c       *dynamomq.Producer[T]
 		args    args[T]
-		want    *ProduceOutput[T]
+		want    *dynamomq.ProduceOutput[T]
 		wantErr bool
 	}
 	defaultMockClient := &mock.Client[test.MessageData]{
 		SendMessageFunc: func(ctx context.Context,
-			params *SendMessageInput[test.MessageData]) (*SendMessageOutput[test.MessageData], error) {
-			return &SendMessageOutput[test.MessageData]{
-				Message: &Message[test.MessageData]{
+			params *dynamomq.SendMessageInput[test.MessageData]) (*dynamomq.SendMessageOutput[test.MessageData], error) {
+			return &dynamomq.SendMessageOutput[test.MessageData]{
+				Message: &dynamomq.Message[test.MessageData]{
 					ID:   params.ID,
 					Data: params.Data,
 				},
 			}, nil
 		},
 	}
-	defaultTestProducer := NewProducer[test.MessageData](defaultMockClient, WithIDGenerator(func() string {
+	defaultTestProducer := dynamomq.NewProducer[test.MessageData](defaultMockClient, dynamomq.WithIDGenerator(func() string {
 		return "A-101"
 	}))
 	tests := []testCase[test.MessageData]{
@@ -41,12 +41,12 @@ func TestProducerProduce(t *testing.T) {
 			name: "should success to produce a message",
 			c:    defaultTestProducer,
 			args: args[test.MessageData]{
-				params: &ProduceInput[test.MessageData]{
+				params: &dynamomq.ProduceInput[test.MessageData]{
 					Data: test.NewMessageData("A-101"),
 				},
 			},
-			want: &ProduceOutput[test.MessageData]{
-				Message: &Message[test.MessageData]{
+			want: &dynamomq.ProduceOutput[test.MessageData]{
+				Message: &dynamomq.Message[test.MessageData]{
 					ID:   "A-101",
 					Data: test.NewMessageData("A-101"),
 				},
@@ -59,8 +59,8 @@ func TestProducerProduce(t *testing.T) {
 			args: args[test.MessageData]{
 				params: nil,
 			},
-			want: &ProduceOutput[test.MessageData]{
-				Message: &Message[test.MessageData]{
+			want: &dynamomq.ProduceOutput[test.MessageData]{
+				Message: &dynamomq.Message[test.MessageData]{
 					ID: "A-101",
 				},
 			},
@@ -68,16 +68,16 @@ func TestProducerProduce(t *testing.T) {
 		},
 		{
 			name: "should re to produce a message when params is nil",
-			c: NewProducer[test.MessageData](&mock.Client[test.MessageData]{
+			c: dynamomq.NewProducer[test.MessageData](&mock.Client[test.MessageData]{
 				SendMessageFunc: func(ctx context.Context,
-					params *SendMessageInput[test.MessageData]) (*SendMessageOutput[test.MessageData], error) {
+					params *dynamomq.SendMessageInput[test.MessageData]) (*dynamomq.SendMessageOutput[test.MessageData], error) {
 					return nil, errors.New("for error case")
 				},
 			}),
 			args: args[test.MessageData]{
 				params: nil,
 			},
-			want:    &ProduceOutput[test.MessageData]{},
+			want:    &dynamomq.ProduceOutput[test.MessageData]{},
 			wantErr: true,
 		},
 	}

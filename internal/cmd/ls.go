@@ -18,7 +18,7 @@ func (f CommandFactory) CreateLSCommand(flgs *Flags) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			out, err := client.ListMessages(ctx, &dynamomq.ListMessagesInput{Size: 10})
+			out, err := client.ListMessages(ctx, &dynamomq.ListMessagesInput{Size: dynamomq.DefaultMaxListMessages})
 			if err != nil {
 				return err
 			}

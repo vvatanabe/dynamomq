@@ -20,6 +20,7 @@ const (
 	DefaultRetryMaxAttempts           = 10
 	DefaultVisibilityTimeoutInMinutes = 1
 	DefaultMaxListMessages            = 10
+	DefaultQueryLimit                 = 250
 )
 
 type Client[T any] interface {
@@ -45,12 +46,11 @@ type ClientOptions struct {
 	UseFIFO                    bool
 	BaseEndpoint               string
 	RetryMaxAttempts           int
-	
 	Clock                      clock.Clock
-	MarshalMap          func(in interface{}) (map[string]types.AttributeValue, error)
-	UnmarshalMap        func(m map[string]types.AttributeValue, out interface{}) error
-	UnmarshalListOfMaps func(l []map[string]types.AttributeValue, out interface{}) error
-	BuildExpression     func(b expression.Builder) (expression.Expression, error)
+	MarshalMap                 func(in interface{}) (map[string]types.AttributeValue, error)
+	UnmarshalMap               func(m map[string]types.AttributeValue, out interface{}) error
+	UnmarshalListOfMaps        func(l []map[string]types.AttributeValue, out interface{}) error
+	BuildExpression            func(b expression.Builder) (expression.Expression, error)
 }
 
 func WithAWSDynamoDBClient(client *dynamodb.Client) func(*ClientOptions) {
@@ -262,7 +262,7 @@ func (c *client[T]) executeQuery(ctx context.Context, expr expression.Expression
 			KeyConditionExpression:    expr.KeyCondition(),
 			ExpressionAttributeNames:  expr.Names(),
 			ExpressionAttributeValues: expr.Values(),
-			Limit:                     aws.Int32(250),
+			Limit:                     aws.Int32(DefaultQueryLimit),
 			ScanIndexForward:          aws.Bool(true),
 			ExclusiveStartKey:         exclusiveStartKey,
 		})
@@ -434,7 +434,8 @@ func (c *client[T]) MoveMessageToDLQ(ctx context.Context, params *MoveMessageToD
 		return &MoveMessageToDLQOutput{}, &IDNotFoundError{}
 	}
 	message := retrieved.Message
-	if err = message.markAsMovedToDLQ(c.clock.Now()); err != nil {
+	if markedErr := message.markAsMovedToDLQ(c.clock.Now()); markedErr != nil {
+		//lint:ignore nilerr reason
 		return &MoveMessageToDLQOutput{
 			ID:                   params.ID,
 			Status:               message.Status,
@@ -543,11 +544,7 @@ type GetQueueStatsOutput struct {
 	TotalRecordsNotStarted     int      `json:"total_records_in_queue_pending_for_processing"`
 }
 
-func (c *client[T]) GetQueueStats(ctx context.Context, params *GetQueueStatsInput) (*GetQueueStatsOutput, error) {
-	if params == nil {
-		params = &GetQueueStatsInput{}
-	}
-
+func (c *client[T]) GetQueueStats(ctx context.Context, _ *GetQueueStatsInput) (*GetQueueStatsOutput, error) {
 	builder := expression.NewBuilder().
 		WithKeyCondition(expression.KeyEqual(expression.Key("queue_type"), expression.Value(QueueTypeStandard)))
 	expr, err := c.buildExpression(builder)
@@ -582,7 +579,7 @@ func (c *client[T]) queryAndCalculateQueueStats(ctx context.Context, expr expres
 			ExpressionAttributeNames:  expr.Names(),
 			KeyConditionExpression:    expr.KeyCondition(),
 			ScanIndexForward:          aws.Bool(true),
-			Limit:                     aws.Int32(250),
+			Limit:                     aws.Int32(DefaultQueryLimit),
 			ExpressionAttributeValues: expr.Values(),
 			ExclusiveStartKey:         exclusiveStartKey,
 		})
@@ -618,14 +615,16 @@ func (c *client[T]) processQueryItemsForQueueStats(items []map[string]types.Attr
 	return nil
 }
 
+const maxFirst100ItemsInQueue = 100
+
 func updateQueueStatsFromItem[T any](item *Message[T], stats *GetQueueStatsOutput) {
 	if item.Status == StatusProcessing {
 		stats.TotalRecordsInProcessing++
-		if len(stats.First100SelectedIDsInQueue) < 100 {
+		if len(stats.First100SelectedIDsInQueue) < maxFirst100ItemsInQueue {
 			stats.First100SelectedIDsInQueue = append(stats.First100SelectedIDsInQueue, item.ID)
 		}
 	}
-	if len(stats.First100IDsInQueue) < 100 {
+	if len(stats.First100IDsInQueue) < maxFirst100ItemsInQueue {
 		stats.First100IDsInQueue = append(stats.First100IDsInQueue, item.ID)
 	}
 }
@@ -638,10 +637,7 @@ type GetDLQStatsOutput struct {
 	TotalRecordsInDLQ  int      `json:"total_records_in_DLQ"`
 }
 
-func (c *client[T]) GetDLQStats(ctx context.Context, params *GetDLQStatsInput) (*GetDLQStatsOutput, error) {
-	if params == nil {
-		params = &GetDLQStatsInput{}
-	}
+func (c *client[T]) GetDLQStats(ctx context.Context, _ *GetDLQStatsInput) (*GetDLQStatsOutput, error) {
 	builder := expression.NewBuilder().
 		WithKeyCondition(expression.KeyEqual(expression.Key("queue_type"), expression.Value(QueueTypeDLQ)))
 	expr, err := c.buildExpression(builder)
@@ -672,7 +668,7 @@ func (c *client[T]) queryAndCalculateDLQStats(ctx context.Context, expr expressi
 			ExpressionAttributeNames:  expr.Names(),
 			ExpressionAttributeValues: expr.Values(),
 			KeyConditionExpression:    expr.KeyCondition(),
-			Limit:                     aws.Int32(250),
+			Limit:                     aws.Int32(DefaultQueryLimit),
 			ScanIndexForward:          aws.Bool(true),
 			ExclusiveStartKey:         lastEvaluatedKey,
 		})
@@ -696,7 +692,7 @@ func (c *client[T]) queryAndCalculateDLQStats(ctx context.Context, expr expressi
 func (c *client[T]) processQueryItemsForDLQStats(items []map[string]types.AttributeValue, stats *GetDLQStatsOutput) error {
 	for _, itemMap := range items {
 		stats.TotalRecordsInDLQ++
-		if len(stats.First100IDsInQueue) < 100 {
+		if len(stats.First100IDsInQueue) < maxFirst100ItemsInQueue {
 			item := Message[T]{}
 			err := c.unmarshalMap(itemMap, &item)
 			if err != nil {
@@ -799,14 +795,14 @@ func (c *client[T]) ReplaceMessage(ctx context.Context, params *ReplaceMessageIn
 		return &ReplaceMessageOutput{}, err
 	}
 	if retrieved.Message != nil {
-		_, err := c.dynamoDB.DeleteItem(ctx, &dynamodb.DeleteItemInput{
+		_, delErr := c.dynamoDB.DeleteItem(ctx, &dynamodb.DeleteItemInput{
 			TableName: aws.String(c.tableName),
 			Key: map[string]types.AttributeValue{
 				"id": &types.AttributeValueMemberS{Value: params.Message.ID},
 			},
 		})
-		if err != nil {
-			return &ReplaceMessageOutput{}, handleDynamoDBError(err)
+		if delErr != nil {
+			return &ReplaceMessageOutput{}, handleDynamoDBError(delErr)
 		}
 	}
 	return &ReplaceMessageOutput{}, c.put(ctx, params.Message)

@@ -37,5 +37,5 @@ func errorCLIModeRestriction(command string) error {
 }
 
 func errorWithID(err error, id string) error {
-	return fmt.Errorf("%v, ID: %s", err, id)
+	return fmt.Errorf("%w, ID: %s", err, id)
 }

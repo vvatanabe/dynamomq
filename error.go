@@ -17,7 +17,7 @@ func (e IDNotFoundError) Error() string {
 type IDDuplicatedError struct{}
 
 func (e IDDuplicatedError) Error() string {
-	return fmt.Sprintf("Provided ID was duplicated.")
+	return "Provided ID was duplicated."
 }
 
 type ConditionalCheckFailedError struct {
