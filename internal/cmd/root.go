@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"io"
@@ -39,77 +38,41 @@ func (f CommandFactory) CreateRootCommand(flgs *Flags) *cobra.Command {
 		Long:    `DynamoMQ is a tool for implementing message queueing with Amazon DynamoDB in Go.`,
 		Version: "",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			defer fmt.Printf("... Interactive is ending\n\n\n")
-
-			fmt.Println("===========================================================")
-			fmt.Println(">> Welcome to DynamoMQ CLI! [INTERACTIVE MODE]")
-			fmt.Println("===========================================================")
-			fmt.Println("for help, enter one of the following: ? or h or help")
-			fmt.Println("all commands in CLIs need to be typed in lowercase")
-			fmt.Println("")
-
-			ctx := context.Background()
-			client, cfg, err := f.CreateDynamoMQClient(ctx, flgs)
-			if err != nil {
-				return err
-			}
-
-			fmt.Println("... AWS session is properly established!")
-
-			fmt.Printf("AWSRegion: %s\n", cfg.Region)
-			fmt.Printf("TableName: %s\n", flgs.TableName)
-			fmt.Printf("EndpointURL: %s\n", flgs.EndpointURL)
-			fmt.Println("")
-
-			c := Interactive{
-				Client:  client,
-				Message: nil,
-			}
-
-			// 1. Create a Scanner using the InputStream available.
-			scanner := bufio.NewScanner(f.Stdin)
-
-			for {
-				// 2. Don't forget to prompt the user
-				if c.Message != nil {
-					fmt.Printf("\nID <%s> >> Enter command: ", c.Message.ID)
-				} else {
-					fmt.Print("\n>> Enter command: ")
-				}
-
-				// 3. Use the Scanner to read a line of text from the user.
-				scanned := scanner.Scan()
-				if !scanned {
-					break
-				}
-
-				input := scanner.Text()
-				if input == "" {
-					continue
-				}
-
-				var quit bool
-				command, params := ParseInput(input)
-				switch command {
-				case "":
-					continue
-				case "quit", "q":
-					quit = true
-				default:
-					// 4. Now, you can do anything with the input string that you need to.
-					// Like, output it to the user.
-					runErr := c.Run(context.Background(), command, params)
-					if runErr != nil {
-						printError(runErr)
-					}
-				}
-				if quit {
-					break
-				}
-			}
-			return nil
+			return f.runRootCommand(flgs)
 		},
 	}
+}
+
+func (f CommandFactory) runRootCommand(flgs *Flags) error {
+	defer fmt.Printf("... Interactive is ending\n\n\n")
+	printWelcomeMessage()
+
+	ctx := context.Background()
+	client, cfg, err := f.CreateDynamoMQClient(ctx, flgs)
+	if err != nil {
+		return err
+	}
+	printAWSConfig(cfg, flgs)
+
+	interactive := &Interactive{Client: client, Message: nil}
+	return interactive.Start(f.Stdin)
+}
+
+func printWelcomeMessage() {
+	fmt.Println("===========================================================")
+	fmt.Println(">> Welcome to DynamoMQ CLI! [INTERACTIVE MODE]")
+	fmt.Println("===========================================================")
+	fmt.Println("for help, enter one of the following: ? or h or help")
+	fmt.Println("all commands in CLIs need to be typed in lowercase")
+	fmt.Println("")
+}
+
+func printAWSConfig(cfg aws.Config, flgs *Flags) {
+	fmt.Println("... AWS session is properly established!")
+	fmt.Printf("AWSRegion: %s\n", cfg.Region)
+	fmt.Printf("TableName: %s\n", flgs.TableName)
+	fmt.Printf("EndpointURL: %s\n", flgs.EndpointURL)
+	fmt.Println("")
 }
 
 func createDynamoMQClient[T any](ctx context.Context, flags *Flags) (dynamomq.Client[T], aws.Config, error) {

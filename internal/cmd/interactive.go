@@ -1,9 +1,11 @@
 package cmd
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
+	"io"
 
 	"github.com/vvatanabe/dynamomq"
 	"github.com/vvatanabe/dynamomq/internal/clock"
@@ -13,6 +15,48 @@ import (
 type Interactive struct {
 	Client  dynamomq.Client[any]
 	Message *dynamomq.Message[any]
+}
+
+func (c *Interactive) Start(in io.Reader) error {
+	scanner := bufio.NewScanner(in)
+	for {
+		if c.Message != nil {
+			fmt.Printf("\nID <%s> >> Enter command: ", c.Message.ID)
+		} else {
+			fmt.Print("\n>> Enter command: ")
+		}
+		command, params, quit := c.scanAndParseCommand(scanner)
+		if quit {
+			break
+		}
+		if err := c.Run(context.Background(), command, params); err != nil {
+			printError(err)
+		}
+	}
+	return nil
+}
+
+func (c *Interactive) scanAndParseCommand(scanner *bufio.Scanner) (command string, params []string, quit bool) {
+	scanned := scanner.Scan()
+	if !scanned {
+		quit = true
+		return
+	}
+
+	input := scanner.Text()
+	if input == "" {
+		quit = false
+		return
+	}
+
+	command, params = ParseInput(input)
+	switch command {
+	case "quit", "q":
+		quit = true
+	default:
+		quit = false
+	}
+	return
 }
 
 func (c *Interactive) Run(ctx context.Context, command string, params []string) (err error) {
