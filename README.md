@@ -331,18 +331,18 @@ This design ensures that DynamoMQ maintains message reliability while enabling t
 
 The DynamoDB table for the DynamoMQ message queue system is designed to efficiently manage and track the status of messages. Here’s a breakdown of the table schema:
 
-| Key   | Attributes               | Type   | Example Value                       |
-|-------|--------------------------|--------|-------------------------------------|
-| PK    | id                       | string | A-101                               |
-|       | data                     | any    | any                                 |
-|       | status                   | string | READY or PROCESSING                 |
-|       | receive_count            | number | 1                                   |
-| GSIPK | queue_type               | string | STANDARD or DLQ                     |
-|       | version                  | number | 1                                   |
-|       | creation_timestamp       | string | 2006-01-02T15:04:05.999999999Z07:00 |
-|       | last_updated_timestamp   | string | 2006-01-02T15:04:05.999999999Z07:00 |
-| GSISK | queue_add_timestamp      | string | 2006-01-02T15:04:05.999999999Z07:00 |
-|       | queue_peek_timestamp     | string | 2006-01-02T15:04:05.999999999Z07:00 |
+| Key   | Attributes             | Type   | Example Value                       |
+|-------|------------------------|--------|-------------------------------------|
+| PK    | id                     | string | A-101                               |
+|       | data                   | any    | any                                 |
+|       | visibility_timeout     | number | 10                                  |
+|       | receive_count          | number | 1                                   |
+| GSIPK | queue_type             | string | STANDARD or DLQ                     |
+|       | version                | number | 1                                   |
+|       | creation_timestamp     | string | 2006-01-02T15:04:05.999999999Z07:00 |
+|       | last_updated_timestamp | string | 2006-01-02T15:04:05.999999999Z07:00 |
+| GSISK | queue_add_timestamp    | string | 2006-01-02T15:04:05.999999999Z07:00 |
+|       | queue_peek_timestamp   | string | 2006-01-02T15:04:05.999999999Z07:00 |
 
 **PK (Primary Key)** `ID`: A unique identifier for each message, such as 'A-101'. This is a string value that facilitates the retrieval and management of messages.
 
@@ -352,7 +352,7 @@ The DynamoDB table for the DynamoMQ message queue system is designed to efficien
 
 **Attributes**: These are the various properties associated with each message:
 - `data`: This attribute holds the content of the message and can be of any type.
-- `status`: Indicates the current state of the message, either 'READY' for new messages or 'PROCESSING' for messages being processed.
+- `isibility_timeout`: The new value for the message's visibility timeout (in seconds).
 - `receive_count`: A numerical count of how many times the message has been retrieved from the queue.
 - `version`: A number that can be used for optimistic locking and to ensure that the message is not being concurrently modified.
 - `creation_timestamp`: The date and time when the message was created. ISO 8601 format.

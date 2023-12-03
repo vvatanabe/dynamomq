@@ -31,9 +31,9 @@ func TestMockClient(t *testing.T) {
 			},
 		},
 		{
-			name: "UpdateMessageAsVisible",
+			name: "ChangeMessageVisibility",
 			method: func(client *mock.Client[any]) (any, error) {
-				return client.UpdateMessageAsVisible(ctx, nil)
+				return client.ChangeMessageVisibility(ctx, nil)
 			},
 		},
 		{

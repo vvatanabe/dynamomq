@@ -166,7 +166,7 @@ func (c *Consumer[T]) shouldRetry(msg *Message[T]) bool {
 }
 
 func (c *Consumer[T]) retryMessage(ctx context.Context, msg *Message[T]) {
-	if _, err := c.client.UpdateMessageAsVisible(ctx, &UpdateMessageAsVisibleInput{ID: msg.ID}); err != nil {
+	if _, err := c.client.ChangeMessageVisibility(ctx, &ChangeMessageVisibilityInput{ID: msg.ID}); err != nil {
 		c.logf("DynamoMQ: Failed to update a message as visible. %s", err)
 	}
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/spf13/cobra"
 	"github.com/vvatanabe/dynamomq"
+	"github.com/vvatanabe/dynamomq/internal/clock"
 )
 
 type CommandFactory struct {
@@ -131,7 +132,7 @@ type SystemInfo struct {
 func GetSystemInfo[T any](m *dynamomq.Message[T]) *SystemInfo {
 	return &SystemInfo{
 		ID:                     m.ID,
-		Status:                 m.Status,
+		Status:                 m.GetStatus(clock.Now()),
 		ReceiveCount:           m.ReceiveCount,
 		QueueType:              m.QueueType,
 		Version:                m.Version,
@@ -144,8 +145,8 @@ func GetSystemInfo[T any](m *dynamomq.Message[T]) *SystemInfo {
 
 func ResetSystemInfo[T any](m *dynamomq.Message[T], now time.Time) {
 	msg := dynamomq.NewMessage[T](m.ID, m.Data, now)
-	m.Status = msg.Status
 	m.QueueType = msg.QueueType
+	m.VisibilityTimeout = msg.VisibilityTimeout
 	m.ReceiveCount = msg.ReceiveCount
 	m.Version = msg.Version
 	m.CreationTimestamp = msg.CreationTimestamp

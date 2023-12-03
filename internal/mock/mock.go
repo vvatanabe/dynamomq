@@ -12,17 +12,17 @@ import (
 var ErrNotImplemented = errors.New("not implemented")
 
 type Client[T any] struct {
-	SendMessageFunc            func(ctx context.Context, params *dynamomq.SendMessageInput[T]) (*dynamomq.SendMessageOutput[T], error)
-	ReceiveMessageFunc         func(ctx context.Context, params *dynamomq.ReceiveMessageInput) (*dynamomq.ReceiveMessageOutput[T], error)
-	UpdateMessageAsVisibleFunc func(ctx context.Context, params *dynamomq.UpdateMessageAsVisibleInput) (*dynamomq.UpdateMessageAsVisibleOutput[T], error)
-	DeleteMessageFunc          func(ctx context.Context, params *dynamomq.DeleteMessageInput) (*dynamomq.DeleteMessageOutput, error)
-	MoveMessageToDLQFunc       func(ctx context.Context, params *dynamomq.MoveMessageToDLQInput) (*dynamomq.MoveMessageToDLQOutput, error)
-	RedriveMessageFunc         func(ctx context.Context, params *dynamomq.RedriveMessageInput) (*dynamomq.RedriveMessageOutput, error)
-	GetMessageFunc             func(ctx context.Context, params *dynamomq.GetMessageInput) (*dynamomq.GetMessageOutput[T], error)
-	GetQueueStatsFunc          func(ctx context.Context, params *dynamomq.GetQueueStatsInput) (*dynamomq.GetQueueStatsOutput, error)
-	GetDLQStatsFunc            func(ctx context.Context, params *dynamomq.GetDLQStatsInput) (*dynamomq.GetDLQStatsOutput, error)
-	ListMessagesFunc           func(ctx context.Context, params *dynamomq.ListMessagesInput) (*dynamomq.ListMessagesOutput[T], error)
-	ReplaceMessageFunc         func(ctx context.Context, params *dynamomq.ReplaceMessageInput[T]) (*dynamomq.ReplaceMessageOutput, error)
+	SendMessageFunc             func(ctx context.Context, params *dynamomq.SendMessageInput[T]) (*dynamomq.SendMessageOutput[T], error)
+	ReceiveMessageFunc          func(ctx context.Context, params *dynamomq.ReceiveMessageInput) (*dynamomq.ReceiveMessageOutput[T], error)
+	ChangeMessageVisibilityFunc func(ctx context.Context, params *dynamomq.ChangeMessageVisibilityInput) (*dynamomq.ChangeMessageVisibilityOutput[T], error)
+	DeleteMessageFunc           func(ctx context.Context, params *dynamomq.DeleteMessageInput) (*dynamomq.DeleteMessageOutput, error)
+	MoveMessageToDLQFunc        func(ctx context.Context, params *dynamomq.MoveMessageToDLQInput) (*dynamomq.MoveMessageToDLQOutput, error)
+	RedriveMessageFunc          func(ctx context.Context, params *dynamomq.RedriveMessageInput) (*dynamomq.RedriveMessageOutput, error)
+	GetMessageFunc              func(ctx context.Context, params *dynamomq.GetMessageInput) (*dynamomq.GetMessageOutput[T], error)
+	GetQueueStatsFunc           func(ctx context.Context, params *dynamomq.GetQueueStatsInput) (*dynamomq.GetQueueStatsOutput, error)
+	GetDLQStatsFunc             func(ctx context.Context, params *dynamomq.GetDLQStatsInput) (*dynamomq.GetDLQStatsOutput, error)
+	ListMessagesFunc            func(ctx context.Context, params *dynamomq.ListMessagesInput) (*dynamomq.ListMessagesOutput[T], error)
+	ReplaceMessageFunc          func(ctx context.Context, params *dynamomq.ReplaceMessageInput[T]) (*dynamomq.ReplaceMessageOutput, error)
 }
 
 func (m Client[T]) SendMessage(ctx context.Context, params *dynamomq.SendMessageInput[T]) (*dynamomq.SendMessageOutput[T], error) {
@@ -39,9 +39,9 @@ func (m Client[T]) ReceiveMessage(ctx context.Context, params *dynamomq.ReceiveM
 	return nil, ErrNotImplemented
 }
 
-func (m Client[T]) UpdateMessageAsVisible(ctx context.Context, params *dynamomq.UpdateMessageAsVisibleInput) (*dynamomq.UpdateMessageAsVisibleOutput[T], error) {
-	if m.UpdateMessageAsVisibleFunc != nil {
-		return m.UpdateMessageAsVisibleFunc(ctx, params)
+func (m Client[T]) ChangeMessageVisibility(ctx context.Context, params *dynamomq.ChangeMessageVisibilityInput) (*dynamomq.ChangeMessageVisibilityOutput[T], error) {
+	if m.ChangeMessageVisibilityFunc != nil {
+		return m.ChangeMessageVisibilityFunc(ctx, params)
 	}
 	return nil, ErrNotImplemented
 }
@@ -115,8 +115,8 @@ var SuccessfulMockClient = &Client[any]{
 			PeekedMessageObject: &dynamomq.Message[any]{},
 		}, nil
 	},
-	UpdateMessageAsVisibleFunc: func(ctx context.Context, params *dynamomq.UpdateMessageAsVisibleInput) (*dynamomq.UpdateMessageAsVisibleOutput[any], error) {
-		return &dynamomq.UpdateMessageAsVisibleOutput[any]{
+	ChangeMessageVisibilityFunc: func(ctx context.Context, params *dynamomq.ChangeMessageVisibilityInput) (*dynamomq.ChangeMessageVisibilityOutput[any], error) {
+		return &dynamomq.ChangeMessageVisibilityOutput[any]{
 			Result:  &dynamomq.Result{},
 			Message: &dynamomq.Message[any]{},
 		}, nil

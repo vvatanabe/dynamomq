@@ -11,8 +11,8 @@ func NewMessage[T any](id string, data T, now time.Time) *Message[T] {
 	return &Message[T]{
 		ID:                     id,
 		Data:                   data,
-		Status:                 StatusReady,
 		ReceiveCount:           0,
+		VisibilityTimeout:      0,
 		QueueType:              QueueTypeStandard,
 		Version:                1,
 		CreationTimestamp:      ts,
@@ -23,9 +23,10 @@ func NewMessage[T any](id string, data T, now time.Time) *Message[T] {
 }
 
 type Message[T any] struct {
-	ID                     string    `json:"id" dynamodbav:"id"`
-	Data                   T         `json:"data" dynamodbav:"data"`
-	Status                 Status    `json:"status" dynamodbav:"status"`
+	ID   string `json:"id" dynamodbav:"id"`
+	Data T      `json:"data" dynamodbav:"data"`
+	// The new value for the message's visibility timeout (in seconds).
+	VisibilityTimeout      int       `json:"visibility_timeout" dynamodbav:"visibility_timeout"`
 	ReceiveCount           int       `json:"receive_count" dynamodbav:"receive_count"`
 	QueueType              QueueType `json:"queue_type" dynamodbav:"queue_type,omitempty"`
 	Version                int       `json:"version" dynamodbav:"version"`
@@ -35,45 +36,38 @@ type Message[T any] struct {
 	PeekFromQueueTimestamp string    `json:"queue_peek_timestamp" dynamodbav:"queue_peek_timestamp"`
 }
 
-func (m *Message[T]) isQueueSelected(now time.Time, visibilityTimeout time.Duration) bool {
-	if m.Status != StatusProcessing {
-		return false
+func (m *Message[T]) GetStatus(now time.Time) Status {
+	peekUTCTime := clock.RFC3339NanoToTime(m.PeekFromQueueTimestamp)
+	invisibleTime := peekUTCTime.Add(time.Duration(m.VisibilityTimeout) * time.Second)
+	if now.Before(invisibleTime) {
+		return StatusProcessing
 	}
-	peekUTCTimestamp := clock.RFC3339NanoToUnixMilli(m.PeekFromQueueTimestamp)
-	timeDifference := now.UnixMilli() - peekUTCTimestamp
-	return timeDifference <= visibilityTimeout.Milliseconds()
+	return StatusReady
 }
 
 func (m *Message[T]) isDLQ() bool {
 	return m.QueueType == QueueTypeDLQ
 }
 
-func (m *Message[T]) markAsReady(now time.Time) error {
-	if m.Status != StatusProcessing {
-		return InvalidStateTransitionError{
-			Msg:       "message is currently ready",
-			Operation: "mark as ready",
-			Current:   m.Status,
-		}
-	}
+func (m *Message[T]) changeVisibilityTimeout(now time.Time, visibilityTimeout int) {
 	ts := clock.FormatRFC3339Nano(now)
-	m.Status = StatusReady
 	m.LastUpdatedTimestamp = ts
-	return nil
+	m.VisibilityTimeout = visibilityTimeout
 }
 
-func (m *Message[T]) markAsProcessing(now time.Time, visibilityTimeout time.Duration) error {
-	if m.isQueueSelected(now, visibilityTimeout) {
+func (m *Message[T]) markAsProcessing(now time.Time, visibilityTimeout int) error {
+	status := m.GetStatus(now)
+	if status == StatusProcessing {
 		return InvalidStateTransitionError{
 			Msg:       "message is currently being processed",
 			Operation: "mark as processing",
-			Current:   m.Status,
+			Current:   status,
 		}
 	}
 	ts := clock.FormatRFC3339Nano(now)
-	m.Status = StatusProcessing
 	m.LastUpdatedTimestamp = ts
 	m.PeekFromQueueTimestamp = ts
+	m.VisibilityTimeout = visibilityTimeout
 	return nil
 }
 
@@ -82,37 +76,39 @@ func (m *Message[T]) markAsMovedToDLQ(now time.Time) error {
 		return InvalidStateTransitionError{
 			Msg:       "message is already in DLQ",
 			Operation: "mark as moved to DLQ",
-			Current:   m.Status,
+			Current:   m.GetStatus(now),
 		}
 	}
 	ts := clock.FormatRFC3339Nano(now)
 	m.QueueType = QueueTypeDLQ
-	m.Status = StatusReady
 	m.ReceiveCount = 0
+	m.VisibilityTimeout = 0
 	m.LastUpdatedTimestamp = ts
 	m.AddToQueueTimestamp = ts
 	m.PeekFromQueueTimestamp = ""
 	return nil
 }
 
-func (m *Message[T]) markAsRestoredFromDLQ(now time.Time, visibilityTimeout time.Duration) error {
+func (m *Message[T]) markAsRestoredFromDLQ(now time.Time, visibilityTimeout int) error {
+	status := m.GetStatus(now)
 	if !m.isDLQ() {
 		return InvalidStateTransitionError{
 			Msg:       "can only redrive messages from DLQ",
 			Operation: "mark as restored from DLQ",
-			Current:   m.Status,
+			Current:   status,
 		}
 	}
-	if m.isQueueSelected(now, visibilityTimeout) {
+	if status == StatusProcessing {
 		return InvalidStateTransitionError{
 			Msg:       "can only redrive messages from READY",
 			Operation: "mark as restored from DLQ",
-			Current:   m.Status,
+			Current:   status,
 		}
 	}
 	ts := clock.FormatRFC3339Nano(now)
 	m.QueueType = QueueTypeStandard
-	m.Status = StatusReady
+	m.VisibilityTimeout = visibilityTimeout
+	m.ReceiveCount = 0
 	m.LastUpdatedTimestamp = ts
 	m.AddToQueueTimestamp = ts
 	return nil

@@ -10,13 +10,13 @@ import (
 
 func MarkAsReady[T any](m *dynamomq.Message[T], now time.Time) {
 	ts := clock.FormatRFC3339Nano(now)
-	m.Status = dynamomq.StatusReady
+	m.VisibilityTimeout = 0
 	m.LastUpdatedTimestamp = ts
 }
 
 func MarkAsProcessing[T any](m *dynamomq.Message[T], now time.Time) {
 	ts := clock.FormatRFC3339Nano(now)
-	m.Status = dynamomq.StatusProcessing
+	m.VisibilityTimeout = dynamomq.DefaultVisibilityTimeoutInSeconds
 	m.LastUpdatedTimestamp = ts
 	m.PeekFromQueueTimestamp = ts
 }
@@ -24,7 +24,7 @@ func MarkAsProcessing[T any](m *dynamomq.Message[T], now time.Time) {
 func MarkAsMovedToDLQ[T any](m *dynamomq.Message[T], now time.Time) {
 	ts := clock.FormatRFC3339Nano(now)
 	m.QueueType = dynamomq.QueueTypeDLQ
-	m.Status = dynamomq.StatusReady
+	m.VisibilityTimeout = 0
 	m.ReceiveCount = 0
 	m.LastUpdatedTimestamp = ts
 	m.AddToQueueTimestamp = ts
@@ -53,10 +53,11 @@ func NewMessageFromReadyToProcessing(id string,
 	MarkAsProcessing(m, processingTime)
 	m.Version = 2
 	m.ReceiveCount = 1
+	m.VisibilityTimeout = dynamomq.DefaultVisibilityTimeoutInSeconds
 	r := &dynamomq.ReceiveMessageOutput[test.MessageData]{
 		Result: &dynamomq.Result{
 			ID:                   m.ID,
-			Status:               m.Status,
+			Status:               dynamomq.StatusProcessing,
 			LastUpdatedTimestamp: m.LastUpdatedTimestamp,
 			Version:              m.Version,
 		},

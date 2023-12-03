@@ -155,7 +155,7 @@ func (c *Interactive) ls(ctx context.Context, _ []string) error {
 	}
 	fmt.Println("List messages of first 10 IDs:")
 	for _, m := range out.Messages {
-		fmt.Printf("* ID: %s, status: %s", m.ID, m.Status)
+		fmt.Printf("* ID: %s, status: %s", m.ID, m.GetStatus(clock.Now()))
 	}
 	return nil
 }
@@ -312,7 +312,7 @@ func (c *Interactive) fail(ctx context.Context, _ []string) error {
 	if c.Message == nil {
 		return errorCLIModeRestriction("`fail`")
 	}
-	_, err := c.Client.UpdateMessageAsVisible(ctx, &dynamomq.UpdateMessageAsVisibleInput{
+	_, err := c.Client.ChangeMessageVisibility(ctx, &dynamomq.ChangeMessageVisibilityInput{
 		ID: c.Message.ID,
 	})
 	if err != nil {

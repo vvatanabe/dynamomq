@@ -284,11 +284,11 @@ func NewClientForConsumerTest(queue, dlq chan *dynamomq.Message[test.MessageData
 			store.Delete(params.ID)
 			return &dynamomq.DeleteMessageOutput{}, nil
 		},
-		UpdateMessageAsVisibleFunc: func(ctx context.Context, params *dynamomq.UpdateMessageAsVisibleInput) (*dynamomq.UpdateMessageAsVisibleOutput[test.MessageData], error) {
+		ChangeMessageVisibilityFunc: func(ctx context.Context, params *dynamomq.ChangeMessageVisibilityInput) (*dynamomq.ChangeMessageVisibilityOutput[test.MessageData], error) {
 			if cfg.SimulateMessageAsVisibleError {
 				return nil, test.ErrTest
 			}
-			return &dynamomq.UpdateMessageAsVisibleOutput[test.MessageData]{}, nil
+			return &dynamomq.ChangeMessageVisibilityOutput[test.MessageData]{}, nil
 		},
 		MoveMessageToDLQFunc: func(ctx context.Context, params *dynamomq.MoveMessageToDLQInput) (*dynamomq.MoveMessageToDLQOutput, error) {
 			if cfg.SimulateMoveMessageToDLQError {
@@ -299,7 +299,7 @@ func NewClientForConsumerTest(queue, dlq chan *dynamomq.Message[test.MessageData
 			dlq <- msg
 			return &dynamomq.MoveMessageToDLQOutput{
 				ID:                   msg.ID,
-				Status:               msg.Status,
+				Status:               dynamomq.StatusReady,
 				LastUpdatedTimestamp: msg.LastUpdatedTimestamp,
 				Version:              2,
 			}, nil

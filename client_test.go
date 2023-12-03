@@ -120,17 +120,17 @@ func TestDynamoMQClientShouldReturnError(t *testing.T) {
 			wantError: &dynamomq.IDDuplicatedError{},
 		},
 		{
-			name: "UpdateMessageAsVisible should return IDNotProvidedError",
+			name: "ChangeMessageVisibility should return IDNotProvidedError",
 			operation: func() error {
-				_, err := client.UpdateMessageAsVisible(context.Background(), nil)
+				_, err := client.ChangeMessageVisibility(context.Background(), nil)
 				return err
 			},
 			wantError: &dynamomq.IDNotProvidedError{},
 		},
 		{
-			name: "UpdateMessageAsVisible should return IDNotFoundError",
+			name: "ChangeMessageVisibility should return IDNotFoundError",
 			operation: func() error {
-				_, err := client.UpdateMessageAsVisible(context.Background(), &dynamomq.UpdateMessageAsVisibleInput{
+				_, err := client.ChangeMessageVisibility(context.Background(), &dynamomq.ChangeMessageVisibilityInput{
 					ID: "B-101",
 				})
 				return err
@@ -273,7 +273,7 @@ func TestDynamoMQClientReceiveMessage(t *testing.T) {
 				r := &dynamomq.ReceiveMessageOutput[test.MessageData]{
 					Result: &dynamomq.Result{
 						ID:                   m.ID,
-						Status:               m.Status,
+						Status:               dynamomq.StatusProcessing,
 						LastUpdatedTimestamp: m.LastUpdatedTimestamp,
 						Version:              m.Version,
 					},
@@ -296,7 +296,9 @@ func TestDynamoMQClientReceiveMessage(t *testing.T) {
 	}
 	runTestsParallel[any, *dynamomq.ReceiveMessageOutput[test.MessageData]](t, "ReceiveMessage()", tests,
 		func(client dynamomq.Client[test.MessageData], _ any) (*dynamomq.ReceiveMessageOutput[test.MessageData], error) {
-			return client.ReceiveMessage(context.Background(), nil)
+			return client.ReceiveMessage(context.Background(), &dynamomq.ReceiveMessageInput{
+				VisibilityTimeout: dynamomq.DefaultVisibilityTimeoutInSeconds,
+			})
 		})
 }
 
@@ -319,7 +321,9 @@ func testDynamoMQClientReceiveMessageSequence(t *testing.T, useFIFO bool) {
 	}
 
 	for i, want := range wants {
-		result, err := client.ReceiveMessage(ctx, &dynamomq.ReceiveMessageInput{})
+		result, err := client.ReceiveMessage(ctx, &dynamomq.ReceiveMessageInput{
+			VisibilityTimeout: dynamomq.DefaultVisibilityTimeoutInSeconds,
+		})
 		test.AssertError(t, err, nil, fmt.Sprintf("ReceiveMessage() [%d-1]", i))
 		test.AssertDeepEqual(t, result, want, fmt.Sprintf("ReceiveMessage() [%d-2]", i))
 
@@ -327,7 +331,9 @@ func testDynamoMQClientReceiveMessageSequence(t *testing.T, useFIFO bool) {
 			return
 		}
 
-		_, err = client.ReceiveMessage(ctx, &dynamomq.ReceiveMessageInput{})
+		_, err = client.ReceiveMessage(ctx, &dynamomq.ReceiveMessageInput{
+			VisibilityTimeout: dynamomq.DefaultVisibilityTimeoutInSeconds,
+		})
 		test.AssertError(t, err, &dynamomq.EmptyQueueError{}, fmt.Sprintf("ReceiveMessage() [%d-3]", i))
 
 		_, err = client.DeleteMessage(ctx, &dynamomq.DeleteMessageInput{
@@ -336,7 +342,9 @@ func testDynamoMQClientReceiveMessageSequence(t *testing.T, useFIFO bool) {
 		test.AssertError(t, err, nil, fmt.Sprintf("DeleteMessage() [%d]", i))
 	}
 
-	_, err := client.ReceiveMessage(ctx, &dynamomq.ReceiveMessageInput{})
+	_, err := client.ReceiveMessage(ctx, &dynamomq.ReceiveMessageInput{
+		VisibilityTimeout: dynamomq.DefaultVisibilityTimeoutInSeconds,
+	})
 	test.AssertError(t, err, &dynamomq.EmptyQueueError{}, "ReceiveMessage() [last]")
 }
 
@@ -356,7 +364,7 @@ func TestDynamoMQClientUpdateMessageAsVisible(t *testing.T) {
 		id string
 	}
 	now := test.DefaultTestDate.Add(10 * time.Second)
-	tests := []ClientTestCase[args, *dynamomq.UpdateMessageAsVisibleOutput[test.MessageData]]{
+	tests := []ClientTestCase[args, *dynamomq.ChangeMessageVisibilityOutput[test.MessageData]]{
 		{
 			name:  "should succeed when id is found",
 			setup: NewSetupFunc(newPutRequestWithProcessingItem("A-101", now)),
@@ -366,7 +374,7 @@ func TestDynamoMQClientUpdateMessageAsVisible(t *testing.T) {
 			args: args{
 				id: "A-101",
 			},
-			want: &dynamomq.UpdateMessageAsVisibleOutput[test.MessageData]{
+			want: &dynamomq.ChangeMessageVisibilityOutput[test.MessageData]{
 				Result: &dynamomq.Result{
 					ID:                   "A-101",
 					Status:               dynamomq.StatusReady,
@@ -381,26 +389,10 @@ func TestDynamoMQClientUpdateMessageAsVisible(t *testing.T) {
 				}(),
 			},
 		},
-		{
-			name:  "should return InvalidStateTransitionError when status is ready",
-			setup: NewSetupFunc(newPutRequestWithReadyItem("A-101", now)),
-			sdkClock: mock.Clock{
-				T: now,
-			},
-			args: args{
-				id: "A-101",
-			},
-			want: &dynamomq.UpdateMessageAsVisibleOutput[test.MessageData]{},
-			wantErr: dynamomq.InvalidStateTransitionError{
-				Msg:       "message is currently ready",
-				Operation: "mark as ready",
-				Current:   dynamomq.StatusReady,
-			},
-		},
 	}
-	runTestsParallel[args, *dynamomq.UpdateMessageAsVisibleOutput[test.MessageData]](t, "UpdateMessageAsVisible()", tests,
-		func(client dynamomq.Client[test.MessageData], args args) (*dynamomq.UpdateMessageAsVisibleOutput[test.MessageData], error) {
-			return client.UpdateMessageAsVisible(context.Background(), &dynamomq.UpdateMessageAsVisibleInput{
+	runTestsParallel[args, *dynamomq.ChangeMessageVisibilityOutput[test.MessageData]](t, "ChangeMessageVisibility()", tests,
+		func(client dynamomq.Client[test.MessageData], args args) (*dynamomq.ChangeMessageVisibilityOutput[test.MessageData], error) {
+			return client.ChangeMessageVisibility(context.Background(), &dynamomq.ChangeMessageVisibilityInput{
 				ID: args.id,
 			})
 		})
@@ -450,7 +442,7 @@ func TestDynamoMQClientMoveMessageToDLQ(t *testing.T) {
 				s := NewTestMessageItemAsDLQ("A-101", test.DefaultTestDate)
 				r := &dynamomq.MoveMessageToDLQOutput{
 					ID:                   s.ID,
-					Status:               s.Status,
+					Status:               dynamomq.StatusReady,
 					LastUpdatedTimestamp: s.LastUpdatedTimestamp,
 					Version:              s.Version,
 				}
@@ -473,7 +465,7 @@ func TestDynamoMQClientMoveMessageToDLQ(t *testing.T) {
 				m.Version = 2
 				r := &dynamomq.MoveMessageToDLQOutput{
 					ID:                   m.ID,
-					Status:               m.Status,
+					Status:               dynamomq.StatusReady,
 					LastUpdatedTimestamp: m.LastUpdatedTimestamp,
 					Version:              m.Version,
 				}
@@ -822,7 +814,6 @@ func prepareTestClient(ctx context.Context, t *testing.T,
 		dynamomq.WithAWSDynamoDBClient(raw),
 		mock.WithClock(sdkClock),
 		dynamomq.WithUseFIFO(useFIFO),
-		dynamomq.WithAWSVisibilityTimeout(1),
 		dynamomq.WithAWSRetryMaxAttempts(dynamomq.DefaultRetryMaxAttempts),
 		WithUnmarshalMap(unmarshalMap),
 		WithMarshalMap(marshalMap),
@@ -945,9 +936,9 @@ func TestTestDynamoMQClientReturnUnmarshalingAttributeError(t *testing.T) {
 			},
 		},
 		{
-			name: "UpdateMessageAsVisible should return UnmarshalingAttributeError",
+			name: "ChangeMessageVisibility should return UnmarshalingAttributeError",
 			operation: func() (any, error) {
-				return client.UpdateMessageAsVisible(context.Background(), &dynamomq.UpdateMessageAsVisibleInput{
+				return client.ChangeMessageVisibility(context.Background(), &dynamomq.ChangeMessageVisibilityInput{
 					ID: "A-101",
 				})
 			},

@@ -381,8 +381,8 @@ func TestRunInteractiveFailReturnError(t *testing.T) {
 		{
 			name: "should failed when fail to get message",
 			client: mock.Client[any]{
-				UpdateMessageAsVisibleFunc: func(ctx context.Context, params *dynamomq.UpdateMessageAsVisibleInput) (*dynamomq.UpdateMessageAsVisibleOutput[any], error) {
-					return &dynamomq.UpdateMessageAsVisibleOutput[any]{}, nil
+				ChangeMessageVisibilityFunc: func(ctx context.Context, params *dynamomq.ChangeMessageVisibilityInput) (*dynamomq.ChangeMessageVisibilityOutput[any], error) {
+					return &dynamomq.ChangeMessageVisibilityOutput[any]{}, nil
 				},
 				GetMessageFunc: func(ctx context.Context, params *dynamomq.GetMessageInput) (*dynamomq.GetMessageOutput[any], error) {
 					return &dynamomq.GetMessageOutput[any]{}, test.ErrTest
@@ -392,8 +392,8 @@ func TestRunInteractiveFailReturnError(t *testing.T) {
 		{
 			name: "should failed when message is not found",
 			client: mock.Client[any]{
-				UpdateMessageAsVisibleFunc: func(ctx context.Context, params *dynamomq.UpdateMessageAsVisibleInput) (*dynamomq.UpdateMessageAsVisibleOutput[any], error) {
-					return &dynamomq.UpdateMessageAsVisibleOutput[any]{}, nil
+				ChangeMessageVisibilityFunc: func(ctx context.Context, params *dynamomq.ChangeMessageVisibilityInput) (*dynamomq.ChangeMessageVisibilityOutput[any], error) {
+					return &dynamomq.ChangeMessageVisibilityOutput[any]{}, nil
 				},
 				GetMessageFunc: func(ctx context.Context, params *dynamomq.GetMessageInput) (*dynamomq.GetMessageOutput[any], error) {
 					return &dynamomq.GetMessageOutput[any]{}, nil
@@ -403,8 +403,8 @@ func TestRunInteractiveFailReturnError(t *testing.T) {
 		{
 			name: "should failed when fail to get queue stats",
 			client: mock.Client[any]{
-				UpdateMessageAsVisibleFunc: func(ctx context.Context, params *dynamomq.UpdateMessageAsVisibleInput) (*dynamomq.UpdateMessageAsVisibleOutput[any], error) {
-					return &dynamomq.UpdateMessageAsVisibleOutput[any]{}, nil
+				ChangeMessageVisibilityFunc: func(ctx context.Context, params *dynamomq.ChangeMessageVisibilityInput) (*dynamomq.ChangeMessageVisibilityOutput[any], error) {
+					return &dynamomq.ChangeMessageVisibilityOutput[any]{}, nil
 				},
 				GetMessageFunc: func(ctx context.Context, params *dynamomq.GetMessageInput) (*dynamomq.GetMessageOutput[any], error) {
 					return &dynamomq.GetMessageOutput[any]{

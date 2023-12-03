@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"sort"
-	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
@@ -18,7 +17,7 @@ const (
 	DefaultTableName                  = "dynamo-mq-table"
 	DefaultQueueingIndexName          = "dynamo-mq-index-queue_type-queue_add_timestamp"
 	DefaultRetryMaxAttempts           = 10
-	DefaultVisibilityTimeoutInMinutes = 1
+	DefaultVisibilityTimeoutInSeconds = 60
 	DefaultMaxListMessages            = 10
 	DefaultQueryLimit                 = 250
 )
@@ -26,7 +25,7 @@ const (
 type Client[T any] interface {
 	SendMessage(ctx context.Context, params *SendMessageInput[T]) (*SendMessageOutput[T], error)
 	ReceiveMessage(ctx context.Context, params *ReceiveMessageInput) (*ReceiveMessageOutput[T], error)
-	UpdateMessageAsVisible(ctx context.Context, params *UpdateMessageAsVisibleInput) (*UpdateMessageAsVisibleOutput[T], error)
+	ChangeMessageVisibility(ctx context.Context, params *ChangeMessageVisibilityInput) (*ChangeMessageVisibilityOutput[T], error)
 	DeleteMessage(ctx context.Context, params *DeleteMessageInput) (*DeleteMessageOutput, error)
 	MoveMessageToDLQ(ctx context.Context, params *MoveMessageToDLQInput) (*MoveMessageToDLQOutput, error)
 	RedriveMessage(ctx context.Context, params *RedriveMessageInput) (*RedriveMessageOutput, error)
@@ -38,19 +37,18 @@ type Client[T any] interface {
 }
 
 type ClientOptions struct {
-	DynamoDB                   *dynamodb.Client
-	TableName                  string
-	QueueingIndexName          string
-	VisibilityTimeoutInMinutes int
-	MaximumReceives            int
-	UseFIFO                    bool
-	BaseEndpoint               string
-	RetryMaxAttempts           int
-	Clock                      clock.Clock
-	MarshalMap                 func(in interface{}) (map[string]types.AttributeValue, error)
-	UnmarshalMap               func(m map[string]types.AttributeValue, out interface{}) error
-	UnmarshalListOfMaps        func(l []map[string]types.AttributeValue, out interface{}) error
-	BuildExpression            func(b expression.Builder) (expression.Expression, error)
+	DynamoDB            *dynamodb.Client
+	TableName           string
+	QueueingIndexName   string
+	MaximumReceives     int
+	UseFIFO             bool
+	BaseEndpoint        string
+	RetryMaxAttempts    int
+	Clock               clock.Clock
+	MarshalMap          func(in interface{}) (map[string]types.AttributeValue, error)
+	UnmarshalMap        func(m map[string]types.AttributeValue, out interface{}) error
+	UnmarshalListOfMaps func(l []map[string]types.AttributeValue, out interface{}) error
+	BuildExpression     func(b expression.Builder) (expression.Expression, error)
 }
 
 func WithAWSDynamoDBClient(client *dynamodb.Client) func(*ClientOptions) {
@@ -68,12 +66,6 @@ func WithTableName(tableName string) func(*ClientOptions) {
 func WithQueueingIndexName(queueingIndexName string) func(*ClientOptions) {
 	return func(s *ClientOptions) {
 		s.QueueingIndexName = queueingIndexName
-	}
-}
-
-func WithAWSVisibilityTimeout(minutes int) func(*ClientOptions) {
-	return func(s *ClientOptions) {
-		s.VisibilityTimeoutInMinutes = minutes
 	}
 }
 
@@ -97,15 +89,14 @@ func WithAWSRetryMaxAttempts(retryMaxAttempts int) func(*ClientOptions) {
 
 func NewFromConfig[T any](cfg aws.Config, optFns ...func(*ClientOptions)) (Client[T], error) {
 	o := &ClientOptions{
-		TableName:                  DefaultTableName,
-		QueueingIndexName:          DefaultQueueingIndexName,
-		RetryMaxAttempts:           DefaultRetryMaxAttempts,
-		VisibilityTimeoutInMinutes: DefaultVisibilityTimeoutInMinutes,
-		UseFIFO:                    false,
-		Clock:                      &clock.RealClock{},
-		MarshalMap:                 attributevalue.MarshalMap,
-		UnmarshalMap:               attributevalue.UnmarshalMap,
-		UnmarshalListOfMaps:        attributevalue.UnmarshalListOfMaps,
+		TableName:           DefaultTableName,
+		QueueingIndexName:   DefaultQueueingIndexName,
+		RetryMaxAttempts:    DefaultRetryMaxAttempts,
+		UseFIFO:             false,
+		Clock:               &clock.RealClock{},
+		MarshalMap:          attributevalue.MarshalMap,
+		UnmarshalMap:        attributevalue.UnmarshalMap,
+		UnmarshalListOfMaps: attributevalue.UnmarshalListOfMaps,
 		BuildExpression: func(b expression.Builder) (expression.Expression, error) {
 			return b.Build()
 		},
@@ -114,17 +105,16 @@ func NewFromConfig[T any](cfg aws.Config, optFns ...func(*ClientOptions)) (Clien
 		opt(o)
 	}
 	c := &client[T]{
-		tableName:                  o.TableName,
-		queueingIndexName:          o.QueueingIndexName,
-		visibilityTimeoutInMinutes: o.VisibilityTimeoutInMinutes,
-		maximumReceives:            o.MaximumReceives,
-		useFIFO:                    o.UseFIFO,
-		dynamoDB:                   o.DynamoDB,
-		clock:                      o.Clock,
-		marshalMap:                 o.MarshalMap,
-		unmarshalMap:               o.UnmarshalMap,
-		unmarshalListOfMaps:        o.UnmarshalListOfMaps,
-		buildExpression:            o.BuildExpression,
+		tableName:           o.TableName,
+		queueingIndexName:   o.QueueingIndexName,
+		maximumReceives:     o.MaximumReceives,
+		useFIFO:             o.UseFIFO,
+		dynamoDB:            o.DynamoDB,
+		clock:               o.Clock,
+		marshalMap:          o.MarshalMap,
+		unmarshalMap:        o.UnmarshalMap,
+		unmarshalListOfMaps: o.UnmarshalListOfMaps,
+		buildExpression:     o.BuildExpression,
 	}
 	if c.dynamoDB != nil {
 		return c, nil
@@ -139,17 +129,16 @@ func NewFromConfig[T any](cfg aws.Config, optFns ...func(*ClientOptions)) (Clien
 }
 
 type client[T any] struct {
-	dynamoDB                   *dynamodb.Client
-	tableName                  string
-	queueingIndexName          string
-	visibilityTimeoutInMinutes int
-	maximumReceives            int
-	useFIFO                    bool
-	clock                      clock.Clock
-	marshalMap                 func(in interface{}) (map[string]types.AttributeValue, error)
-	unmarshalMap               func(m map[string]types.AttributeValue, out interface{}) error
-	unmarshalListOfMaps        func(l []map[string]types.AttributeValue, out interface{}) error
-	buildExpression            func(b expression.Builder) (expression.Expression, error)
+	dynamoDB            *dynamodb.Client
+	tableName           string
+	queueingIndexName   string
+	maximumReceives     int
+	useFIFO             bool
+	clock               clock.Clock
+	marshalMap          func(in interface{}) (map[string]types.AttributeValue, error)
+	unmarshalMap        func(m map[string]types.AttributeValue, out interface{}) error
+	unmarshalListOfMaps func(l []map[string]types.AttributeValue, out interface{}) error
+	buildExpression     func(b expression.Builder) (expression.Expression, error)
 }
 
 type SendMessageInput[T any] struct {
@@ -176,7 +165,8 @@ func (c *client[T]) SendMessage(ctx context.Context, params *SendMessageInput[T]
 	if retrieved.Message != nil {
 		return &SendMessageOutput[T]{}, &IDDuplicatedError{}
 	}
-	message := NewMessage(params.ID, params.Data, c.clock.Now())
+	now := c.clock.Now()
+	message := NewMessage(params.ID, params.Data, now)
 	err = c.put(ctx, message)
 	if err != nil {
 		return &SendMessageOutput[T]{}, err
@@ -184,7 +174,7 @@ func (c *client[T]) SendMessage(ctx context.Context, params *SendMessageInput[T]
 	return &SendMessageOutput[T]{
 		Result: &Result{
 			ID:                   message.ID,
-			Status:               message.Status,
+			Status:               message.GetStatus(now),
 			LastUpdatedTimestamp: message.LastUpdatedTimestamp,
 			Version:              message.Version,
 		},
@@ -193,7 +183,8 @@ func (c *client[T]) SendMessage(ctx context.Context, params *SendMessageInput[T]
 }
 
 type ReceiveMessageInput struct {
-	QueueType QueueType
+	QueueType         QueueType
+	VisibilityTimeout int
 }
 
 // ReceiveMessageOutput represents the result for the ReceiveMessage() API call.
@@ -211,29 +202,29 @@ func (c *client[T]) ReceiveMessage(ctx context.Context, params *ReceiveMessageIn
 		params.QueueType = QueueTypeStandard
 	}
 
-	selectedItem, err := c.queryDynamoDB(ctx, params)
+	selected, err := c.selectMessage(ctx, params)
 	if err != nil {
 		return &ReceiveMessageOutput[T]{}, err
 	}
 
-	updatedItem, err := c.processSelectedItem(ctx, selectedItem)
+	updated, err := c.processSelectedMessage(ctx, selected)
 	if err != nil {
 		return &ReceiveMessageOutput[T]{}, err
 	}
 
 	return &ReceiveMessageOutput[T]{
 		Result: &Result{
-			ID:                   updatedItem.ID,
-			Status:               updatedItem.Status,
-			LastUpdatedTimestamp: updatedItem.LastUpdatedTimestamp,
-			Version:              updatedItem.Version,
+			ID:                   updated.ID,
+			Status:               updated.GetStatus(c.clock.Now()),
+			LastUpdatedTimestamp: updated.LastUpdatedTimestamp,
+			Version:              updated.Version,
 		},
-		PeekFromQueueTimestamp: updatedItem.PeekFromQueueTimestamp,
-		PeekedMessageObject:    updatedItem,
+		PeekFromQueueTimestamp: updated.PeekFromQueueTimestamp,
+		PeekedMessageObject:    updated,
 	}, nil
 }
 
-func (c *client[T]) queryDynamoDB(ctx context.Context, params *ReceiveMessageInput) (*Message[T], error) {
+func (c *client[T]) selectMessage(ctx context.Context, params *ReceiveMessageInput) (*Message[T], error) {
 	builder := expression.NewBuilder().
 		WithKeyCondition(expression.Key("queue_type").Equal(expression.Value(params.QueueType)))
 	expr, err := c.buildExpression(builder)
@@ -241,18 +232,18 @@ func (c *client[T]) queryDynamoDB(ctx context.Context, params *ReceiveMessageInp
 		return nil, BuildingExpressionError{Cause: err}
 	}
 
-	selectedItem, err := c.executeQuery(ctx, expr)
+	selected, err := c.executeQuery(ctx, params, expr)
 	if err != nil {
 		return nil, err
 	}
 
-	if selectedItem == nil {
+	if selected == nil {
 		return nil, &EmptyQueueError{}
 	}
-	return selectedItem, nil
+	return selected, nil
 }
 
-func (c *client[T]) executeQuery(ctx context.Context, expr expression.Expression) (*Message[T], error) {
+func (c *client[T]) executeQuery(ctx context.Context, params *ReceiveMessageInput, expr expression.Expression) (*Message[T], error) {
 	var exclusiveStartKey map[string]types.AttributeValue
 	var selectedItem *Message[T]
 	for {
@@ -272,7 +263,7 @@ func (c *client[T]) executeQuery(ctx context.Context, expr expression.Expression
 
 		exclusiveStartKey = queryResult.LastEvaluatedKey
 
-		selectedItem, err = c.processQueryResult(queryResult)
+		selectedItem, err = c.processQueryResult(params, queryResult)
 		if err != nil {
 			return nil, err
 		}
@@ -283,97 +274,89 @@ func (c *client[T]) executeQuery(ctx context.Context, expr expression.Expression
 	return selectedItem, nil
 }
 
-func (c *client[T]) processQueryResult(queryResult *dynamodb.QueryOutput) (*Message[T], error) {
-	var selectedItem *Message[T]
-	visibilityTimeout := c.getVisibilityTimeout()
-
+func (c *client[T]) processQueryResult(params *ReceiveMessageInput, queryResult *dynamodb.QueryOutput) (*Message[T], error) {
+	var selected *Message[T]
 	for _, itemMap := range queryResult.Items {
-		item := Message[T]{}
-		if err := c.unmarshalMap(itemMap, &item); err != nil {
+		message := Message[T]{}
+		if err := c.unmarshalMap(itemMap, &message); err != nil {
 			return nil, UnmarshalingAttributeError{Cause: err}
 		}
 
-		if err := item.markAsProcessing(c.clock.Now(), visibilityTimeout); err == nil {
-			selectedItem = &item
+		if err := message.markAsProcessing(c.clock.Now(), params.VisibilityTimeout); err == nil {
+			selected = &message
 			break
 		}
 		if c.useFIFO {
 			return nil, &EmptyQueueError{}
 		}
 	}
-	return selectedItem, nil
+	return selected, nil
 }
 
-func (c *client[T]) getVisibilityTimeout() time.Duration {
-	return time.Duration(c.visibilityTimeoutInMinutes) * time.Minute
-}
-
-func (c *client[T]) processSelectedItem(ctx context.Context, item *Message[T]) (*Message[T], error) {
+func (c *client[T]) processSelectedMessage(ctx context.Context, message *Message[T]) (*Message[T], error) {
 	builder := expression.NewBuilder().
 		WithUpdate(expression.
 			Add(expression.Name("version"), expression.Value(1)).
 			Add(expression.Name("receive_count"), expression.Value(1)).
-			Set(expression.Name("last_updated_timestamp"), expression.Value(item.LastUpdatedTimestamp)).
-			Set(expression.Name("queue_peek_timestamp"), expression.Value(item.PeekFromQueueTimestamp)).
-			Set(expression.Name("status"), expression.Value(item.Status))).
-		WithCondition(expression.Name("version").Equal(expression.Value(item.Version)))
+			Set(expression.Name("visibility_timeout"), expression.Value(message.VisibilityTimeout)).
+			Set(expression.Name("last_updated_timestamp"), expression.Value(message.LastUpdatedTimestamp)).
+			Set(expression.Name("queue_peek_timestamp"), expression.Value(message.PeekFromQueueTimestamp))).
+		WithCondition(expression.Name("version").Equal(expression.Value(message.Version)))
 	expr, err := c.buildExpression(builder)
 	if err != nil {
 		return nil, BuildingExpressionError{Cause: err}
 	}
-	updated, err := c.updateDynamoDBItem(ctx, item.ID, &expr)
+	updated, err := c.updateDynamoDBItem(ctx, message.ID, &expr)
 	if err != nil {
 		return nil, err
 	}
 	return updated, nil
 }
 
-type UpdateMessageAsVisibleInput struct {
-	ID string
+type ChangeMessageVisibilityInput struct {
+	ID                string
+	VisibilityTimeout int
 }
 
-// UpdateMessageAsVisibleOutput represents the result for the UpdateMessageAsVisible() API call.
-type UpdateMessageAsVisibleOutput[T any] struct {
+// ChangeMessageVisibilityOutput represents the result for the ChangeMessageVisibility() API call.
+type ChangeMessageVisibilityOutput[T any] struct {
 	*Result             // Embedded type for inheritance-like behavior in Go
 	Message *Message[T] `json:"-"`
 }
 
-func (c *client[T]) UpdateMessageAsVisible(ctx context.Context, params *UpdateMessageAsVisibleInput) (*UpdateMessageAsVisibleOutput[T], error) {
+func (c *client[T]) ChangeMessageVisibility(ctx context.Context, params *ChangeMessageVisibilityInput) (*ChangeMessageVisibilityOutput[T], error) {
 	if params == nil {
-		params = &UpdateMessageAsVisibleInput{}
+		params = &ChangeMessageVisibilityInput{}
 	}
 	retrieved, err := c.GetMessage(ctx, &GetMessageInput{
 		ID: params.ID,
 	})
 	if err != nil {
-		return &UpdateMessageAsVisibleOutput[T]{}, err
+		return &ChangeMessageVisibilityOutput[T]{}, err
 	}
 	if retrieved.Message == nil {
-		return &UpdateMessageAsVisibleOutput[T]{}, &IDNotFoundError{}
+		return &ChangeMessageVisibilityOutput[T]{}, &IDNotFoundError{}
 	}
 	message := retrieved.Message
-	err = message.markAsReady(c.clock.Now())
-	if err != nil {
-		return &UpdateMessageAsVisibleOutput[T]{}, err
-	}
+	message.changeVisibilityTimeout(c.clock.Now(), params.VisibilityTimeout)
 	builder := expression.NewBuilder().
 		WithUpdate(expression.
 			Add(expression.Name("version"), expression.Value(1)).
 			Set(expression.Name("last_updated_timestamp"), expression.Value(message.LastUpdatedTimestamp)).
-			Set(expression.Name("status"), expression.Value(message.Status))).
+			Set(expression.Name("visibility_timeout"), expression.Value(message.VisibilityTimeout))).
 		WithCondition(expression.Name("version").Equal(expression.Value(message.Version)))
 	expr, err := c.buildExpression(builder)
 	if err != nil {
-		return &UpdateMessageAsVisibleOutput[T]{}, BuildingExpressionError{Cause: err}
+		return &ChangeMessageVisibilityOutput[T]{}, BuildingExpressionError{Cause: err}
 	}
 	retried, err := c.updateDynamoDBItem(ctx, message.ID, &expr)
 	if err != nil {
-		return &UpdateMessageAsVisibleOutput[T]{}, err
+		return &ChangeMessageVisibilityOutput[T]{}, err
 	}
-	return &UpdateMessageAsVisibleOutput[T]{
+	return &ChangeMessageVisibilityOutput[T]{
 		Result: &Result{
 			ID:                   retried.ID,
-			Status:               retried.Status,
+			Status:               retried.GetStatus(c.clock.Now()),
 			LastUpdatedTimestamp: retried.LastUpdatedTimestamp,
 			Version:              retried.Version,
 		},
@@ -438,7 +421,7 @@ func (c *client[T]) MoveMessageToDLQ(ctx context.Context, params *MoveMessageToD
 		//lint:ignore nilerr reason
 		return &MoveMessageToDLQOutput{
 			ID:                   params.ID,
-			Status:               message.Status,
+			Status:               message.GetStatus(c.clock.Now()),
 			LastUpdatedTimestamp: message.LastUpdatedTimestamp,
 			Version:              message.Version,
 		}, nil
@@ -446,31 +429,32 @@ func (c *client[T]) MoveMessageToDLQ(ctx context.Context, params *MoveMessageToD
 	builder := expression.NewBuilder().
 		WithUpdate(expression.
 			Add(expression.Name("version"), expression.Value(1)).
-			Set(expression.Name("status"), expression.Value(message.Status)).
+			Set(expression.Name("visibility_timeout"), expression.Value(message.VisibilityTimeout)).
 			Set(expression.Name("receive_count"), expression.Value(message.ReceiveCount)).
 			Set(expression.Name("queue_type"), expression.Value(message.QueueType)).
 			Set(expression.Name("last_updated_timestamp"), expression.Value(message.LastUpdatedTimestamp)).
 			Set(expression.Name("queue_add_timestamp"), expression.Value(message.AddToQueueTimestamp)).
-			Set(expression.Name(" queue_peek_timestamp"), expression.Value(message.AddToQueueTimestamp))).
+			Set(expression.Name("queue_peek_timestamp"), expression.Value(message.AddToQueueTimestamp))).
 		WithCondition(expression.Name("version").Equal(expression.Value(message.Version)))
 	expr, err := c.buildExpression(builder)
 	if err != nil {
 		return &MoveMessageToDLQOutput{}, BuildingExpressionError{Cause: err}
 	}
-	item, err := c.updateDynamoDBItem(ctx, params.ID, &expr)
+	updated, err := c.updateDynamoDBItem(ctx, params.ID, &expr)
 	if err != nil {
 		return &MoveMessageToDLQOutput{}, err
 	}
 	return &MoveMessageToDLQOutput{
 		ID:                   params.ID,
-		Status:               item.Status,
-		LastUpdatedTimestamp: item.LastUpdatedTimestamp,
-		Version:              item.Version,
+		Status:               updated.GetStatus(c.clock.Now()),
+		LastUpdatedTimestamp: updated.LastUpdatedTimestamp,
+		Version:              updated.Version,
 	}, nil
 }
 
 type RedriveMessageInput struct {
-	ID string
+	ID                string
+	VisibilityTimeout int
 }
 
 type RedriveMessageOutput struct {
@@ -494,7 +478,7 @@ func (c *client[T]) RedriveMessage(ctx context.Context, params *RedriveMessageIn
 		return &RedriveMessageOutput{}, &IDNotFoundError{}
 	}
 	message := retrieved.Message
-	err = message.markAsRestoredFromDLQ(c.clock.Now(), c.getVisibilityTimeout())
+	err = message.markAsRestoredFromDLQ(c.clock.Now(), params.VisibilityTimeout)
 	if err != nil {
 		return &RedriveMessageOutput{}, err
 	}
@@ -506,8 +490,8 @@ func (c *client[T]) RedriveMessage(ctx context.Context, params *RedriveMessageIn
 			expression.Name("queue_type"),
 			expression.Value(message.QueueType),
 		).Set(
-			expression.Name("status"),
-			expression.Value(message.Status),
+			expression.Name("visibility_timeout"),
+			expression.Value(message.VisibilityTimeout),
 		).Set(
 			expression.Name("last_updated_timestamp"),
 			expression.Value(message.LastUpdatedTimestamp),
@@ -527,7 +511,7 @@ func (c *client[T]) RedriveMessage(ctx context.Context, params *RedriveMessageIn
 	}
 	return &RedriveMessageOutput{
 		ID:                   updated.ID,
-		Status:               updated.Status,
+		Status:               updated.GetStatus(c.clock.Now()),
 		LastUpdatedTimestamp: updated.LastUpdatedTimestamp,
 		Version:              updated.Version,
 	}, nil
@@ -610,22 +594,22 @@ func (c *client[T]) processQueryItemsForQueueStats(items []map[string]types.Attr
 			return UnmarshalingAttributeError{Cause: err}
 		}
 
-		updateQueueStatsFromItem[T](&item, stats)
+		c.updateQueueStatsFromItem(&item, stats)
 	}
 	return nil
 }
 
 const maxFirst100ItemsInQueue = 100
 
-func updateQueueStatsFromItem[T any](item *Message[T], stats *GetQueueStatsOutput) {
-	if item.Status == StatusProcessing {
+func (c *client[T]) updateQueueStatsFromItem(message *Message[T], stats *GetQueueStatsOutput) {
+	if message.GetStatus(c.clock.Now()) == StatusProcessing {
 		stats.TotalRecordsInProcessing++
 		if len(stats.First100SelectedIDsInQueue) < maxFirst100ItemsInQueue {
-			stats.First100SelectedIDsInQueue = append(stats.First100SelectedIDsInQueue, item.ID)
+			stats.First100SelectedIDsInQueue = append(stats.First100SelectedIDsInQueue, message.ID)
 		}
 	}
 	if len(stats.First100IDsInQueue) < maxFirst100ItemsInQueue {
-		stats.First100IDsInQueue = append(stats.First100IDsInQueue, item.ID)
+		stats.First100IDsInQueue = append(stats.First100IDsInQueue, message.ID)
 	}
 }
 

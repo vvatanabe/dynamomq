@@ -5,6 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/vvatanabe/dynamomq"
+	"github.com/vvatanabe/dynamomq/internal/clock"
 )
 
 func (f CommandFactory) CreateLSCommand(flgs *Flags) *cobra.Command {
@@ -26,7 +27,7 @@ func (f CommandFactory) CreateLSCommand(flgs *Flags) *cobra.Command {
 			for _, m := range out.Messages {
 				result.Statuses = append(result.Statuses, Status{
 					ID:        m.ID,
-					Status:    m.Status,
+					Status:    m.GetStatus(clock.Now()),
 					QueueType: m.QueueType,
 				})
 			}

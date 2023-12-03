@@ -19,7 +19,7 @@ func (f CommandFactory) CreateFailCommand(flgs *Flags) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			_, err = client.UpdateMessageAsVisible(ctx, &dynamomq.UpdateMessageAsVisibleInput{
+			_, err = client.ChangeMessageVisibility(ctx, &dynamomq.ChangeMessageVisibilityInput{
 				ID: flgs.ID,
 			})
 			if err != nil {

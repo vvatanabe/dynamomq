@@ -11,8 +11,13 @@ func FormatRFC3339Nano(now time.Time) string {
 }
 
 func RFC3339NanoToUnixMilli(rfc3339NanoDate string) int64 {
-	t, _ := time.Parse(time.RFC3339Nano, rfc3339NanoDate)
+	t := RFC3339NanoToTime(rfc3339NanoDate)
 	return t.UnixMilli()
+}
+
+func RFC3339NanoToTime(rfc3339NanoDate string) time.Time {
+	t, _ := time.Parse(time.RFC3339Nano, rfc3339NanoDate)
+	return t
 }
 
 type Clock interface {
