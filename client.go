@@ -453,8 +453,7 @@ func (c *client[T]) MoveMessageToDLQ(ctx context.Context, params *MoveMessageToD
 }
 
 type RedriveMessageInput struct {
-	ID                string
-	VisibilityTimeout int
+	ID string
 }
 
 type RedriveMessageOutput struct {
@@ -478,7 +477,7 @@ func (c *client[T]) RedriveMessage(ctx context.Context, params *RedriveMessageIn
 		return &RedriveMessageOutput{}, &IDNotFoundError{}
 	}
 	message := retrieved.Message
-	err = message.markAsRestoredFromDLQ(c.clock.Now(), params.VisibilityTimeout)
+	err = message.markAsRestoredFromDLQ(c.clock.Now())
 	if err != nil {
 		return &RedriveMessageOutput{}, err
 	}

@@ -89,7 +89,7 @@ func (m *Message[T]) markAsMovedToDLQ(now time.Time) error {
 	return nil
 }
 
-func (m *Message[T]) markAsRestoredFromDLQ(now time.Time, visibilityTimeout int) error {
+func (m *Message[T]) markAsRestoredFromDLQ(now time.Time) error {
 	status := m.GetStatus(now)
 	if !m.isDLQ() {
 		return InvalidStateTransitionError{
@@ -107,9 +107,10 @@ func (m *Message[T]) markAsRestoredFromDLQ(now time.Time, visibilityTimeout int)
 	}
 	ts := clock.FormatRFC3339Nano(now)
 	m.QueueType = QueueTypeStandard
-	m.VisibilityTimeout = visibilityTimeout
+	m.VisibilityTimeout = 0
 	m.ReceiveCount = 0
 	m.LastUpdatedTimestamp = ts
 	m.AddToQueueTimestamp = ts
+	m.PeekFromQueueTimestamp = ""
 	return nil
 }
