@@ -314,7 +314,7 @@ The state machine diagram below illustrates the key steps a message goes through
 
 #### Error Handling
 
-1. **UpdateMessageAsVisibility()**: If processing fails, the message is made visible again in the `READY` state for retry, and its visibility timeout is updated.
+1. **ChangeMessageVisibility()**: If processing fails, the message is made visible again in the `READY` state for retry, and its visibility timeout is updated.
 
 2. **MoveMessageToDLQ()**: If the message exceeds the retry limit, it is moved to the Dead Letter Queue (DLQ). The DLQ is used to isolate problematic messages for later analysis.
 
@@ -364,7 +364,7 @@ The DynamoDB table for the DynamoMQ message queue system is designed to efficien
 
 This data transition diagram serves as a map for developers and operators to understand how messages flow through the DynamoMQ system, providing insight into the mechanisms of message processing, failure handling, and retries within a DynamoDB-backed queue.
 
-![Data Transition](https://cacoo.com/diagrams/DjoA2pSKnhCghTYM-D143B.png)
+![Data Transition](https://cacoo.com/diagrams/DjoA2pSKnhCghTYM-976F6.png)
 
 #### Initial State
 
@@ -376,7 +376,7 @@ This data transition diagram serves as a map for developers and operators to und
 
 #### Retry Logic
 
-- **UpdateMessageAsVisible()**: If processing fails, the message's visibility is updated to make it available for retry, and the `receive_count` is incremented. Timestamps are refreshed to reflect the most recent update.
+- **ChangeMessageVisibility()**: If processing fails, the message's visibility is updated to make it available for retry, and the `receive_count` is incremented. Timestamps are refreshed to reflect the most recent update.
 
 #### Dead Letter Queue
 
