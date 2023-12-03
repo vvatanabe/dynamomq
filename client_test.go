@@ -288,7 +288,7 @@ func TestDynamoMQClientReceiveMessage(t *testing.T) {
 			name:  "should return EmptyQueueError when exists message but visibility timeout is not expired",
 			setup: NewSetupFunc(newPutRequestWithProcessingItem("B-202", test.DefaultTestDate)),
 			sdkClock: mock.Clock{
-				T: test.DefaultTestDate.Add(59 * time.Second),
+				T: test.DefaultTestDate.Add(29 * time.Second),
 			},
 			want:    nil,
 			wantErr: &dynamomq.EmptyQueueError{},

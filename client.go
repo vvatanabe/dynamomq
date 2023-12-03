@@ -17,7 +17,7 @@ const (
 	DefaultTableName                  = "dynamo-mq-table"
 	DefaultQueueingIndexName          = "dynamo-mq-index-queue_type-queue_add_timestamp"
 	DefaultRetryMaxAttempts           = 10
-	DefaultVisibilityTimeoutInSeconds = 60
+	DefaultVisibilityTimeoutInSeconds = 30
 	DefaultMaxListMessages            = 10
 	DefaultQueryLimit                 = 250
 )
