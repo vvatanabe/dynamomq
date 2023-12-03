@@ -23,7 +23,7 @@ jobs:
         with:
           version: latest
       - name: Test
-        run: go test -race -json -covermode=atomic -coverprofile=cover.out -p=10 ./... > result.json
+        run: go test -race -json -covermode=atomic -coverprofile=cover.out -p=10 ./... | tee result.json
       - name: SonarCloud Scan
         uses: SonarSource/sonarcloud-github-action@master
         env:
