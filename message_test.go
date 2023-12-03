@@ -5,8 +5,8 @@ import (
 	"time"
 
 	"github.com/vvatanabe/dynamomq"
-	"github.com/vvatanabe/dynamomq/internal/test"
 	"github.com/vvatanabe/dynamomq/internal/clock"
+	"github.com/vvatanabe/dynamomq/internal/test"
 )
 
 func TestMessageGetStatus(t *testing.T) {
