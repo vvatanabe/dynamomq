@@ -152,7 +152,6 @@ func (c *Consumer[T]) StartConsuming() error {
 		}
 		msgChan <- r.PeekedMessageObject
 	}
-
 }
 
 func (c *Consumer[T]) trackAndProcessMessage(ctx context.Context, msg *Message[T]) {
