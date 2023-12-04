@@ -125,6 +125,7 @@ func TestConsumerStartConsuming(t *testing.T) {
 			}
 			consumer := dynamomq.NewConsumer[test.MessageData](client, processor,
 				dynamomq.WithPollingInterval(0),
+				dynamomq.WithConcurrency(3),
 				dynamomq.WithMaximumReceives(tt.MaximumReceives),
 				dynamomq.WithQueueType(tt.QueueType),
 				dynamomq.WithErrorLog(log.New(os.Stderr, "", 0)),
@@ -190,6 +191,7 @@ func TestConsumerShutdown(t *testing.T) {
 			}
 			consumer := dynamomq.NewConsumer[test.MessageData](client, processor,
 				dynamomq.WithPollingInterval(0),
+				dynamomq.WithConcurrency(3),
 				dynamomq.WithMaximumReceives(1),
 				dynamomq.WithQueueType(dynamomq.QueueTypeStandard),
 				dynamomq.WithErrorLog(log.New(os.Stderr, "", 0)),

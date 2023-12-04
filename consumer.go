@@ -14,11 +14,18 @@ const (
 	defaultPollingInterval = time.Second
 	defaultMaximumReceives = 0 // unlimited
 	defaultQueueType       = QueueTypeStandard
+	defaultConcurrency     = 3
 )
 
 func WithPollingInterval(pollingInterval time.Duration) func(o *ConsumerOptions) {
 	return func(o *ConsumerOptions) {
 		o.PollingInterval = pollingInterval
+	}
+}
+
+func WithConcurrency(concurrency int) func(o *ConsumerOptions) {
+	return func(o *ConsumerOptions) {
+		o.Concurrency = concurrency
 	}
 }
 
@@ -48,6 +55,7 @@ func WithOnShutdown(onShutdown []func()) func(o *ConsumerOptions) {
 
 type ConsumerOptions struct {
 	PollingInterval time.Duration
+	Concurrency     int
 	MaximumReceives int
 	QueueType       QueueType
 	// errorLog specifies an optional logger for errors accepting
@@ -61,6 +69,7 @@ type ConsumerOptions struct {
 func NewConsumer[T any](client Client[T], processor MessageProcessor[T], opts ...func(o *ConsumerOptions)) *Consumer[T] {
 	o := &ConsumerOptions{
 		PollingInterval: defaultPollingInterval,
+		Concurrency:     defaultConcurrency,
 		MaximumReceives: defaultMaximumReceives,
 		QueueType:       defaultQueueType,
 	}
@@ -71,6 +80,7 @@ func NewConsumer[T any](client Client[T], processor MessageProcessor[T], opts ..
 		client:           client,
 		messageProcessor: processor,
 		pollingInterval:  o.PollingInterval,
+		concurrency:      o.Concurrency,
 		maximumReceives:  o.MaximumReceives,
 		queueType:        o.QueueType,
 		errorLog:         o.ErrorLog,
@@ -96,12 +106,12 @@ func (f MessageProcessorFunc[T]) Process(msg *Message[T]) error {
 type Consumer[T any] struct {
 	client           Client[T]
 	messageProcessor MessageProcessor[T]
-
-	pollingInterval time.Duration
-	maximumReceives int
-	queueType       QueueType
-	errorLog        *log.Logger
-	onShutdown      []func()
+	concurrency      int
+	pollingInterval  time.Duration
+	maximumReceives  int
+	queueType        QueueType
+	errorLog         *log.Logger
+	onShutdown       []func()
 
 	inShutdown       int32
 	mu               sync.Mutex
@@ -113,10 +123,22 @@ type Consumer[T any] struct {
 var ErrConsumerClosed = errors.New("DynamoMQ: Consumer closed")
 
 func (c *Consumer[T]) StartConsuming() error {
+	msgChan := make(chan *Message[T], c.concurrency)
+	defer close(msgChan)
+
+	for i := 0; i < c.concurrency; i++ {
+		go func() {
+			for msg := range msgChan {
+				c.trackAndProcessMessage(context.Background(), msg)
+			}
+		}()
+	}
+
 	for {
 		ctx := context.Background()
 		r, err := c.client.ReceiveMessage(ctx, &ReceiveMessageInput{
-			QueueType: c.queueType,
+			QueueType:         c.queueType,
+			VisibilityTimeout: DefaultVisibilityTimeoutInSeconds,
 		})
 		if err != nil {
 			if c.shuttingDown() {
@@ -128,9 +150,9 @@ func (c *Consumer[T]) StartConsuming() error {
 			time.Sleep(c.pollingInterval)
 			continue
 		}
-		go c.trackAndProcessMessage(ctx, r.PeekedMessageObject)
-		time.Sleep(c.pollingInterval)
+		msgChan <- r.PeekedMessageObject
 	}
+
 }
 
 func (c *Consumer[T]) trackAndProcessMessage(ctx context.Context, msg *Message[T]) {
@@ -196,10 +218,8 @@ func (c *Consumer[T]) trackMessage(msg *Message[T], add bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if add {
-		if !c.shuttingDown() {
-			c.activeMessages[msg] = struct{}{}
-			c.activeMessagesWG.Add(1)
-		}
+		c.activeMessages[msg] = struct{}{}
+		c.activeMessagesWG.Add(1)
 	} else {
 		delete(c.activeMessages, msg)
 		c.activeMessagesWG.Done()
