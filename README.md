@@ -61,6 +61,7 @@ Quoted from AWS official blog: [Implementing Priority Queueing with Amazon Dynam
 - [x] **FIFO (First In, First Out)**: Retrieve messages from the message queue on a first-in, first-out basis.
 - [x] **Consumer Process Scaling**: Scale out by running multiple consumer processes without duplicating message retrieval from the same message queue.
 - [x] **Visibility Timeout**: DynamoMQ sets a visibility timeout, a period of time during which DynamoMQ prevents all consumers from receiving and processing the message.
+- [x] **Delay queues**: Delay queues allow you to delay the delivery of new messages to consumers for a set number of seconds. 
 - [ ] **Deduplication**: Deduplication messages within the message queue.
 - [ ] **Randomized Exponential Backoff**: Prevent overlapping redelivery timing.
 - [ ] **Batch Message Processing**: Send and delete multiple messages in bulk to/from the message queue.
