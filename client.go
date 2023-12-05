@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sort"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
@@ -142,8 +143,9 @@ type client[T any] struct {
 }
 
 type SendMessageInput[T any] struct {
-	ID   string
-	Data T
+	ID           string
+	Data         T
+	DelaySeconds int
 }
 
 // SendMessageOutput represents the result for the SendMessage() API call.
@@ -167,6 +169,9 @@ func (c *client[T]) SendMessage(ctx context.Context, params *SendMessageInput[T]
 	}
 	now := c.clock.Now()
 	message := NewMessage(params.ID, params.Data, now)
+	if params.DelaySeconds > 0 {
+		message.delayToAddQueueTimestamp(time.Duration(params.DelaySeconds) * time.Second)
+	}
 	err = c.put(ctx, message)
 	if err != nil {
 		return &SendMessageOutput[T]{}, err

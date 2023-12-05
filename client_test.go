@@ -229,6 +229,31 @@ func TestDynamoMQClientSendMessage(t *testing.T) {
 				}(),
 			},
 		},
+		{
+			name:  "should delay add to queue when delay is set",
+			setup: NewSetupFunc(),
+			sdkClock: mock.Clock{
+				T: test.DefaultTestDate,
+			},
+			args: &dynamomq.SendMessageInput[test.MessageData]{
+				ID:           "A-101",
+				Data:         test.NewMessageData("A-101"),
+				DelaySeconds: 10,
+			},
+			want: &dynamomq.SendMessageOutput[test.MessageData]{
+				Result: &dynamomq.Result{
+					ID:                   "A-101",
+					Status:               dynamomq.StatusReady,
+					LastUpdatedTimestamp: clock.FormatRFC3339Nano(test.DefaultTestDate),
+					Version:              1,
+				},
+				Message: func() *dynamomq.Message[test.MessageData] {
+					s := NewTestMessageItemAsReady("A-101", test.DefaultTestDate)
+					s.AddToQueueTimestamp = clock.FormatRFC3339Nano(test.DefaultTestDate.Add(10 * time.Second))
+					return s
+				}(),
+			},
+		},
 	}
 	runTestsParallel[*dynamomq.SendMessageInput[test.MessageData], *dynamomq.SendMessageOutput[test.MessageData]](t, "SendMessage()", tests,
 		func(client dynamomq.Client[test.MessageData], args *dynamomq.SendMessageInput[test.MessageData]) (*dynamomq.SendMessageOutput[test.MessageData], error) {

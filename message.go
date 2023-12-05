@@ -55,6 +55,11 @@ func (m *Message[T]) changeVisibilityTimeout(now time.Time, visibilityTimeout in
 	m.VisibilityTimeout = visibilityTimeout
 }
 
+func (m *Message[T]) delayToAddQueueTimestamp(delay time.Duration) {
+	delayed := clock.RFC3339NanoToTime(m.AddToQueueTimestamp).Add(delay)
+	m.AddToQueueTimestamp = clock.FormatRFC3339Nano(delayed)
+}
+
 func (m *Message[T]) markAsProcessing(now time.Time, visibilityTimeout int) error {
 	status := m.GetStatus(now)
 	if status == StatusProcessing {

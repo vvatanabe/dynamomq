@@ -42,7 +42,8 @@ func TestProducerProduce(t *testing.T) {
 			c:    defaultTestProducer,
 			args: args[test.MessageData]{
 				params: &dynamomq.ProduceInput[test.MessageData]{
-					Data: test.NewMessageData("A-101"),
+					Data:         test.NewMessageData("A-101"),
+					DelaySeconds: 10,
 				},
 			},
 			want: &dynamomq.ProduceOutput[test.MessageData]{
@@ -67,7 +68,7 @@ func TestProducerProduce(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "should re to produce a message when params is nil",
+			name: "should fail to produce a message when client.SendMessage returns error",
 			c: dynamomq.NewProducer[test.MessageData](&mock.Client[test.MessageData]{
 				SendMessageFunc: func(ctx context.Context,
 					params *dynamomq.SendMessageInput[test.MessageData]) (*dynamomq.SendMessageOutput[test.MessageData], error) {
