@@ -150,7 +150,7 @@ func (c *Consumer[T]) StartConsuming() error {
 			time.Sleep(c.pollingInterval)
 			continue
 		}
-		msgChan <- r.PeekedMessageObject
+		msgChan <- r.ReceivedMessage
 	}
 }
 

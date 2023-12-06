@@ -15,14 +15,14 @@ resource "aws_dynamodb_table" "dynamo_mq_table" {
   }
 
   attribute {
-    name = "queue_add_timestamp"
+    name = "sent_at"
     type = "S"
   }
 
   global_secondary_index {
-    name               = "dynamo-mq-index-queue_type-queue_add_timestamp"
+    name               = "dynamo-mq-index-queue_type-sent_at"
     hash_key           = "queue_type"
-    range_key          = "queue_add_timestamp"
+    range_key          = "sent_at"
     projection_type    = "ALL"
   }
 }

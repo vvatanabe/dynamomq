@@ -297,9 +297,9 @@ func TestRunInteractiveReceiveShouldReturnError(t *testing.T) {
 		Client: mock.Client[any]{
 			ReceiveMessageFunc: func(ctx context.Context, params *dynamomq.ReceiveMessageInput) (*dynamomq.ReceiveMessageOutput[any], error) {
 				return &dynamomq.ReceiveMessageOutput[any]{
-					Result:                 &dynamomq.Result{},
-					PeekFromQueueTimestamp: "",
-					PeekedMessageObject:    dynamomq.NewMessage[any]("A-101", test.NewMessageData("A-101"), clock.Now()),
+					Result:          &dynamomq.Result{},
+					ReceivedAt:      "",
+					ReceivedMessage: dynamomq.NewMessage[any]("A-101", test.NewMessageData("A-101"), clock.Now()),
 				}, nil
 			},
 			GetQueueStatsFunc: func(ctx context.Context, params *dynamomq.GetQueueStatsInput) (*dynamomq.GetQueueStatsOutput, error) {

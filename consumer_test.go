@@ -277,7 +277,7 @@ func NewClientForConsumerTest(queue, dlq chan *dynamomq.Message[test.MessageData
 				return nil, &dynamomq.DynamoDBAPIError{Cause: test.ErrTest}
 			}
 			message := <-queue
-			return &dynamomq.ReceiveMessageOutput[test.MessageData]{PeekedMessageObject: message}, nil
+			return &dynamomq.ReceiveMessageOutput[test.MessageData]{ReceivedMessage: message}, nil
 		},
 		DeleteMessageFunc: func(ctx context.Context, params *dynamomq.DeleteMessageInput) (*dynamomq.DeleteMessageOutput, error) {
 			if cfg.SimulateDeleteMessageError {
@@ -300,10 +300,10 @@ func NewClientForConsumerTest(queue, dlq chan *dynamomq.Message[test.MessageData
 			msg, _ := v.(*dynamomq.Message[test.MessageData])
 			dlq <- msg
 			return &dynamomq.MoveMessageToDLQOutput{
-				ID:                   msg.ID,
-				Status:               dynamomq.StatusReady,
-				LastUpdatedTimestamp: msg.LastUpdatedTimestamp,
-				Version:              2,
+				ID:        msg.ID,
+				Status:    dynamomq.StatusReady,
+				UpdatedAt: msg.UpdatedAt,
+				Version:   2,
 			}, nil
 		},
 	}

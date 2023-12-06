@@ -18,7 +18,7 @@
             ],
             "Resource": [
                 "arn:aws:dynamodb:<region>:<account-id>:table/dynamo-mq-table",
-                "arn:aws:dynamodb:<region>:<account-id>:table/dynamo-mq-table/index/dynamo-mq-index-queue_type-queue_add_timestamp"
+                "arn:aws:dynamodb:<region>:<account-id>:table/dynamo-mq-table/index/dynamo-mq-index-queue_type-sent_at"
             ]
         }
     ]

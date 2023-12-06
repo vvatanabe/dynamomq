@@ -9,7 +9,7 @@
       "AttributeType": "S"
     },
     {
-      "AttributeName": "queue_add_timestamp",
+      "AttributeName": "sent_at",
       "AttributeType": "S"
     }
   ],
@@ -17,14 +17,14 @@
   "DeletionProtectionEnabled": true,
   "GlobalSecondaryIndexes": [
     {
-      "IndexName": "dynamo-mq-index-queue_type-queue_add_timestamp",
+      "IndexName": "dynamo-mq-index-queue_type-sent_at",
       "KeySchema": [
         {
           "AttributeName": "queue_type",
           "KeyType": "HASH"
         },
         {
-          "AttributeName": "queue_add_timestamp",
+          "AttributeName": "sent_at",
           "KeyType": "RANGE"
         }
       ],

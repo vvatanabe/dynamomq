@@ -16,7 +16,7 @@ import (
 
 const (
 	DefaultTableName                  = "dynamo-mq-table"
-	DefaultQueueingIndexName          = "dynamo-mq-index-queue_type-queue_add_timestamp"
+	DefaultQueueingIndexName          = "dynamo-mq-index-queue_type-sent_at"
 	DefaultRetryMaxAttempts           = 10
 	DefaultVisibilityTimeoutInSeconds = 30
 	DefaultMaxListMessages            = 10
@@ -170,7 +170,7 @@ func (c *client[T]) SendMessage(ctx context.Context, params *SendMessageInput[T]
 	now := c.clock.Now()
 	message := NewMessage(params.ID, params.Data, now)
 	if params.DelaySeconds > 0 {
-		message.delayToAddQueueTimestamp(time.Duration(params.DelaySeconds) * time.Second)
+		message.delayToSentAt(time.Duration(params.DelaySeconds) * time.Second)
 	}
 	err = c.put(ctx, message)
 	if err != nil {
@@ -178,10 +178,10 @@ func (c *client[T]) SendMessage(ctx context.Context, params *SendMessageInput[T]
 	}
 	return &SendMessageOutput[T]{
 		Result: &Result{
-			ID:                   message.ID,
-			Status:               message.GetStatus(now),
-			LastUpdatedTimestamp: message.LastUpdatedTimestamp,
-			Version:              message.Version,
+			ID:        message.ID,
+			Status:    message.GetStatus(now),
+			UpdatedAt: message.UpdatedAt,
+			Version:   message.Version,
 		},
 		Message: message,
 	}, nil
@@ -194,9 +194,9 @@ type ReceiveMessageInput struct {
 
 // ReceiveMessageOutput represents the result for the ReceiveMessage() API call.
 type ReceiveMessageOutput[T any] struct {
-	*Result                            // Embedded type for inheritance-like behavior in Go
-	PeekFromQueueTimestamp string      `json:"queue_peek_timestamp"`
-	PeekedMessageObject    *Message[T] `json:"-"`
+	*Result                     // Embedded type for inheritance-like behavior in Go
+	ReceivedAt      string      `json:"received_at"`
+	ReceivedMessage *Message[T] `json:"-"`
 }
 
 func (c *client[T]) ReceiveMessage(ctx context.Context, params *ReceiveMessageInput) (*ReceiveMessageOutput[T], error) {
@@ -219,13 +219,13 @@ func (c *client[T]) ReceiveMessage(ctx context.Context, params *ReceiveMessageIn
 
 	return &ReceiveMessageOutput[T]{
 		Result: &Result{
-			ID:                   updated.ID,
-			Status:               updated.GetStatus(c.clock.Now()),
-			LastUpdatedTimestamp: updated.LastUpdatedTimestamp,
-			Version:              updated.Version,
+			ID:        updated.ID,
+			Status:    updated.GetStatus(c.clock.Now()),
+			UpdatedAt: updated.UpdatedAt,
+			Version:   updated.Version,
 		},
-		PeekFromQueueTimestamp: updated.PeekFromQueueTimestamp,
-		PeekedMessageObject:    updated,
+		ReceivedAt:      updated.ReceivedAt,
+		ReceivedMessage: updated,
 	}, nil
 }
 
@@ -304,8 +304,8 @@ func (c *client[T]) processSelectedMessage(ctx context.Context, message *Message
 			Add(expression.Name("version"), expression.Value(1)).
 			Add(expression.Name("receive_count"), expression.Value(1)).
 			Set(expression.Name("visibility_timeout"), expression.Value(message.VisibilityTimeout)).
-			Set(expression.Name("last_updated_timestamp"), expression.Value(message.LastUpdatedTimestamp)).
-			Set(expression.Name("queue_peek_timestamp"), expression.Value(message.PeekFromQueueTimestamp))).
+			Set(expression.Name("updated_at"), expression.Value(message.UpdatedAt)).
+			Set(expression.Name("received_at"), expression.Value(message.ReceivedAt))).
 		WithCondition(expression.Name("version").Equal(expression.Value(message.Version)))
 	expr, err := c.buildExpression(builder)
 	if err != nil {
@@ -347,7 +347,7 @@ func (c *client[T]) ChangeMessageVisibility(ctx context.Context, params *ChangeM
 	builder := expression.NewBuilder().
 		WithUpdate(expression.
 			Add(expression.Name("version"), expression.Value(1)).
-			Set(expression.Name("last_updated_timestamp"), expression.Value(message.LastUpdatedTimestamp)).
+			Set(expression.Name("updated_at"), expression.Value(message.UpdatedAt)).
 			Set(expression.Name("visibility_timeout"), expression.Value(message.VisibilityTimeout))).
 		WithCondition(expression.Name("version").Equal(expression.Value(message.Version)))
 	expr, err := c.buildExpression(builder)
@@ -360,10 +360,10 @@ func (c *client[T]) ChangeMessageVisibility(ctx context.Context, params *ChangeM
 	}
 	return &ChangeMessageVisibilityOutput[T]{
 		Result: &Result{
-			ID:                   retried.ID,
-			Status:               retried.GetStatus(c.clock.Now()),
-			LastUpdatedTimestamp: retried.LastUpdatedTimestamp,
-			Version:              retried.Version,
+			ID:        retried.ID,
+			Status:    retried.GetStatus(c.clock.Now()),
+			UpdatedAt: retried.UpdatedAt,
+			Version:   retried.Version,
 		},
 		Message: retried,
 	}, nil
@@ -402,10 +402,10 @@ type MoveMessageToDLQInput struct {
 }
 
 type MoveMessageToDLQOutput struct {
-	ID                   string `json:"id"`
-	Status               Status `json:"status"`
-	LastUpdatedTimestamp string `json:"last_updated_timestamp"`
-	Version              int    `json:"version"`
+	ID        string `json:"id"`
+	Status    Status `json:"status"`
+	UpdatedAt string `json:"updated_at"`
+	Version   int    `json:"version"`
 }
 
 func (c *client[T]) MoveMessageToDLQ(ctx context.Context, params *MoveMessageToDLQInput) (*MoveMessageToDLQOutput, error) {
@@ -425,10 +425,10 @@ func (c *client[T]) MoveMessageToDLQ(ctx context.Context, params *MoveMessageToD
 	if markedErr := message.markAsMovedToDLQ(c.clock.Now()); markedErr != nil {
 		//lint:ignore nilerr reason
 		return &MoveMessageToDLQOutput{
-			ID:                   params.ID,
-			Status:               message.GetStatus(c.clock.Now()),
-			LastUpdatedTimestamp: message.LastUpdatedTimestamp,
-			Version:              message.Version,
+			ID:        params.ID,
+			Status:    message.GetStatus(c.clock.Now()),
+			UpdatedAt: message.UpdatedAt,
+			Version:   message.Version,
 		}, nil
 	}
 	builder := expression.NewBuilder().
@@ -437,9 +437,9 @@ func (c *client[T]) MoveMessageToDLQ(ctx context.Context, params *MoveMessageToD
 			Set(expression.Name("visibility_timeout"), expression.Value(message.VisibilityTimeout)).
 			Set(expression.Name("receive_count"), expression.Value(message.ReceiveCount)).
 			Set(expression.Name("queue_type"), expression.Value(message.QueueType)).
-			Set(expression.Name("last_updated_timestamp"), expression.Value(message.LastUpdatedTimestamp)).
-			Set(expression.Name("queue_add_timestamp"), expression.Value(message.AddToQueueTimestamp)).
-			Set(expression.Name("queue_peek_timestamp"), expression.Value(message.AddToQueueTimestamp))).
+			Set(expression.Name("updated_at"), expression.Value(message.UpdatedAt)).
+			Set(expression.Name("sent_at"), expression.Value(message.SentAt)).
+			Set(expression.Name("received_at"), expression.Value(message.SentAt))).
 		WithCondition(expression.Name("version").Equal(expression.Value(message.Version)))
 	expr, err := c.buildExpression(builder)
 	if err != nil {
@@ -450,10 +450,10 @@ func (c *client[T]) MoveMessageToDLQ(ctx context.Context, params *MoveMessageToD
 		return &MoveMessageToDLQOutput{}, err
 	}
 	return &MoveMessageToDLQOutput{
-		ID:                   params.ID,
-		Status:               updated.GetStatus(c.clock.Now()),
-		LastUpdatedTimestamp: updated.LastUpdatedTimestamp,
-		Version:              updated.Version,
+		ID:        params.ID,
+		Status:    updated.GetStatus(c.clock.Now()),
+		UpdatedAt: updated.UpdatedAt,
+		Version:   updated.Version,
 	}, nil
 }
 
@@ -462,10 +462,10 @@ type RedriveMessageInput struct {
 }
 
 type RedriveMessageOutput struct {
-	ID                   string `json:"id"`
-	Status               Status `json:"status"`
-	LastUpdatedTimestamp string `json:"last_updated_timestamp"`
-	Version              int    `json:"version"`
+	ID        string `json:"id"`
+	Status    Status `json:"status"`
+	UpdatedAt string `json:"updated_at"`
+	Version   int    `json:"version"`
 }
 
 func (c *client[T]) RedriveMessage(ctx context.Context, params *RedriveMessageInput) (*RedriveMessageOutput, error) {
@@ -497,11 +497,11 @@ func (c *client[T]) RedriveMessage(ctx context.Context, params *RedriveMessageIn
 			expression.Name("visibility_timeout"),
 			expression.Value(message.VisibilityTimeout),
 		).Set(
-			expression.Name("last_updated_timestamp"),
-			expression.Value(message.LastUpdatedTimestamp),
+			expression.Name("updated_at"),
+			expression.Value(message.UpdatedAt),
 		).Set(
-			expression.Name("queue_add_timestamp"),
-			expression.Value(message.AddToQueueTimestamp),
+			expression.Name("sent_at"),
+			expression.Value(message.SentAt),
 		)).
 		WithCondition(expression.Name("version").
 			Equal(expression.Value(message.Version)))
@@ -514,10 +514,10 @@ func (c *client[T]) RedriveMessage(ctx context.Context, params *RedriveMessageIn
 		return &RedriveMessageOutput{}, err
 	}
 	return &RedriveMessageOutput{
-		ID:                   updated.ID,
-		Status:               updated.GetStatus(c.clock.Now()),
-		LastUpdatedTimestamp: updated.LastUpdatedTimestamp,
-		Version:              updated.Version,
+		ID:        updated.ID,
+		Status:    updated.GetStatus(c.clock.Now()),
+		UpdatedAt: updated.UpdatedAt,
+		Version:   updated.Version,
 	}, nil
 }
 
@@ -758,7 +758,7 @@ func (c *client[T]) ListMessages(ctx context.Context, params *ListMessagesInput)
 		return &ListMessagesOutput[T]{}, UnmarshalingAttributeError{Cause: err}
 	}
 	sort.Slice(messages, func(i, j int) bool {
-		return messages[i].LastUpdatedTimestamp < messages[j].LastUpdatedTimestamp
+		return messages[i].UpdatedAt < messages[j].UpdatedAt
 	})
 	return &ListMessagesOutput[T]{Messages: messages}, nil
 }
@@ -860,8 +860,8 @@ const (
 )
 
 type Result struct {
-	ID                   string `json:"id"`
-	Status               Status `json:"status"`
-	LastUpdatedTimestamp string `json:"last_updated_timestamp"`
-	Version              int    `json:"version"`
+	ID        string `json:"id"`
+	Status    Status `json:"status"`
+	UpdatedAt string `json:"updated_at"`
+	Version   int    `json:"version"`
 }

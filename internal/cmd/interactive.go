@@ -227,7 +227,7 @@ func (c *Interactive) receive(ctx context.Context, _ []string) error {
 	if err != nil {
 		return err
 	}
-	c.Message = rr.PeekedMessageObject
+	c.Message = rr.ReceivedMessage
 	printMessageWithData(
 		fmt.Sprintf("ReceiveMessage was successful ... record peeked is: [%s]\n", c.Message.ID),
 		GetSystemInfo(c.Message))

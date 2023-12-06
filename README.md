@@ -143,7 +143,7 @@ The `dynamomq` command-line interface provides a range of commands to interact w
 
 - `--endpoint-url`: Override the default URL for commands with a specified endpoint URL.
 - `-h`, `--help`: Display help information for `dynamomq`.
-- `--queueing-index-name`: Specify the name of the queueing index to use (default is `"dynamo-mq-index-queue_type-queue_add_timestamp"`).
+- `--queueing-index-name`: Specify the name of the queueing index to use (default is `"dynamo-mq-index-queue_type-sent_at"`).
 - `--table-name`: Define the name of the DynamoDB table to contain the items (default is `"dynamo-mq-table"`).
 
 To get more detailed information about a specific command, use `dynamomq [command] --help`.
@@ -333,33 +333,33 @@ This design ensures that DynamoMQ maintains message reliability while enabling t
 
 The DynamoDB table for the DynamoMQ message queue system is designed to efficiently manage and track the status of messages. Here’s a breakdown of the table schema:
 
-| Key   | Attributes             | Type   | Example Value                       |
-|-------|------------------------|--------|-------------------------------------|
-| PK    | id                     | string | A-101                               |
-|       | data                   | any    | any                                 |
-|       | visibility_timeout     | number | 10                                  |
-|       | receive_count          | number | 1                                   |
-| GSIPK | queue_type             | string | STANDARD or DLQ                     |
-|       | version                | number | 1                                   |
-|       | creation_timestamp     | string | 2006-01-02T15:04:05.999999999Z07:00 |
-|       | last_updated_timestamp | string | 2006-01-02T15:04:05.999999999Z07:00 |
-| GSISK | queue_add_timestamp    | string | 2006-01-02T15:04:05.999999999Z07:00 |
-|       | queue_peek_timestamp   | string | 2006-01-02T15:04:05.999999999Z07:00 |
+| Key   | Attributes         | Type   | Example Value                       |
+|-------|--------------------|--------|-------------------------------------|
+| PK    | id                 | string | A-101                               |
+|       | data               | any    | any                                 |
+|       | visibility_timeout | number | 10                                  |
+|       | receive_count      | number | 1                                   |
+| GSIPK | queue_type         | string | STANDARD or DLQ                     |
+|       | version            | number | 1                                   |
+|       | created_at         | string | 2006-01-02T15:04:05.999999999Z07:00 |
+|       | updated_at         | string | 2006-01-02T15:04:05.999999999Z07:00 |
+| GSISK | sent_at            | string | 2006-01-02T15:04:05.999999999Z07:00 |
+|       | received_at        | string | 2006-01-02T15:04:05.999999999Z07:00 |
 
 **PK (Primary Key)** `ID`: A unique identifier for each message, such as 'A-101'. This is a string value that facilitates the retrieval and management of messages.
 
 **GSIPK (Global Secondary Index - Partition Key)** `queue_type`: Used to categorize messages by `queue_type`, such as 'STANDARD' or 'DLQ' (Dead Letter Queue), allowing for quick access and operations on subsets of the queue.
 
-**GSISK (Global Secondary Index - Sort Key)** `queue_add_timestamp`: The timestamp when the message was added to the queue. Facilitates the ordering of messages based on the time they were added to the queue, which is useful for implementing FIFO (First-In-First-Out) or other ordering mechanisms.
+**GSISK (Global Secondary Index - Sort Key)** `sent_at`: The timestamp when the message was sent to the queue. Facilitates the ordering of messages based on the time they were added to the queue, which is useful for implementing FIFO (First-In-First-Out) or other ordering mechanisms.
 
 **Attributes**: These are the various properties associated with each message:
 - `data`: This attribute holds the content of the message and can be of any type.
 - `isibility_timeout`: The new value for the message's visibility timeout (in seconds).
 - `receive_count`: A numerical count of how many times the message has been retrieved from the queue.
 - `version`: A number that can be used for optimistic locking and to ensure that the message is not being concurrently modified.
-- `creation_timestamp`: The date and time when the message was created. ISO 8601 format.
-- `last_updated_timestamp`: The date and time when the message was last updated. ISO 8601 format.
-- `queue_peek_timestamp`: The timestamp when the message was last viewed without being altered. ISO 8601 format.
+- `created_at`: The date and time when the message was created. ISO 8601 format.
+- `updated_at`: The date and time when the message was last updated. ISO 8601 format.
+- `received_at`: The timestamp when the message was last viewed without being altered. ISO 8601 format.
 
 ### Data Transition
 

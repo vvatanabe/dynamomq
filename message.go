@@ -9,16 +9,16 @@ import (
 func NewMessage[T any](id string, data T, now time.Time) *Message[T] {
 	ts := clock.FormatRFC3339Nano(now)
 	return &Message[T]{
-		ID:                     id,
-		Data:                   data,
-		ReceiveCount:           0,
-		VisibilityTimeout:      0,
-		QueueType:              QueueTypeStandard,
-		Version:                1,
-		CreationTimestamp:      ts,
-		LastUpdatedTimestamp:   ts,
-		AddToQueueTimestamp:    ts,
-		PeekFromQueueTimestamp: "",
+		ID:                id,
+		Data:              data,
+		ReceiveCount:      0,
+		VisibilityTimeout: 0,
+		QueueType:         QueueTypeStandard,
+		Version:           1,
+		CreatedAt:         ts,
+		UpdatedAt:         ts,
+		SentAt:            ts,
+		ReceivedAt:        "",
 	}
 }
 
@@ -26,18 +26,18 @@ type Message[T any] struct {
 	ID   string `json:"id" dynamodbav:"id"`
 	Data T      `json:"data" dynamodbav:"data"`
 	// The new value for the message's visibility timeout (in seconds).
-	VisibilityTimeout      int       `json:"visibility_timeout" dynamodbav:"visibility_timeout"`
-	ReceiveCount           int       `json:"receive_count" dynamodbav:"receive_count"`
-	QueueType              QueueType `json:"queue_type" dynamodbav:"queue_type,omitempty"`
-	Version                int       `json:"version" dynamodbav:"version"`
-	CreationTimestamp      string    `json:"creation_timestamp" dynamodbav:"creation_timestamp"`
-	LastUpdatedTimestamp   string    `json:"last_updated_timestamp" dynamodbav:"last_updated_timestamp"`
-	AddToQueueTimestamp    string    `json:"queue_add_timestamp" dynamodbav:"queue_add_timestamp"`
-	PeekFromQueueTimestamp string    `json:"queue_peek_timestamp" dynamodbav:"queue_peek_timestamp"`
+	VisibilityTimeout int       `json:"visibility_timeout" dynamodbav:"visibility_timeout"`
+	ReceiveCount      int       `json:"receive_count" dynamodbav:"receive_count"`
+	QueueType         QueueType `json:"queue_type" dynamodbav:"queue_type,omitempty"`
+	Version           int       `json:"version" dynamodbav:"version"`
+	CreatedAt         string    `json:"created_at" dynamodbav:"created_at"`
+	UpdatedAt         string    `json:"updated_at" dynamodbav:"updated_at"`
+	SentAt            string    `json:"sent_at" dynamodbav:"sent_at"`
+	ReceivedAt        string    `json:"received_at" dynamodbav:"received_at"`
 }
 
 func (m *Message[T]) GetStatus(now time.Time) Status {
-	peekUTCTime := clock.RFC3339NanoToTime(m.PeekFromQueueTimestamp)
+	peekUTCTime := clock.RFC3339NanoToTime(m.ReceivedAt)
 	invisibleTime := peekUTCTime.Add(time.Duration(m.VisibilityTimeout) * time.Second)
 	if now.Before(invisibleTime) {
 		return StatusProcessing
@@ -51,13 +51,13 @@ func (m *Message[T]) isDLQ() bool {
 
 func (m *Message[T]) changeVisibilityTimeout(now time.Time, visibilityTimeout int) {
 	ts := clock.FormatRFC3339Nano(now)
-	m.LastUpdatedTimestamp = ts
+	m.UpdatedAt = ts
 	m.VisibilityTimeout = visibilityTimeout
 }
 
-func (m *Message[T]) delayToAddQueueTimestamp(delay time.Duration) {
-	delayed := clock.RFC3339NanoToTime(m.AddToQueueTimestamp).Add(delay)
-	m.AddToQueueTimestamp = clock.FormatRFC3339Nano(delayed)
+func (m *Message[T]) delayToSentAt(delay time.Duration) {
+	delayed := clock.RFC3339NanoToTime(m.SentAt).Add(delay)
+	m.SentAt = clock.FormatRFC3339Nano(delayed)
 }
 
 func (m *Message[T]) markAsProcessing(now time.Time, visibilityTimeout int) error {
@@ -70,8 +70,8 @@ func (m *Message[T]) markAsProcessing(now time.Time, visibilityTimeout int) erro
 		}
 	}
 	ts := clock.FormatRFC3339Nano(now)
-	m.LastUpdatedTimestamp = ts
-	m.PeekFromQueueTimestamp = ts
+	m.UpdatedAt = ts
+	m.ReceivedAt = ts
 	m.VisibilityTimeout = visibilityTimeout
 	return nil
 }
@@ -88,9 +88,9 @@ func (m *Message[T]) markAsMovedToDLQ(now time.Time) error {
 	m.QueueType = QueueTypeDLQ
 	m.ReceiveCount = 0
 	m.VisibilityTimeout = 0
-	m.LastUpdatedTimestamp = ts
-	m.AddToQueueTimestamp = ts
-	m.PeekFromQueueTimestamp = ""
+	m.UpdatedAt = ts
+	m.SentAt = ts
+	m.ReceivedAt = ""
 	return nil
 }
 
@@ -114,8 +114,8 @@ func (m *Message[T]) markAsRestoredFromDLQ(now time.Time) error {
 	m.QueueType = QueueTypeStandard
 	m.VisibilityTimeout = 0
 	m.ReceiveCount = 0
-	m.LastUpdatedTimestamp = ts
-	m.AddToQueueTimestamp = ts
-	m.PeekFromQueueTimestamp = ""
+	m.UpdatedAt = ts
+	m.SentAt = ts
+	m.ReceivedAt = ""
 	return nil
 }

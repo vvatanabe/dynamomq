@@ -22,7 +22,7 @@ func (f CommandFactory) CreatReceiveCommand(flgs *Flags) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			printMessageWithData("", rr.PeekedMessageObject)
+			printMessageWithData("", rr.ReceivedMessage)
 			return nil
 		},
 	}

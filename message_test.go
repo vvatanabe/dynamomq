@@ -23,8 +23,8 @@ func TestMessageGetStatus(t *testing.T) {
 		{
 			name: "should return StatusReady when VisibilityTimeout is 0",
 			m: dynamomq.Message[any]{
-				VisibilityTimeout:      0,
-				PeekFromQueueTimestamp: clock.FormatRFC3339Nano(test.DefaultTestDate),
+				VisibilityTimeout: 0,
+				ReceivedAt:        clock.FormatRFC3339Nano(test.DefaultTestDate),
 			},
 			args: args{
 				now: test.DefaultTestDate,
@@ -34,8 +34,8 @@ func TestMessageGetStatus(t *testing.T) {
 		{
 			name: "should return StatusProcessing when current time is before VisibilityTimeout",
 			m: dynamomq.Message[any]{
-				VisibilityTimeout:      1,
-				PeekFromQueueTimestamp: clock.FormatRFC3339Nano(test.DefaultTestDate.Add(time.Second)),
+				VisibilityTimeout: 1,
+				ReceivedAt:        clock.FormatRFC3339Nano(test.DefaultTestDate.Add(time.Second)),
 			},
 			args: args{
 				now: test.DefaultTestDate.Add(time.Second),
@@ -45,8 +45,8 @@ func TestMessageGetStatus(t *testing.T) {
 		{
 			name: "should return StatusReady when current time is after VisibilityTimeout",
 			m: dynamomq.Message[any]{
-				VisibilityTimeout:      5,
-				PeekFromQueueTimestamp: clock.FormatRFC3339Nano(test.DefaultTestDate),
+				VisibilityTimeout: 5,
+				ReceivedAt:        clock.FormatRFC3339Nano(test.DefaultTestDate),
 			},
 			args: args{
 				now: test.DefaultTestDate.Add(time.Second * 6),
@@ -56,8 +56,8 @@ func TestMessageGetStatus(t *testing.T) {
 		{
 			name: "should return StatusProcessing when current time is equal VisibilityTimeout",
 			m: dynamomq.Message[any]{
-				VisibilityTimeout:      4,
-				PeekFromQueueTimestamp: clock.FormatRFC3339Nano(test.DefaultTestDate.Add(time.Second * 4)),
+				VisibilityTimeout: 4,
+				ReceivedAt:        clock.FormatRFC3339Nano(test.DefaultTestDate.Add(time.Second * 4)),
 			},
 			args: args{
 				now: time.Date(2021, 1, 1, 0, 0, 4, 0, time.UTC),

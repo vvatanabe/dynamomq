@@ -118,28 +118,28 @@ func Execute() {
 }
 
 type SystemInfo struct {
-	ID                     string             `json:"id"`
-	Status                 dynamomq.Status    `json:"status"`
-	ReceiveCount           int                `json:"receive_count"`
-	QueueType              dynamomq.QueueType `json:"queue_type"`
-	Version                int                `json:"version"`
-	CreationTimestamp      string             `json:"creation_timestamp"`
-	LastUpdatedTimestamp   string             `json:"last_updated_timestamp"`
-	AddToQueueTimestamp    string             `json:"queue_add_timestamp"`
-	PeekFromQueueTimestamp string             `json:"queue_peek_timestamp"`
+	ID           string             `json:"id"`
+	Status       dynamomq.Status    `json:"status"`
+	ReceiveCount int                `json:"receive_count"`
+	QueueType    dynamomq.QueueType `json:"queue_type"`
+	Version      int                `json:"version"`
+	CreatedAt    string             `json:"created_at"`
+	UpdatedAt    string             `json:"updated_at"`
+	SentAt       string             `json:"sent_at"`
+	ReceivedAt   string             `json:"received_at"`
 }
 
 func GetSystemInfo[T any](m *dynamomq.Message[T]) *SystemInfo {
 	return &SystemInfo{
-		ID:                     m.ID,
-		Status:                 m.GetStatus(clock.Now()),
-		ReceiveCount:           m.ReceiveCount,
-		QueueType:              m.QueueType,
-		Version:                m.Version,
-		CreationTimestamp:      m.CreationTimestamp,
-		LastUpdatedTimestamp:   m.LastUpdatedTimestamp,
-		AddToQueueTimestamp:    m.AddToQueueTimestamp,
-		PeekFromQueueTimestamp: m.PeekFromQueueTimestamp,
+		ID:           m.ID,
+		Status:       m.GetStatus(clock.Now()),
+		ReceiveCount: m.ReceiveCount,
+		QueueType:    m.QueueType,
+		Version:      m.Version,
+		CreatedAt:    m.CreatedAt,
+		UpdatedAt:    m.UpdatedAt,
+		SentAt:       m.SentAt,
+		ReceivedAt:   m.ReceivedAt,
 	}
 }
 
@@ -149,10 +149,10 @@ func ResetSystemInfo[T any](m *dynamomq.Message[T], now time.Time) {
 	m.VisibilityTimeout = msg.VisibilityTimeout
 	m.ReceiveCount = msg.ReceiveCount
 	m.Version = msg.Version
-	m.CreationTimestamp = msg.CreationTimestamp
-	m.LastUpdatedTimestamp = msg.LastUpdatedTimestamp
-	m.AddToQueueTimestamp = msg.AddToQueueTimestamp
-	m.PeekFromQueueTimestamp = msg.PeekFromQueueTimestamp
+	m.CreatedAt = msg.CreatedAt
+	m.UpdatedAt = msg.UpdatedAt
+	m.SentAt = msg.SentAt
+	m.ReceivedAt = msg.ReceivedAt
 }
 
 func init() {

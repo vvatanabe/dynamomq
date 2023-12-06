@@ -37,7 +37,7 @@ func SetupDynamoDB(t *testing.T, initialData ...*types.PutRequest) (tableName st
 					AttributeType: types.ScalarAttributeTypeS,
 				},
 				{
-					AttributeName: aws.String("queue_add_timestamp"),
+					AttributeName: aws.String("sent_at"),
 					AttributeType: types.ScalarAttributeTypeS,
 				},
 			},
@@ -45,14 +45,14 @@ func SetupDynamoDB(t *testing.T, initialData ...*types.PutRequest) (tableName st
 			DeletionProtectionEnabled: aws.Bool(false),
 			GlobalSecondaryIndexes: []types.GlobalSecondaryIndex{
 				{
-					IndexName: aws.String("dynamo-mq-index-queue_type-queue_add_timestamp"),
+					IndexName: aws.String("dynamo-mq-index-queue_type-sent_at"),
 					KeySchema: []types.KeySchemaElement{
 						{
 							AttributeName: aws.String("queue_type"),
 							KeyType:       types.KeyTypeHash,
 						},
 						{
-							AttributeName: aws.String("queue_add_timestamp"),
+							AttributeName: aws.String("sent_at"),
 							KeyType:       types.KeyTypeRange,
 						},
 					},
@@ -218,10 +218,10 @@ func TestDynamoMQClientSendMessage(t *testing.T) {
 			},
 			want: &dynamomq.SendMessageOutput[test.MessageData]{
 				Result: &dynamomq.Result{
-					ID:                   "A-101",
-					Status:               dynamomq.StatusReady,
-					LastUpdatedTimestamp: clock.FormatRFC3339Nano(test.DefaultTestDate),
-					Version:              1,
+					ID:        "A-101",
+					Status:    dynamomq.StatusReady,
+					UpdatedAt: clock.FormatRFC3339Nano(test.DefaultTestDate),
+					Version:   1,
 				},
 				Message: func() *dynamomq.Message[test.MessageData] {
 					s := NewTestMessageItemAsReady("A-101", test.DefaultTestDate)
@@ -242,14 +242,14 @@ func TestDynamoMQClientSendMessage(t *testing.T) {
 			},
 			want: &dynamomq.SendMessageOutput[test.MessageData]{
 				Result: &dynamomq.Result{
-					ID:                   "A-101",
-					Status:               dynamomq.StatusReady,
-					LastUpdatedTimestamp: clock.FormatRFC3339Nano(test.DefaultTestDate),
-					Version:              1,
+					ID:        "A-101",
+					Status:    dynamomq.StatusReady,
+					UpdatedAt: clock.FormatRFC3339Nano(test.DefaultTestDate),
+					Version:   1,
 				},
 				Message: func() *dynamomq.Message[test.MessageData] {
 					s := NewTestMessageItemAsReady("A-101", test.DefaultTestDate)
-					s.AddToQueueTimestamp = clock.FormatRFC3339Nano(test.DefaultTestDate.Add(10 * time.Second))
+					s.SentAt = clock.FormatRFC3339Nano(test.DefaultTestDate.Add(10 * time.Second))
 					return s
 				}(),
 			},
@@ -297,13 +297,13 @@ func TestDynamoMQClientReceiveMessage(t *testing.T) {
 				m.ReceiveCount = 1
 				r := &dynamomq.ReceiveMessageOutput[test.MessageData]{
 					Result: &dynamomq.Result{
-						ID:                   m.ID,
-						Status:               dynamomq.StatusProcessing,
-						LastUpdatedTimestamp: m.LastUpdatedTimestamp,
-						Version:              m.Version,
+						ID:        m.ID,
+						Status:    dynamomq.StatusProcessing,
+						UpdatedAt: m.UpdatedAt,
+						Version:   m.Version,
 					},
-					PeekFromQueueTimestamp: m.PeekFromQueueTimestamp,
-					PeekedMessageObject:    m,
+					ReceivedAt:      m.ReceivedAt,
+					ReceivedMessage: m,
 				}
 				return r
 			}(),
@@ -401,10 +401,10 @@ func TestDynamoMQClientUpdateMessageAsVisible(t *testing.T) {
 			},
 			want: &dynamomq.ChangeMessageVisibilityOutput[test.MessageData]{
 				Result: &dynamomq.Result{
-					ID:                   "A-101",
-					Status:               dynamomq.StatusReady,
-					LastUpdatedTimestamp: clock.FormatRFC3339Nano(now),
-					Version:              2,
+					ID:        "A-101",
+					Status:    dynamomq.StatusReady,
+					UpdatedAt: clock.FormatRFC3339Nano(now),
+					Version:   2,
 				},
 				Message: func() *dynamomq.Message[test.MessageData] {
 					m := NewTestMessageItemAsProcessing("A-101", now)
@@ -466,10 +466,10 @@ func TestDynamoMQClientMoveMessageToDLQ(t *testing.T) {
 			want: func() *dynamomq.MoveMessageToDLQOutput {
 				s := NewTestMessageItemAsDLQ("A-101", test.DefaultTestDate)
 				r := &dynamomq.MoveMessageToDLQOutput{
-					ID:                   s.ID,
-					Status:               dynamomq.StatusReady,
-					LastUpdatedTimestamp: s.LastUpdatedTimestamp,
-					Version:              s.Version,
+					ID:        s.ID,
+					Status:    dynamomq.StatusReady,
+					UpdatedAt: s.UpdatedAt,
+					Version:   s.Version,
 				}
 				return r
 			}(),
@@ -489,10 +489,10 @@ func TestDynamoMQClientMoveMessageToDLQ(t *testing.T) {
 				MarkAsMovedToDLQ(m, test.DefaultTestDate.Add(10*time.Second))
 				m.Version = 2
 				r := &dynamomq.MoveMessageToDLQOutput{
-					ID:                   m.ID,
-					Status:               dynamomq.StatusReady,
-					LastUpdatedTimestamp: m.LastUpdatedTimestamp,
-					Version:              m.Version,
+					ID:        m.ID,
+					Status:    dynamomq.StatusReady,
+					UpdatedAt: m.UpdatedAt,
+					Version:   m.Version,
 				}
 				return r
 			}(),
@@ -521,10 +521,10 @@ func TestDynamoMQClientRedriveMessage(t *testing.T) {
 				id: "A-101",
 			},
 			want: &dynamomq.RedriveMessageOutput{
-				ID:                   "A-101",
-				Status:               dynamomq.StatusReady,
-				LastUpdatedTimestamp: clock.FormatRFC3339Nano(test.DefaultTestDate.Add(10 * time.Second)),
-				Version:              2,
+				ID:        "A-101",
+				Status:    dynamomq.StatusReady,
+				UpdatedAt: clock.FormatRFC3339Nano(test.DefaultTestDate.Add(10 * time.Second)),
+				Version:   2,
 			},
 		},
 		{

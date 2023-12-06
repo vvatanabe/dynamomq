@@ -111,8 +111,8 @@ var SuccessfulMockClient = &Client[any]{
 	},
 	ReceiveMessageFunc: func(ctx context.Context, params *dynamomq.ReceiveMessageInput) (*dynamomq.ReceiveMessageOutput[any], error) {
 		return &dynamomq.ReceiveMessageOutput[any]{
-			Result:              &dynamomq.Result{},
-			PeekedMessageObject: &dynamomq.Message[any]{},
+			Result:          &dynamomq.Result{},
+			ReceivedMessage: &dynamomq.Message[any]{},
 		}, nil
 	},
 	ChangeMessageVisibilityFunc: func(ctx context.Context, params *dynamomq.ChangeMessageVisibilityInput) (*dynamomq.ChangeMessageVisibilityOutput[any], error) {

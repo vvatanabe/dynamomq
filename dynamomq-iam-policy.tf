@@ -23,7 +23,7 @@ resource "aws_iam_policy" "dynamomq_policy" {
         ]
         Resource = [
           "arn:aws:dynamodb:${var.region}:${var.account_id}:table/dynamo-mq-table",
-          "arn:aws:dynamodb:${var.region}:${var.account_id}:table/dynamo-mq-table/index/dynamo-mq-index-queue_type-queue_add_timestamp"
+          "arn:aws:dynamodb:${var.region}:${var.account_id}:table/dynamo-mq-table/index/dynamo-mq-index-queue_type-sent_at"
         ]
       }
     ]
