@@ -9,50 +9,51 @@ import (
 func NewMessage[T any](id string, data T, now time.Time) *Message[T] {
 	ts := clock.FormatRFC3339Nano(now)
 	return &Message[T]{
-		ID:                id,
-		Data:              data,
-		ReceiveCount:      0,
-		VisibilityTimeout: 0,
-		QueueType:         QueueTypeStandard,
-		Version:           1,
-		CreatedAt:         ts,
-		UpdatedAt:         ts,
-		SentAt:            ts,
-		ReceivedAt:        "",
+		ID:               id,
+		Data:             data,
+		ReceiveCount:     0,
+		QueueType:        QueueTypeStandard,
+		Version:          1,
+		CreatedAt:        ts,
+		UpdatedAt:        ts,
+		SentAt:           ts,
+		ReceivedAt:       "",
+		InvisibleUntilAt: "",
 	}
 }
 
 type Message[T any] struct {
-	ID   string `json:"id" dynamodbav:"id"`
-	Data T      `json:"data" dynamodbav:"data"`
-	// The new value for the message's visibility timeout (in seconds).
-	VisibilityTimeout int       `json:"visibility_timeout" dynamodbav:"visibility_timeout"`
-	ReceiveCount      int       `json:"receive_count" dynamodbav:"receive_count"`
-	QueueType         QueueType `json:"queue_type" dynamodbav:"queue_type,omitempty"`
-	Version           int       `json:"version" dynamodbav:"version"`
-	CreatedAt         string    `json:"created_at" dynamodbav:"created_at"`
-	UpdatedAt         string    `json:"updated_at" dynamodbav:"updated_at"`
-	SentAt            string    `json:"sent_at" dynamodbav:"sent_at"`
-	ReceivedAt        string    `json:"received_at" dynamodbav:"received_at"`
+	ID               string    `json:"id" dynamodbav:"id"`
+	Data             T         `json:"data" dynamodbav:"data"`
+	ReceiveCount     int       `json:"receive_count" dynamodbav:"receive_count"`
+	QueueType        QueueType `json:"queue_type" dynamodbav:"queue_type,omitempty"`
+	Version          int       `json:"version" dynamodbav:"version"`
+	CreatedAt        string    `json:"created_at" dynamodbav:"created_at"`
+	UpdatedAt        string    `json:"updated_at" dynamodbav:"updated_at"`
+	SentAt           string    `json:"sent_at" dynamodbav:"sent_at"`
+	ReceivedAt       string    `json:"received_at" dynamodbav:"received_at"`
+	InvisibleUntilAt string    `json:"invisible_until_at" dynamodbav:"invisible_until_at"`
 }
 
 func (m *Message[T]) GetStatus(now time.Time) Status {
-	peekUTCTime := clock.RFC3339NanoToTime(m.ReceivedAt)
-	invisibleTime := peekUTCTime.Add(time.Duration(m.VisibilityTimeout) * time.Second)
-	if now.Before(invisibleTime) {
-		return StatusProcessing
+	if m.InvisibleUntilAt == "" {
+		return StatusReady
 	}
-	return StatusReady
+	invisibleUntilAtTime := clock.RFC3339NanoToTime(m.InvisibleUntilAt)
+	if now.After(invisibleUntilAtTime) {
+		return StatusReady
+	}
+	return StatusProcessing
 }
 
 func (m *Message[T]) isDLQ() bool {
 	return m.QueueType == QueueTypeDLQ
 }
 
-func (m *Message[T]) changeVisibilityTimeout(now time.Time, visibilityTimeout int) {
+func (m *Message[T]) changeVisibility(now time.Time, visibilityTimeout time.Duration) {
 	ts := clock.FormatRFC3339Nano(now)
 	m.UpdatedAt = ts
-	m.VisibilityTimeout = visibilityTimeout
+	m.InvisibleUntilAt = clock.FormatRFC3339Nano(now.Add(visibilityTimeout))
 }
 
 func (m *Message[T]) delayToSentAt(delay time.Duration) {
@@ -60,7 +61,7 @@ func (m *Message[T]) delayToSentAt(delay time.Duration) {
 	m.SentAt = clock.FormatRFC3339Nano(delayed)
 }
 
-func (m *Message[T]) markAsProcessing(now time.Time, visibilityTimeout int) error {
+func (m *Message[T]) markAsProcessing(now time.Time, visibilityTimeout time.Duration) error {
 	status := m.GetStatus(now)
 	if status == StatusProcessing {
 		return InvalidStateTransitionError{
@@ -72,7 +73,7 @@ func (m *Message[T]) markAsProcessing(now time.Time, visibilityTimeout int) erro
 	ts := clock.FormatRFC3339Nano(now)
 	m.UpdatedAt = ts
 	m.ReceivedAt = ts
-	m.VisibilityTimeout = visibilityTimeout
+	m.InvisibleUntilAt = clock.FormatRFC3339Nano(now.Add(visibilityTimeout))
 	return nil
 }
 
@@ -87,10 +88,10 @@ func (m *Message[T]) markAsMovedToDLQ(now time.Time) error {
 	ts := clock.FormatRFC3339Nano(now)
 	m.QueueType = QueueTypeDLQ
 	m.ReceiveCount = 0
-	m.VisibilityTimeout = 0
 	m.UpdatedAt = ts
 	m.SentAt = ts
 	m.ReceivedAt = ""
+	m.InvisibleUntilAt = ""
 	return nil
 }
 
@@ -112,10 +113,10 @@ func (m *Message[T]) markAsRestoredFromDLQ(now time.Time) error {
 	}
 	ts := clock.FormatRFC3339Nano(now)
 	m.QueueType = QueueTypeStandard
-	m.VisibilityTimeout = 0
 	m.ReceiveCount = 0
 	m.UpdatedAt = ts
 	m.SentAt = ts
 	m.ReceivedAt = ""
+	m.InvisibleUntilAt = ""
 	return nil
 }

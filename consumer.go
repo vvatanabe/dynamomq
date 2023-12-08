@@ -11,10 +11,11 @@ import (
 )
 
 const (
-	defaultPollingInterval = time.Second
-	defaultMaximumReceives = 0 // unlimited
-	defaultQueueType       = QueueTypeStandard
-	defaultConcurrency     = 3
+	defaultPollingInterval        = time.Second
+	defaultMaximumReceives        = 0 // unlimited
+	defaultRetryIntervalInSeconds = 1
+	defaultQueueType              = QueueTypeStandard
+	defaultConcurrency            = 3
 )
 
 func WithPollingInterval(pollingInterval time.Duration) func(o *ConsumerOptions) {
@@ -32,6 +33,18 @@ func WithConcurrency(concurrency int) func(o *ConsumerOptions) {
 func WithMaximumReceives(maximumReceives int) func(o *ConsumerOptions) {
 	return func(o *ConsumerOptions) {
 		o.MaximumReceives = maximumReceives
+	}
+}
+
+func WithVisibilityTimeout(sec int) func(o *ConsumerOptions) {
+	return func(o *ConsumerOptions) {
+		o.VisibilityTimeout = sec
+	}
+}
+
+func WithRetryInterval(sec int) func(o *ConsumerOptions) {
+	return func(o *ConsumerOptions) {
+		o.RetryInterval = sec
 	}
 }
 
@@ -54,10 +67,12 @@ func WithOnShutdown(onShutdown []func()) func(o *ConsumerOptions) {
 }
 
 type ConsumerOptions struct {
-	PollingInterval time.Duration
-	Concurrency     int
-	MaximumReceives int
-	QueueType       QueueType
+	PollingInterval   time.Duration
+	Concurrency       int
+	MaximumReceives   int
+	VisibilityTimeout int
+	RetryInterval     int
+	QueueType         QueueType
 	// errorLog specifies an optional logger for errors accepting
 	// connections, unexpected behavior from handlers, and
 	// underlying FileSystem errors.
@@ -68,28 +83,32 @@ type ConsumerOptions struct {
 
 func NewConsumer[T any](client Client[T], processor MessageProcessor[T], opts ...func(o *ConsumerOptions)) *Consumer[T] {
 	o := &ConsumerOptions{
-		PollingInterval: defaultPollingInterval,
-		Concurrency:     defaultConcurrency,
-		MaximumReceives: defaultMaximumReceives,
-		QueueType:       defaultQueueType,
+		PollingInterval:   defaultPollingInterval,
+		Concurrency:       defaultConcurrency,
+		MaximumReceives:   defaultMaximumReceives,
+		VisibilityTimeout: DefaultVisibilityTimeoutInSeconds,
+		RetryInterval:     defaultRetryIntervalInSeconds,
+		QueueType:         defaultQueueType,
 	}
 	for _, opt := range opts {
 		opt(o)
 	}
 	return &Consumer[T]{
-		client:           client,
-		messageProcessor: processor,
-		pollingInterval:  o.PollingInterval,
-		concurrency:      o.Concurrency,
-		maximumReceives:  o.MaximumReceives,
-		queueType:        o.QueueType,
-		errorLog:         o.ErrorLog,
-		onShutdown:       o.OnShutdown,
-		inShutdown:       0,
-		mu:               sync.Mutex{},
-		activeMessages:   make(map[*Message[T]]struct{}),
-		activeMessagesWG: sync.WaitGroup{},
-		doneChan:         make(chan struct{}),
+		client:            client,
+		messageProcessor:  processor,
+		pollingInterval:   o.PollingInterval,
+		concurrency:       o.Concurrency,
+		maximumReceives:   o.MaximumReceives,
+		visibilityTimeout: o.VisibilityTimeout,
+		retryInterval:     o.RetryInterval,
+		queueType:         o.QueueType,
+		errorLog:          o.ErrorLog,
+		onShutdown:        o.OnShutdown,
+		inShutdown:        0,
+		mu:                sync.Mutex{},
+		activeMessages:    make(map[*Message[T]]struct{}),
+		activeMessagesWG:  sync.WaitGroup{},
+		doneChan:          make(chan struct{}),
 	}
 }
 
@@ -104,14 +123,16 @@ func (f MessageProcessorFunc[T]) Process(msg *Message[T]) error {
 }
 
 type Consumer[T any] struct {
-	client           Client[T]
-	messageProcessor MessageProcessor[T]
-	concurrency      int
-	pollingInterval  time.Duration
-	maximumReceives  int
-	queueType        QueueType
-	errorLog         *log.Logger
-	onShutdown       []func()
+	client            Client[T]
+	messageProcessor  MessageProcessor[T]
+	concurrency       int
+	pollingInterval   time.Duration
+	maximumReceives   int
+	visibilityTimeout int
+	retryInterval     int
+	queueType         QueueType
+	errorLog          *log.Logger
+	onShutdown        []func()
 
 	inShutdown       int32
 	mu               sync.Mutex
@@ -138,7 +159,7 @@ func (c *Consumer[T]) StartConsuming() error {
 		ctx := context.Background()
 		r, err := c.client.ReceiveMessage(ctx, &ReceiveMessageInput{
 			QueueType:         c.queueType,
-			VisibilityTimeout: DefaultVisibilityTimeoutInSeconds,
+			VisibilityTimeout: c.visibilityTimeout,
 		})
 		if err != nil {
 			if c.shuttingDown() {
@@ -187,7 +208,11 @@ func (c *Consumer[T]) shouldRetry(msg *Message[T]) bool {
 }
 
 func (c *Consumer[T]) retryMessage(ctx context.Context, msg *Message[T]) {
-	if _, err := c.client.ChangeMessageVisibility(ctx, &ChangeMessageVisibilityInput{ID: msg.ID}); err != nil {
+	in := &ChangeMessageVisibilityInput{
+		ID:                msg.ID,
+		VisibilityTimeout: c.retryInterval,
+	}
+	if _, err := c.client.ChangeMessageVisibility(ctx, in); err != nil {
 		c.logf("DynamoMQ: Failed to update a message as visible. %s", err)
 	}
 }

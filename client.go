@@ -19,6 +19,7 @@ const (
 	DefaultQueueingIndexName          = "dynamo-mq-index-queue_type-sent_at"
 	DefaultRetryMaxAttempts           = 10
 	DefaultVisibilityTimeoutInSeconds = 30
+	DefaultVisibilityTimeout          = DefaultVisibilityTimeoutInSeconds * time.Second
 	DefaultMaxListMessages            = 10
 	DefaultQueryLimit                 = 250
 )
@@ -206,6 +207,9 @@ func (c *client[T]) ReceiveMessage(ctx context.Context, params *ReceiveMessageIn
 	if params.QueueType == "" {
 		params.QueueType = QueueTypeStandard
 	}
+	if params.VisibilityTimeout <= 0 {
+		params.VisibilityTimeout = DefaultVisibilityTimeoutInSeconds
+	}
 
 	selected, err := c.selectMessage(ctx, params)
 	if err != nil {
@@ -287,7 +291,7 @@ func (c *client[T]) processQueryResult(params *ReceiveMessageInput, queryResult 
 			return nil, UnmarshalingAttributeError{Cause: err}
 		}
 
-		if err := message.markAsProcessing(c.clock.Now(), params.VisibilityTimeout); err == nil {
+		if err := message.markAsProcessing(c.clock.Now(), secToDur(params.VisibilityTimeout)); err == nil {
 			selected = &message
 			break
 		}
@@ -303,9 +307,9 @@ func (c *client[T]) processSelectedMessage(ctx context.Context, message *Message
 		WithUpdate(expression.
 			Add(expression.Name("version"), expression.Value(1)).
 			Add(expression.Name("receive_count"), expression.Value(1)).
-			Set(expression.Name("visibility_timeout"), expression.Value(message.VisibilityTimeout)).
 			Set(expression.Name("updated_at"), expression.Value(message.UpdatedAt)).
-			Set(expression.Name("received_at"), expression.Value(message.ReceivedAt))).
+			Set(expression.Name("received_at"), expression.Value(message.ReceivedAt)).
+			Set(expression.Name("invisible_until_at"), expression.Value(message.InvisibleUntilAt))).
 		WithCondition(expression.Name("version").Equal(expression.Value(message.Version)))
 	expr, err := c.buildExpression(builder)
 	if err != nil {
@@ -343,12 +347,12 @@ func (c *client[T]) ChangeMessageVisibility(ctx context.Context, params *ChangeM
 		return &ChangeMessageVisibilityOutput[T]{}, &IDNotFoundError{}
 	}
 	message := retrieved.Message
-	message.changeVisibilityTimeout(c.clock.Now(), params.VisibilityTimeout)
+	message.changeVisibility(c.clock.Now(), secToDur(params.VisibilityTimeout))
 	builder := expression.NewBuilder().
 		WithUpdate(expression.
 			Add(expression.Name("version"), expression.Value(1)).
 			Set(expression.Name("updated_at"), expression.Value(message.UpdatedAt)).
-			Set(expression.Name("visibility_timeout"), expression.Value(message.VisibilityTimeout))).
+			Set(expression.Name("invisible_until_at"), expression.Value(message.InvisibleUntilAt))).
 		WithCondition(expression.Name("version").Equal(expression.Value(message.Version)))
 	expr, err := c.buildExpression(builder)
 	if err != nil {
@@ -434,12 +438,12 @@ func (c *client[T]) MoveMessageToDLQ(ctx context.Context, params *MoveMessageToD
 	builder := expression.NewBuilder().
 		WithUpdate(expression.
 			Add(expression.Name("version"), expression.Value(1)).
-			Set(expression.Name("visibility_timeout"), expression.Value(message.VisibilityTimeout)).
 			Set(expression.Name("receive_count"), expression.Value(message.ReceiveCount)).
 			Set(expression.Name("queue_type"), expression.Value(message.QueueType)).
 			Set(expression.Name("updated_at"), expression.Value(message.UpdatedAt)).
 			Set(expression.Name("sent_at"), expression.Value(message.SentAt)).
-			Set(expression.Name("received_at"), expression.Value(message.SentAt))).
+			Set(expression.Name("received_at"), expression.Value(message.SentAt)).
+			Set(expression.Name("invisible_until_at"), expression.Value(message.InvisibleUntilAt))).
 		WithCondition(expression.Name("version").Equal(expression.Value(message.Version)))
 	expr, err := c.buildExpression(builder)
 	if err != nil {
@@ -494,14 +498,14 @@ func (c *client[T]) RedriveMessage(ctx context.Context, params *RedriveMessageIn
 			expression.Name("queue_type"),
 			expression.Value(message.QueueType),
 		).Set(
-			expression.Name("visibility_timeout"),
-			expression.Value(message.VisibilityTimeout),
-		).Set(
 			expression.Name("updated_at"),
 			expression.Value(message.UpdatedAt),
 		).Set(
 			expression.Name("sent_at"),
 			expression.Value(message.SentAt),
+		).Set(
+			expression.Name("invisible_until_at"),
+			expression.Value(message.InvisibleUntilAt),
 		)).
 		WithCondition(expression.Name("version").
 			Equal(expression.Value(message.Version)))
@@ -843,6 +847,10 @@ func handleDynamoDBError(err error) error {
 		return &ConditionalCheckFailedError{Cause: cause}
 	}
 	return DynamoDBAPIError{Cause: err}
+}
+
+func secToDur(sec int) time.Duration {
+	return time.Duration(sec) * time.Second
 }
 
 type Status string

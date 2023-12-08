@@ -21,10 +21,9 @@ func TestMessageGetStatus(t *testing.T) {
 	}
 	tests := []testCase[any]{
 		{
-			name: "should return StatusReady when VisibilityTimeout is 0",
+			name: "should return StatusReady when InvisibleUntilAt is empty",
 			m: dynamomq.Message[any]{
-				VisibilityTimeout: 0,
-				ReceivedAt:        clock.FormatRFC3339Nano(test.DefaultTestDate),
+				InvisibleUntilAt: "",
 			},
 			args: args{
 				now: test.DefaultTestDate,
@@ -32,21 +31,19 @@ func TestMessageGetStatus(t *testing.T) {
 			want: dynamomq.StatusReady,
 		},
 		{
-			name: "should return StatusProcessing when current time is before VisibilityTimeout",
+			name: "should return StatusProcessing when current time is before InvisibleUntilAt",
 			m: dynamomq.Message[any]{
-				VisibilityTimeout: 1,
-				ReceivedAt:        clock.FormatRFC3339Nano(test.DefaultTestDate.Add(time.Second)),
+				InvisibleUntilAt: clock.FormatRFC3339Nano(test.DefaultTestDate.Add(time.Second)),
 			},
 			args: args{
-				now: test.DefaultTestDate.Add(time.Second),
+				now: test.DefaultTestDate,
 			},
 			want: dynamomq.StatusProcessing,
 		},
 		{
-			name: "should return StatusReady when current time is after VisibilityTimeout",
+			name: "should return StatusReady when current time is after InvisibleUntilAt",
 			m: dynamomq.Message[any]{
-				VisibilityTimeout: 5,
-				ReceivedAt:        clock.FormatRFC3339Nano(test.DefaultTestDate),
+				InvisibleUntilAt: clock.FormatRFC3339Nano(test.DefaultTestDate.Add(time.Second * 5)),
 			},
 			args: args{
 				now: test.DefaultTestDate.Add(time.Second * 6),
@@ -54,13 +51,12 @@ func TestMessageGetStatus(t *testing.T) {
 			want: dynamomq.StatusReady,
 		},
 		{
-			name: "should return StatusProcessing when current time is equal VisibilityTimeout",
+			name: "should return StatusProcessing when current time is equal InvisibleUntilAt",
 			m: dynamomq.Message[any]{
-				VisibilityTimeout: 4,
-				ReceivedAt:        clock.FormatRFC3339Nano(test.DefaultTestDate.Add(time.Second * 4)),
+				InvisibleUntilAt: clock.FormatRFC3339Nano(test.DefaultTestDate),
 			},
 			args: args{
-				now: time.Date(2021, 1, 1, 0, 0, 4, 0, time.UTC),
+				now: test.DefaultTestDate,
 			},
 			want: dynamomq.StatusProcessing,
 		},

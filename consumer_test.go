@@ -127,6 +127,8 @@ func TestConsumerStartConsuming(t *testing.T) {
 				dynamomq.WithPollingInterval(0),
 				dynamomq.WithConcurrency(3),
 				dynamomq.WithMaximumReceives(tt.MaximumReceives),
+				dynamomq.WithVisibilityTimeout(30),
+				dynamomq.WithRetryInterval(1),
 				dynamomq.WithQueueType(tt.QueueType),
 				dynamomq.WithErrorLog(log.New(os.Stderr, "", 0)),
 				dynamomq.WithOnShutdown([]func(){}))

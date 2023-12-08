@@ -337,7 +337,6 @@ The DynamoDB table for the DynamoMQ message queue system is designed to efficien
 |-------|--------------------|--------|-------------------------------------|
 | PK    | id                 | string | A-101                               |
 |       | data               | any    | any                                 |
-|       | visibility_timeout | number | 10                                  |
 |       | receive_count      | number | 1                                   |
 | GSIPK | queue_type         | string | STANDARD or DLQ                     |
 |       | version            | number | 1                                   |
@@ -345,6 +344,7 @@ The DynamoDB table for the DynamoMQ message queue system is designed to efficien
 |       | updated_at         | string | 2006-01-02T15:04:05.999999999Z07:00 |
 | GSISK | sent_at            | string | 2006-01-02T15:04:05.999999999Z07:00 |
 |       | received_at        | string | 2006-01-02T15:04:05.999999999Z07:00 |
+|       | invisible_until_at | string | 2006-01-02T15:04:05.999999999Z07:00 |
 
 **PK (Primary Key)** `ID`: A unique identifier for each message, such as 'A-101'. This is a string value that facilitates the retrieval and management of messages.
 
@@ -354,12 +354,12 @@ The DynamoDB table for the DynamoMQ message queue system is designed to efficien
 
 **Attributes**: These are the various properties associated with each message:
 - `data`: This attribute holds the content of the message and can be of any type.
-- `isibility_timeout`: The new value for the message's visibility timeout (in seconds).
 - `receive_count`: A numerical count of how many times the message has been retrieved from the queue.
 - `version`: A number that can be used for optimistic locking and to ensure that the message is not being concurrently modified.
 - `created_at`: The date and time when the message was created. ISO 8601 format.
 - `updated_at`: The date and time when the message was last updated. ISO 8601 format.
 - `received_at`: The timestamp when the message was last viewed without being altered. ISO 8601 format.
+- `invisible_until_at`: The timestamp indicating when the message becomes visible in the queue for processing. ISO 8601 format.
 
 ### Data Transition
 

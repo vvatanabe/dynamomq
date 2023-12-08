@@ -118,41 +118,43 @@ func Execute() {
 }
 
 type SystemInfo struct {
-	ID           string             `json:"id"`
-	Status       dynamomq.Status    `json:"status"`
-	ReceiveCount int                `json:"receive_count"`
-	QueueType    dynamomq.QueueType `json:"queue_type"`
-	Version      int                `json:"version"`
-	CreatedAt    string             `json:"created_at"`
-	UpdatedAt    string             `json:"updated_at"`
-	SentAt       string             `json:"sent_at"`
-	ReceivedAt   string             `json:"received_at"`
+	ID               string             `json:"id"`
+	Status           dynamomq.Status    `json:"status"`
+	ReceiveCount     int                `json:"receive_count"`
+	QueueType        dynamomq.QueueType `json:"queue_type"`
+	Version          int                `json:"version"`
+	CreatedAt        string             `json:"created_at"`
+	UpdatedAt        string             `json:"updated_at"`
+	SentAt           string             `json:"sent_at"`
+	ReceivedAt       string             `json:"received_at"`
+	InvisibleUntilAt string             `json:"invisible_until_at"`
 }
 
 func GetSystemInfo[T any](m *dynamomq.Message[T]) *SystemInfo {
 	return &SystemInfo{
-		ID:           m.ID,
-		Status:       m.GetStatus(clock.Now()),
-		ReceiveCount: m.ReceiveCount,
-		QueueType:    m.QueueType,
-		Version:      m.Version,
-		CreatedAt:    m.CreatedAt,
-		UpdatedAt:    m.UpdatedAt,
-		SentAt:       m.SentAt,
-		ReceivedAt:   m.ReceivedAt,
+		ID:               m.ID,
+		Status:           m.GetStatus(clock.Now()),
+		ReceiveCount:     m.ReceiveCount,
+		QueueType:        m.QueueType,
+		Version:          m.Version,
+		CreatedAt:        m.CreatedAt,
+		UpdatedAt:        m.UpdatedAt,
+		SentAt:           m.SentAt,
+		ReceivedAt:       m.ReceivedAt,
+		InvisibleUntilAt: m.InvisibleUntilAt,
 	}
 }
 
 func ResetSystemInfo[T any](m *dynamomq.Message[T], now time.Time) {
 	msg := dynamomq.NewMessage[T](m.ID, m.Data, now)
 	m.QueueType = msg.QueueType
-	m.VisibilityTimeout = msg.VisibilityTimeout
 	m.ReceiveCount = msg.ReceiveCount
 	m.Version = msg.Version
 	m.CreatedAt = msg.CreatedAt
 	m.UpdatedAt = msg.UpdatedAt
 	m.SentAt = msg.SentAt
 	m.ReceivedAt = msg.ReceivedAt
+	m.InvisibleUntilAt = msg.InvisibleUntilAt
 }
 
 func init() {

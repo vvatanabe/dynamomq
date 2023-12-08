@@ -347,6 +347,7 @@ func testDynamoMQClientReceiveMessageSequence(t *testing.T, useFIFO bool) {
 
 	for i, want := range wants {
 		result, err := client.ReceiveMessage(ctx, &dynamomq.ReceiveMessageInput{
+			QueueType:         dynamomq.QueueTypeStandard,
 			VisibilityTimeout: dynamomq.DefaultVisibilityTimeoutInSeconds,
 		})
 		test.AssertError(t, err, nil, fmt.Sprintf("ReceiveMessage() [%d-1]", i))
@@ -383,10 +384,11 @@ func TestDynamoMQClientReceiveMessageNotUseFIFO(t *testing.T) {
 	testDynamoMQClientReceiveMessageSequence(t, false)
 }
 
-func TestDynamoMQClientUpdateMessageAsVisible(t *testing.T) {
+func TestDynamoMQClientChangeMessageVisibility(t *testing.T) {
 	t.Parallel()
 	type args struct {
-		id string
+		id                string
+		visibilityTimeout int
 	}
 	now := test.DefaultTestDate.Add(10 * time.Second)
 	tests := []ClientTestCase[args, *dynamomq.ChangeMessageVisibilityOutput[test.MessageData]]{
@@ -397,7 +399,8 @@ func TestDynamoMQClientUpdateMessageAsVisible(t *testing.T) {
 				T: now,
 			},
 			args: args{
-				id: "A-101",
+				id:                "A-101",
+				visibilityTimeout: -1,
 			},
 			want: &dynamomq.ChangeMessageVisibilityOutput[test.MessageData]{
 				Result: &dynamomq.Result{
@@ -408,7 +411,9 @@ func TestDynamoMQClientUpdateMessageAsVisible(t *testing.T) {
 				},
 				Message: func() *dynamomq.Message[test.MessageData] {
 					m := NewTestMessageItemAsProcessing("A-101", now)
-					MarkAsReady(m, now)
+					ts := clock.FormatRFC3339Nano(now)
+					m.UpdatedAt = ts
+					m.InvisibleUntilAt = clock.FormatRFC3339Nano(now.Add(-1 * time.Second))
 					m.Version = 2
 					return m
 				}(),
@@ -418,7 +423,8 @@ func TestDynamoMQClientUpdateMessageAsVisible(t *testing.T) {
 	runTestsParallel[args, *dynamomq.ChangeMessageVisibilityOutput[test.MessageData]](t, "ChangeMessageVisibility()", tests,
 		func(client dynamomq.Client[test.MessageData], args args) (*dynamomq.ChangeMessageVisibilityOutput[test.MessageData], error) {
 			return client.ChangeMessageVisibility(context.Background(), &dynamomq.ChangeMessageVisibilityInput{
-				ID: args.id,
+				ID:                args.id,
+				VisibilityTimeout: args.visibilityTimeout,
 			})
 		})
 }

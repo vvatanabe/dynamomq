@@ -8,27 +8,21 @@ import (
 	"github.com/vvatanabe/dynamomq/internal/test"
 )
 
-func MarkAsReady[T any](m *dynamomq.Message[T], now time.Time) {
-	ts := clock.FormatRFC3339Nano(now)
-	m.VisibilityTimeout = 0
-	m.UpdatedAt = ts
-}
-
 func MarkAsProcessing[T any](m *dynamomq.Message[T], now time.Time) {
 	ts := clock.FormatRFC3339Nano(now)
-	m.VisibilityTimeout = dynamomq.DefaultVisibilityTimeoutInSeconds
 	m.UpdatedAt = ts
 	m.ReceivedAt = ts
+	m.InvisibleUntilAt = clock.FormatRFC3339Nano(now.Add(dynamomq.DefaultVisibilityTimeout))
 }
 
 func MarkAsMovedToDLQ[T any](m *dynamomq.Message[T], now time.Time) {
 	ts := clock.FormatRFC3339Nano(now)
 	m.QueueType = dynamomq.QueueTypeDLQ
-	m.VisibilityTimeout = 0
 	m.ReceiveCount = 0
 	m.UpdatedAt = ts
 	m.SentAt = ts
 	m.ReceivedAt = ""
+	m.InvisibleUntilAt = ""
 }
 
 func NewTestMessageItemAsReady(id string, now time.Time) *dynamomq.Message[test.MessageData] {
@@ -53,7 +47,7 @@ func NewMessageFromReadyToProcessing(id string,
 	MarkAsProcessing(m, processingTime)
 	m.Version = 2
 	m.ReceiveCount = 1
-	m.VisibilityTimeout = dynamomq.DefaultVisibilityTimeoutInSeconds
+	m.InvisibleUntilAt = clock.FormatRFC3339Nano(processingTime.Add(dynamomq.DefaultVisibilityTimeout))
 	r := &dynamomq.ReceiveMessageOutput[test.MessageData]{
 		Result: &dynamomq.Result{
 			ID:        m.ID,
