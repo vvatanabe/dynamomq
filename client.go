@@ -52,57 +52,102 @@ type Client[T any] interface {
 	ReplaceMessage(ctx context.Context, params *ReplaceMessageInput[T]) (*ReplaceMessageOutput, error)
 }
 
+// ClientOptions defines configuration options for the DynamoMQ client.
+//
+// Note: The following fields are primarily used for testing purposes.
+// They allow for stubbing of operations during tests, facilitating the mocking of behavior without relying on a real DynamoDB instance:
+//
+//   - Clock
+//   - MarshalMap
+//   - UnmarshalMap
+//   - UnmarshalListOfMaps
+//   - BuildExpression
+//
+// In typical use, these testing fields should not be modified. They are provided to support advanced use cases, like unit testing, where control over these operations is necessary.
 type ClientOptions struct {
-	DynamoDB            *dynamodb.Client
-	TableName           string
-	QueueingIndexName   string
-	MaximumReceives     int
-	UseFIFO             bool
-	BaseEndpoint        string
-	RetryMaxAttempts    int
-	Clock               clock.Clock
-	MarshalMap          func(in interface{}) (map[string]types.AttributeValue, error)
-	UnmarshalMap        func(m map[string]types.AttributeValue, out interface{}) error
+	// DynamoDB is a pointer to the DynamoDB client used for database operations.
+	DynamoDB *dynamodb.Client
+	// TableName is the name of the DynamoDB table used for the queue.
+	TableName string
+	// QueueingIndexName is the name of the index used for queueing operations.
+	QueueingIndexName string
+	// MaximumReceives is the maximum number of times a message is delivered before being moved to the DLQ.
+	MaximumReceives int
+	// UseFIFO is a boolean indicating if the queue should behave as a First-In-First-Out (FIFO) queue.
+	UseFIFO bool
+	// BaseEndpoint is the base endpoint URL for DynamoDB requests.
+	BaseEndpoint string
+	// RetryMaxAttempts is the maximum number of attempts for retrying failed DynamoDB operations.
+	RetryMaxAttempts int
+
+	// Clock is an abstraction of time operations, allowing control over time during tests.
+	Clock clock.Clock
+	// MarshalMap is a function to marshal objects into a map of DynamoDB attribute values.
+	MarshalMap func(in interface{}) (map[string]types.AttributeValue, error)
+	// UnmarshalMap is a function to unmarshal a map of DynamoDB attribute values into objects.
+	UnmarshalMap func(m map[string]types.AttributeValue, out interface{}) error
+	// UnmarshalListOfMaps is a function to unmarshal a list of maps of DynamoDB attribute values into objects.
 	UnmarshalListOfMaps func(l []map[string]types.AttributeValue, out interface{}) error
-	BuildExpression     func(b expression.Builder) (expression.Expression, error)
+	// BuildExpression is a function to build DynamoDB expressions from a builder.
+	BuildExpression func(b expression.Builder) (expression.Expression, error)
 }
 
-func WithAWSDynamoDBClient(client *dynamodb.Client) func(*ClientOptions) {
-	return func(s *ClientOptions) {
-		s.DynamoDB = client
-	}
-}
-
+// WithTableName is an option function to set the table name for the DynamoMQ client.
+// Use this function to specify the name of the DynamoDB table that the client will use for storing and retrieving messages.
+// By default, the table name is set to "dynamo-mq-table".
 func WithTableName(tableName string) func(*ClientOptions) {
 	return func(s *ClientOptions) {
 		s.TableName = tableName
 	}
 }
 
+// WithQueueingIndexName is an option function to set the queue index name for the DynamoMQ client.
+// This function allows defining a custom index name that the client will use for queue operations, optimizing message handling.
+// By default, the index name is set to "dynamo-mq-index-queue_type-sent_at".
 func WithQueueingIndexName(queueingIndexName string) func(*ClientOptions) {
 	return func(s *ClientOptions) {
 		s.QueueingIndexName = queueingIndexName
 	}
 }
 
+// WithUseFIFO is an option function to enable FIFO (First-In-First-Out) behavior for the DynamoMQ client.
+// Setting this option to true makes the client treat the queue as a FIFO queue; otherwise, it is treated as a standard queue.
+// By default, this option is set to false.
 func WithUseFIFO(useFIFO bool) func(*ClientOptions) {
 	return func(s *ClientOptions) {
 		s.UseFIFO = useFIFO
 	}
 }
 
+// WithAWSDynamoDBClient is an option function to set a custom AWS DynamoDB client for the DynamoMQ client.
+// This function is used to provide a pre-configured DynamoDB client that the DynamoMQ client will use for all interactions with DynamoDB.
+func WithAWSDynamoDBClient(client *dynamodb.Client) func(*ClientOptions) {
+	return func(s *ClientOptions) {
+		s.DynamoDB = client
+	}
+}
+
+// WithAWSBaseEndpoint is an option function to set a custom base endpoint for AWS services.
+// This function is useful when you want the client to interact with a specific AWS service endpoint, such as a local or a different regional endpoint.
+// If the DynamoDB client is set using the WithAWSDynamoDBClient function, this option function is ignored.
 func WithAWSBaseEndpoint(baseEndpoint string) func(*ClientOptions) {
 	return func(s *ClientOptions) {
 		s.BaseEndpoint = baseEndpoint
 	}
 }
 
+// WithAWSRetryMaxAttempts is an option function to set the maximum number of retry attempts for AWS service calls.
+// Use this function to define how many times the client should retry a failed AWS service call.
+// If the DynamoDB client is set using the WithAWSDynamoDBClient function, this option function is ignored.
 func WithAWSRetryMaxAttempts(retryMaxAttempts int) func(*ClientOptions) {
 	return func(s *ClientOptions) {
 		s.RetryMaxAttempts = retryMaxAttempts
 	}
 }
 
+// NewFromConfig creates a new DynamoMQ client using the provided AWS configuration and any additional client options.
+// This function initializes a new client with default settings, which can be customized using option functions.
+// It returns an error if the initialization of the DynamoDB client fails.
 func NewFromConfig[T any](cfg aws.Config, optFns ...func(*ClientOptions)) (Client[T], error) {
 	o := &ClientOptions{
 		TableName:           DefaultTableName,
