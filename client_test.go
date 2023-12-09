@@ -218,12 +218,6 @@ func TestDynamoMQClientSendMessage(t *testing.T) {
 				Data: test.NewMessageData("A-101"),
 			},
 			want: &dynamomq.SendMessageOutput[test.MessageData]{
-				Result: &dynamomq.Result{
-					ID:        "A-101",
-					Status:    dynamomq.StatusReady,
-					UpdatedAt: clock.FormatRFC3339Nano(test.DefaultTestDate),
-					Version:   1,
-				},
 				Message: func() *dynamomq.Message[test.MessageData] {
 					s := NewTestMessageItemAsReady("A-101", test.DefaultTestDate)
 					return s
@@ -242,12 +236,6 @@ func TestDynamoMQClientSendMessage(t *testing.T) {
 				DelaySeconds: 10,
 			},
 			want: &dynamomq.SendMessageOutput[test.MessageData]{
-				Result: &dynamomq.Result{
-					ID:        "A-101",
-					Status:    dynamomq.StatusReady,
-					UpdatedAt: clock.FormatRFC3339Nano(test.DefaultTestDate),
-					Version:   1,
-				},
 				Message: func() *dynamomq.Message[test.MessageData] {
 					s := NewTestMessageItemAsReady("A-101", test.DefaultTestDate)
 					s.SentAt = clock.FormatRFC3339Nano(test.DefaultTestDate.Add(10 * time.Second))
@@ -297,13 +285,6 @@ func TestDynamoMQClientReceiveMessage(t *testing.T) {
 				m.Version = 2
 				m.ReceiveCount = 1
 				r := &dynamomq.ReceiveMessageOutput[test.MessageData]{
-					Result: &dynamomq.Result{
-						ID:        m.ID,
-						Status:    dynamomq.StatusProcessing,
-						UpdatedAt: m.UpdatedAt,
-						Version:   m.Version,
-					},
-					ReceivedAt:      m.ReceivedAt,
 					ReceivedMessage: m,
 				}
 				return r
@@ -364,7 +345,7 @@ func testDynamoMQClientReceiveMessageSequence(t *testing.T, useFIFO bool) {
 		test.AssertError(t, err, &dynamomq.EmptyQueueError{}, fmt.Sprintf("ReceiveMessage() [%d-3]", i))
 
 		_, err = client.DeleteMessage(ctx, &dynamomq.DeleteMessageInput{
-			ID: result.ID,
+			ID: result.ReceivedMessage.ID,
 		})
 		test.AssertError(t, err, nil, fmt.Sprintf("DeleteMessage() [%d]", i))
 	}
@@ -404,12 +385,6 @@ func TestDynamoMQClientChangeMessageVisibility(t *testing.T) {
 				visibilityTimeout: -1,
 			},
 			want: &dynamomq.ChangeMessageVisibilityOutput[test.MessageData]{
-				Result: &dynamomq.Result{
-					ID:        "A-101",
-					Status:    dynamomq.StatusReady,
-					UpdatedAt: clock.FormatRFC3339Nano(now),
-					Version:   2,
-				},
 				Message: func() *dynamomq.Message[test.MessageData] {
 					m := NewTestMessageItemAsProcessing("A-101", now)
 					ts := clock.FormatRFC3339Nano(now)

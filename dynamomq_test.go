@@ -50,13 +50,6 @@ func NewMessageFromReadyToProcessing(id string,
 	m.ReceiveCount = 1
 	m.InvisibleUntilAt = clock.FormatRFC3339Nano(processingTime.Add(constant.DefaultVisibilityTimeout))
 	r := &dynamomq.ReceiveMessageOutput[test.MessageData]{
-		Result: &dynamomq.Result{
-			ID:        m.ID,
-			Status:    dynamomq.StatusProcessing,
-			UpdatedAt: m.UpdatedAt,
-			Version:   m.Version,
-		},
-		ReceivedAt:      m.ReceivedAt,
 		ReceivedMessage: m,
 	}
 	return r

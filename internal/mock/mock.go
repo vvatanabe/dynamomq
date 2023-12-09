@@ -105,19 +105,16 @@ func (m Client[T]) ReplaceMessage(ctx context.Context, params *dynamomq.ReplaceM
 var SuccessfulMockClient = &Client[any]{
 	SendMessageFunc: func(ctx context.Context, params *dynamomq.SendMessageInput[any]) (*dynamomq.SendMessageOutput[any], error) {
 		return &dynamomq.SendMessageOutput[any]{
-			Result:  &dynamomq.Result{},
 			Message: &dynamomq.Message[any]{},
 		}, nil
 	},
 	ReceiveMessageFunc: func(ctx context.Context, params *dynamomq.ReceiveMessageInput) (*dynamomq.ReceiveMessageOutput[any], error) {
 		return &dynamomq.ReceiveMessageOutput[any]{
-			Result:          &dynamomq.Result{},
 			ReceivedMessage: &dynamomq.Message[any]{},
 		}, nil
 	},
 	ChangeMessageVisibilityFunc: func(ctx context.Context, params *dynamomq.ChangeMessageVisibilityInput) (*dynamomq.ChangeMessageVisibilityOutput[any], error) {
 		return &dynamomq.ChangeMessageVisibilityOutput[any]{
-			Result:  &dynamomq.Result{},
 			Message: &dynamomq.Message[any]{},
 		}, nil
 	},

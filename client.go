@@ -206,7 +206,6 @@ type SendMessageInput[T any] struct {
 }
 
 type SendMessageOutput[T any] struct {
-	*Result
 	Message *Message[T] `json:"-"`
 }
 
@@ -237,12 +236,6 @@ func (c *ClientImpl[T]) SendMessage(ctx context.Context, params *SendMessageInpu
 		return &SendMessageOutput[T]{}, err
 	}
 	return &SendMessageOutput[T]{
-		Result: &Result{
-			ID:        message.ID,
-			Status:    message.GetStatus(now),
-			UpdatedAt: message.UpdatedAt,
-			Version:   message.Version,
-		},
 		Message: message,
 	}, nil
 }
@@ -254,9 +247,7 @@ type ReceiveMessageInput struct {
 
 // ReceiveMessageOutput represents the result for the ReceiveMessage() API call.
 type ReceiveMessageOutput[T any] struct {
-	*Result                     // Embedded type for inheritance-like behavior in Go
-	ReceivedAt      string      `json:"received_at"`
-	ReceivedMessage *Message[T] `json:"-"`
+	ReceivedMessage *Message[T]
 }
 
 // ReceiveMessage retrieves and processes a message from a DynamoDB-based queue using the generic type T.
@@ -285,13 +276,6 @@ func (c *ClientImpl[T]) ReceiveMessage(ctx context.Context, params *ReceiveMessa
 	}
 
 	return &ReceiveMessageOutput[T]{
-		Result: &Result{
-			ID:        updated.ID,
-			Status:    updated.GetStatus(c.clock.Now()),
-			UpdatedAt: updated.UpdatedAt,
-			Version:   updated.Version,
-		},
-		ReceivedAt:      updated.ReceivedAt,
 		ReceivedMessage: updated,
 	}, nil
 }
@@ -392,8 +376,7 @@ type ChangeMessageVisibilityInput struct {
 
 // ChangeMessageVisibilityOutput represents the result for the ChangeMessageVisibility() API call.
 type ChangeMessageVisibilityOutput[T any] struct {
-	*Result             // Embedded type for inheritance-like behavior in Go
-	Message *Message[T] `json:"-"`
+	Message *Message[T]
 }
 
 // ChangeMessageVisibility changes the visibility of a specific message in a DynamoDB-based queue.
@@ -429,12 +412,6 @@ func (c *ClientImpl[T]) ChangeMessageVisibility(ctx context.Context, params *Cha
 		return &ChangeMessageVisibilityOutput[T]{}, err
 	}
 	return &ChangeMessageVisibilityOutput[T]{
-		Result: &Result{
-			ID:        retried.ID,
-			Status:    retried.GetStatus(c.clock.Now()),
-			UpdatedAt: retried.UpdatedAt,
-			Version:   retried.Version,
-		},
 		Message: retried,
 	}, nil
 }
@@ -939,11 +916,4 @@ func handleDynamoDBError(err error) error {
 
 func secToDur(sec int) time.Duration {
 	return time.Duration(sec) * time.Second
-}
-
-type Result struct {
-	ID        string `json:"id"`
-	Status    Status `json:"status"`
-	UpdatedAt string `json:"updated_at"`
-	Version   int    `json:"version"`
 }
