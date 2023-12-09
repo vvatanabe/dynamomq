@@ -6,6 +6,20 @@ import (
 	"github.com/vvatanabe/dynamomq/internal/clock"
 )
 
+type Status string
+
+const (
+	StatusReady      Status = "READY"
+	StatusProcessing Status = "PROCESSING"
+)
+
+type QueueType string
+
+const (
+	QueueTypeStandard QueueType = "STANDARD"
+	QueueTypeDLQ      QueueType = "DLQ"
+)
+
 func NewMessage[T any](id string, data T, now time.Time) *Message[T] {
 	ts := clock.FormatRFC3339Nano(now)
 	return &Message[T]{

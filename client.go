@@ -24,17 +24,31 @@ const (
 	DefaultQueryLimit                 = 250
 )
 
+// Client is an interface for interacting with a DynamoDB-based message queue system.
+// It provides methods for various operations on messages within the queue.
+// This interface is generic and works with any type T, which represents the structure of the message content.
 type Client[T any] interface {
+	// SendMessage sends a message to the DynamoDB-based queue.
 	SendMessage(ctx context.Context, params *SendMessageInput[T]) (*SendMessageOutput[T], error)
+	// ReceiveMessage retrieves and processes a message from a DynamoDB-based queue.
 	ReceiveMessage(ctx context.Context, params *ReceiveMessageInput) (*ReceiveMessageOutput[T], error)
+	// ChangeMessageVisibility changes the visibility of a specific message in a DynamoDB-based queue.
 	ChangeMessageVisibility(ctx context.Context, params *ChangeMessageVisibilityInput) (*ChangeMessageVisibilityOutput[T], error)
+	// DeleteMessage deletes a specific message from a DynamoDB-based queue.
 	DeleteMessage(ctx context.Context, params *DeleteMessageInput) (*DeleteMessageOutput, error)
+	// MoveMessageToDLQ moves a specific message from a DynamoDB-based queue to a Dead Letter Queue (DLQ).
 	MoveMessageToDLQ(ctx context.Context, params *MoveMessageToDLQInput) (*MoveMessageToDLQOutput, error)
+	// RedriveMessage restore a specific message from a DynamoDB-based Dead Letter Queue (DLQ).
 	RedriveMessage(ctx context.Context, params *RedriveMessageInput) (*RedriveMessageOutput, error)
+	// GetMessage get a specific message from a DynamoDB-based queue.
 	GetMessage(ctx context.Context, params *GetMessageInput) (*GetMessageOutput[T], error)
+	// GetQueueStats is a method for obtaining statistical information about a DynamoDB-based queue.
 	GetQueueStats(ctx context.Context, params *GetQueueStatsInput) (*GetQueueStatsOutput, error)
+	// GetDLQStats get statistical information about a DynamoDB-based Dead Letter Queue (DLQ).
 	GetDLQStats(ctx context.Context, params *GetDLQStatsInput) (*GetDLQStatsOutput, error)
+	// ListMessages get a list of messages from a DynamoDB-based queue.
 	ListMessages(ctx context.Context, params *ListMessagesInput) (*ListMessagesOutput[T], error)
+	// ReplaceMessage replace a specific message within a DynamoDB-based queue.
 	ReplaceMessage(ctx context.Context, params *ReplaceMessageInput[T]) (*ReplaceMessageOutput, error)
 }
 
@@ -149,12 +163,15 @@ type SendMessageInput[T any] struct {
 	DelaySeconds int
 }
 
-// SendMessageOutput represents the result for the SendMessage() API call.
 type SendMessageOutput[T any] struct {
-	*Result             // Embedded type for inheritance-like behavior in Go
+	*Result
 	Message *Message[T] `json:"-"`
 }
 
+// SendMessage sends a message to the DynamoDB-based message queue. It checks for message ID duplication and handles message delays if specified.
+// This function takes a context and a SendMessageInput parameter. SendMessageInput contains the message ID, data, and an optional delay in seconds.
+// If the message ID already exists in the queue, it returns an IDDuplicatedError. Otherwise, it adds the message to the queue.
+// The function also handles message delays. If DelaySeconds is greater than 0 in the input parameter, the message will be delayed accordingly before being sent.
 func (c *client[T]) SendMessage(ctx context.Context, params *SendMessageInput[T]) (*SendMessageOutput[T], error) {
 	if params == nil {
 		params = &SendMessageInput[T]{}
@@ -200,6 +217,10 @@ type ReceiveMessageOutput[T any] struct {
 	ReceivedMessage *Message[T] `json:"-"`
 }
 
+// ReceiveMessage retrieves and processes a message from a DynamoDB-based queue using the generic type T.
+// The selection process involves constructing and executing a DynamoDB query based on the queue type and visibility timeout.
+// After a message is selected, its status, including visibility and version, is updated to ensure the message remains invisible and in processing for a defined period. This process is crucial for maintaining queue integrity and preventing duplicate message delivery.
+// If no messages are available for reception, an EmptyQueueError is returned. Additionally, when FIFO (First In, First Out) is enabled, the method guarantees that only one valid message is processed at a time.
 func (c *client[T]) ReceiveMessage(ctx context.Context, params *ReceiveMessageInput) (*ReceiveMessageOutput[T], error) {
 	if params == nil {
 		params = &ReceiveMessageInput{}
@@ -333,6 +354,9 @@ type ChangeMessageVisibilityOutput[T any] struct {
 	Message *Message[T] `json:"-"`
 }
 
+// ChangeMessageVisibility changes the visibility of a specific message in a DynamoDB-based queue.
+// It retrieves the message based on the specified message ID and alters its visibility timeout.
+// The visibility timeout specifies the duration during which the message, once retrieved from the queue, becomes invisible to other clients. Modifying this timeout value allows dynamic adjustment of the message processing time.
 func (c *client[T]) ChangeMessageVisibility(ctx context.Context, params *ChangeMessageVisibilityInput) (*ChangeMessageVisibilityOutput[T], error) {
 	if params == nil {
 		params = &ChangeMessageVisibilityInput{}
@@ -379,6 +403,8 @@ type DeleteMessageInput struct {
 
 type DeleteMessageOutput struct{}
 
+// DeleteMessage deletes a specific message from a DynamoDB-based queue.
+// It directly deletes the message from DynamoDB based on the specified message ID.
 func (c *client[T]) DeleteMessage(ctx context.Context, params *DeleteMessageInput) (*DeleteMessageOutput, error) {
 	if params == nil {
 		params = &DeleteMessageInput{}
@@ -412,6 +438,9 @@ type MoveMessageToDLQOutput struct {
 	Version   int    `json:"version"`
 }
 
+// MoveMessageToDLQ moves a specific message from a DynamoDB-based queue to a Dead Letter Queue (DLQ).
+// It locates the message based on the specified message ID and marks it for the DLQ.
+// Moving a message to the DLQ allows for the isolation of failed message processing, facilitating later analysis and reprocessing.
 func (c *client[T]) MoveMessageToDLQ(ctx context.Context, params *MoveMessageToDLQInput) (*MoveMessageToDLQOutput, error) {
 	if params == nil {
 		params = &MoveMessageToDLQInput{}
@@ -472,6 +501,9 @@ type RedriveMessageOutput struct {
 	Version   int    `json:"version"`
 }
 
+// RedriveMessage restore a specific message from a DynamoDB-based Dead Letter Queue (DLQ).
+// It locates the message based on the specified message ID and marks it as restored from the DLQ to the standard queue.
+// This process is essential for reprocessing messages that have failed to be processed and is a crucial function in error handling within the message queue system.
 func (c *client[T]) RedriveMessage(ctx context.Context, params *RedriveMessageInput) (*RedriveMessageOutput, error) {
 	if params == nil {
 		params = &RedriveMessageInput{}
@@ -536,6 +568,9 @@ type GetQueueStatsOutput struct {
 	TotalRecordsNotStarted     int      `json:"total_records_in_queue_pending_for_processing"`
 }
 
+// GetQueueStats get statistical information about a DynamoDB-based queue.
+// It provides statistics about the messages in the queue and their processing status. This includes the IDs of the first 100 messages in the queue, the first 100 IDs of messages selected for processing, the total number of records in the queue, the number of records currently in processing, and the number of records awaiting processing.
+// This function provides essential information for monitoring and analyzing the message queue system, aiding in understanding the status of the queue.
 func (c *client[T]) GetQueueStats(ctx context.Context, _ *GetQueueStatsInput) (*GetQueueStatsOutput, error) {
 	builder := expression.NewBuilder().
 		WithKeyCondition(expression.KeyEqual(expression.Key("queue_type"), expression.Value(QueueTypeStandard)))
@@ -629,6 +664,9 @@ type GetDLQStatsOutput struct {
 	TotalRecordsInDLQ  int      `json:"total_records_in_DLQ"`
 }
 
+// GetDLQStats get statistical information about a DynamoDB-based Dead Letter Queue (DLQ).
+// It provides statistics on the messages within the DLQ. This includes the IDs of the first 100 messages in the queue and the total number of records in the DLQ.
+// This functions offers vital information for monitoring and analyzing the message queue system, aiding in understanding the status of the DLQ.
 func (c *client[T]) GetDLQStats(ctx context.Context, _ *GetDLQStatsInput) (*GetDLQStatsOutput, error) {
 	builder := expression.NewBuilder().
 		WithKeyCondition(expression.KeyEqual(expression.Key("queue_type"), expression.Value(QueueTypeDLQ)))
@@ -704,6 +742,8 @@ type GetMessageOutput[T any] struct {
 	Message *Message[T]
 }
 
+// GetMessage get a specific message from a DynamoDB-based queue.
+// It retrieves the message from DynamoDB based on the specified message ID. The retrieved message is then unmarshaled into the specified generic type T.
 func (c *client[T]) GetMessage(ctx context.Context, params *GetMessageInput) (*GetMessageOutput[T], error) {
 	if params == nil {
 		params = &GetMessageInput{}
@@ -742,6 +782,9 @@ type ListMessagesOutput[T any] struct {
 	Messages []*Message[T]
 }
 
+// ListMessages get a list of messages from a DynamoDB-based queue.
+// It scans and retrieves messages from DynamoDB based on the specified size parameter. If the size is not specified or is zero or less, a default maximum list size of 10 is used.
+// The retrieved messages are unmarshaled into an array of the generic type T and are sorted based on the update time.
 func (c *client[T]) ListMessages(ctx context.Context, params *ListMessagesInput) (*ListMessagesOutput[T], error) {
 	if params == nil {
 		params = &ListMessagesInput{}
@@ -774,6 +817,9 @@ type ReplaceMessageInput[T any] struct {
 type ReplaceMessageOutput struct {
 }
 
+// ReplaceMessage replace a specific message within a DynamoDB-based queue.
+// It searches for an existing message based on the specified message ID and deletes it if found. Then, a new message is added to the queue.
+// If a message with the specified ID does not exist, the new message is directly added to the queue.
 func (c *client[T]) ReplaceMessage(ctx context.Context, params *ReplaceMessageInput[T]) (*ReplaceMessageOutput, error) {
 	if params == nil {
 		params = &ReplaceMessageInput[T]{
@@ -852,20 +898,6 @@ func handleDynamoDBError(err error) error {
 func secToDur(sec int) time.Duration {
 	return time.Duration(sec) * time.Second
 }
-
-type Status string
-
-const (
-	StatusReady      Status = "READY"
-	StatusProcessing Status = "PROCESSING"
-)
-
-type QueueType string
-
-const (
-	QueueTypeStandard QueueType = "STANDARD"
-	QueueTypeDLQ      QueueType = "DLQ"
-)
 
 type Result struct {
 	ID        string `json:"id"`
