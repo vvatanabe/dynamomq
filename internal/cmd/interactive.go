@@ -9,6 +9,7 @@ import (
 
 	"github.com/vvatanabe/dynamomq"
 	"github.com/vvatanabe/dynamomq/internal/clock"
+	"github.com/vvatanabe/dynamomq/internal/constant"
 	"github.com/vvatanabe/dynamomq/internal/test"
 )
 
@@ -145,7 +146,7 @@ func (c *Interactive) system(_ context.Context, _ []string) error {
 }
 
 func (c *Interactive) ls(ctx context.Context, _ []string) error {
-	out, err := c.Client.ListMessages(ctx, &dynamomq.ListMessagesInput{Size: dynamomq.DefaultMaxListMessages})
+	out, err := c.Client.ListMessages(ctx, &dynamomq.ListMessagesInput{Size: constant.DefaultMaxListMessages})
 	if err != nil {
 		return err
 	}
@@ -161,7 +162,7 @@ func (c *Interactive) ls(ctx context.Context, _ []string) error {
 }
 
 func (c *Interactive) purge(ctx context.Context, _ []string) error {
-	out, err := c.Client.ListMessages(ctx, &dynamomq.ListMessagesInput{Size: dynamomq.DefaultMaxListMessages})
+	out, err := c.Client.ListMessages(ctx, &dynamomq.ListMessagesInput{Size: constant.DefaultMaxListMessages})
 	if err != nil {
 		return err
 	}

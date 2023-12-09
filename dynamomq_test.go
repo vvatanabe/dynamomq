@@ -5,6 +5,7 @@ import (
 
 	"github.com/vvatanabe/dynamomq"
 	"github.com/vvatanabe/dynamomq/internal/clock"
+	"github.com/vvatanabe/dynamomq/internal/constant"
 	"github.com/vvatanabe/dynamomq/internal/test"
 )
 
@@ -12,7 +13,7 @@ func MarkAsProcessing[T any](m *dynamomq.Message[T], now time.Time) {
 	ts := clock.FormatRFC3339Nano(now)
 	m.UpdatedAt = ts
 	m.ReceivedAt = ts
-	m.InvisibleUntilAt = clock.FormatRFC3339Nano(now.Add(dynamomq.DefaultVisibilityTimeout))
+	m.InvisibleUntilAt = clock.FormatRFC3339Nano(now.Add(constant.DefaultVisibilityTimeout))
 }
 
 func MarkAsMovedToDLQ[T any](m *dynamomq.Message[T], now time.Time) {
@@ -47,7 +48,7 @@ func NewMessageFromReadyToProcessing(id string,
 	MarkAsProcessing(m, processingTime)
 	m.Version = 2
 	m.ReceiveCount = 1
-	m.InvisibleUntilAt = clock.FormatRFC3339Nano(processingTime.Add(dynamomq.DefaultVisibilityTimeout))
+	m.InvisibleUntilAt = clock.FormatRFC3339Nano(processingTime.Add(constant.DefaultVisibilityTimeout))
 	r := &dynamomq.ReceiveMessageOutput[test.MessageData]{
 		Result: &dynamomq.Result{
 			ID:        m.ID,

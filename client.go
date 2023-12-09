@@ -12,16 +12,11 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/vvatanabe/dynamomq/internal/clock"
+	"github.com/vvatanabe/dynamomq/internal/constant"
 )
 
 const (
-	DefaultTableName                  = "dynamo-mq-table"
-	DefaultQueueingIndexName          = "dynamo-mq-index-queue_type-sent_at"
-	DefaultRetryMaxAttempts           = 10
-	DefaultVisibilityTimeoutInSeconds = 30
-	DefaultVisibilityTimeout          = DefaultVisibilityTimeoutInSeconds * time.Second
-	DefaultMaxListMessages            = 10
-	DefaultQueryLimit                 = 250
+	defaultQueryLimit = 250
 )
 
 // Client is an interface for interacting with a DynamoDB-based message queue system.
@@ -150,9 +145,9 @@ func WithAWSRetryMaxAttempts(retryMaxAttempts int) func(*ClientOptions) {
 // It returns an error if the initialization of the DynamoDB client fails.
 func NewFromConfig[T any](cfg aws.Config, optFns ...func(*ClientOptions)) (Client[T], error) {
 	o := &ClientOptions{
-		TableName:           DefaultTableName,
-		QueueingIndexName:   DefaultQueueingIndexName,
-		RetryMaxAttempts:    DefaultRetryMaxAttempts,
+		TableName:           constant.DefaultTableName,
+		QueueingIndexName:   constant.DefaultQueueingIndexName,
+		RetryMaxAttempts:    constant.DefaultRetryMaxAttempts,
 		UseFIFO:             false,
 		Clock:               &clock.RealClock{},
 		MarshalMap:          attributevalue.MarshalMap,
@@ -276,7 +271,7 @@ func (c *ClientImpl[T]) ReceiveMessage(ctx context.Context, params *ReceiveMessa
 		params.QueueType = QueueTypeStandard
 	}
 	if params.VisibilityTimeout <= 0 {
-		params.VisibilityTimeout = DefaultVisibilityTimeoutInSeconds
+		params.VisibilityTimeout = constant.DefaultVisibilityTimeoutInSeconds
 	}
 
 	selected, err := c.selectMessage(ctx, params)
@@ -330,7 +325,7 @@ func (c *ClientImpl[T]) executeQuery(ctx context.Context, params *ReceiveMessage
 			KeyConditionExpression:    expr.KeyCondition(),
 			ExpressionAttributeNames:  expr.Names(),
 			ExpressionAttributeValues: expr.Values(),
-			Limit:                     aws.Int32(DefaultQueryLimit),
+			Limit:                     aws.Int32(defaultQueryLimit),
 			ScanIndexForward:          aws.Bool(true),
 			ExclusiveStartKey:         exclusiveStartKey,
 		})
@@ -653,7 +648,7 @@ func (c *ClientImpl[T]) queryAndCalculateQueueStats(ctx context.Context, expr ex
 			ExpressionAttributeNames:  expr.Names(),
 			KeyConditionExpression:    expr.KeyCondition(),
 			ScanIndexForward:          aws.Bool(true),
-			Limit:                     aws.Int32(DefaultQueryLimit),
+			Limit:                     aws.Int32(defaultQueryLimit),
 			ExpressionAttributeValues: expr.Values(),
 			ExclusiveStartKey:         exclusiveStartKey,
 		})
@@ -745,7 +740,7 @@ func (c *ClientImpl[T]) queryAndCalculateDLQStats(ctx context.Context, expr expr
 			ExpressionAttributeNames:  expr.Names(),
 			ExpressionAttributeValues: expr.Values(),
 			KeyConditionExpression:    expr.KeyCondition(),
-			Limit:                     aws.Int32(DefaultQueryLimit),
+			Limit:                     aws.Int32(defaultQueryLimit),
 			ScanIndexForward:          aws.Bool(true),
 			ExclusiveStartKey:         lastEvaluatedKey,
 		})
@@ -837,7 +832,7 @@ func (c *ClientImpl[T]) ListMessages(ctx context.Context, params *ListMessagesIn
 		params = &ListMessagesInput{}
 	}
 	if params.Size <= 0 {
-		params.Size = DefaultMaxListMessages
+		params.Size = constant.DefaultMaxListMessages
 	}
 	output, err := c.dynamoDB.Scan(ctx, &dynamodb.ScanInput{
 		TableName: &c.tableName,

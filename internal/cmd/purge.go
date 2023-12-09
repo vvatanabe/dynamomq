@@ -5,6 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/vvatanabe/dynamomq"
+	"github.com/vvatanabe/dynamomq/internal/constant"
 )
 
 func (f CommandFactory) CreatePurgeCommand(flgs *Flags) *cobra.Command {
@@ -18,7 +19,7 @@ func (f CommandFactory) CreatePurgeCommand(flgs *Flags) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			out, err := client.ListMessages(ctx, &dynamomq.ListMessagesInput{Size: dynamomq.DefaultMaxListMessages})
+			out, err := client.ListMessages(ctx, &dynamomq.ListMessagesInput{Size: constant.DefaultMaxListMessages})
 			if err != nil {
 				return err
 			}

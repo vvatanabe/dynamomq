@@ -1,6 +1,8 @@
 package cmd
 
-import "github.com/vvatanabe/dynamomq"
+import (
+	"github.com/vvatanabe/dynamomq/internal/constant"
+)
 
 var flgs = &Flags{}
 
@@ -16,12 +18,12 @@ var flagMap = FlagMap{
 	TableName: FlagSet[string]{
 		Name:  "table-name",
 		Usage: "The name of the table to contain the item.",
-		Value: dynamomq.DefaultTableName,
+		Value: constant.DefaultTableName,
 	},
 	IndexName: FlagSet[string]{
 		Name:  "index-name",
 		Usage: "The name of the queueing index.",
-		Value: dynamomq.DefaultQueueingIndexName,
+		Value: constant.DefaultQueueingIndexName,
 	},
 	EndpointURL: FlagSet[string]{
 		Name:  "endpoint-url",

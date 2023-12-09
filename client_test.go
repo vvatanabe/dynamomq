@@ -18,13 +18,14 @@ import (
 	"github.com/upsidr/dynamotest"
 	"github.com/vvatanabe/dynamomq"
 	"github.com/vvatanabe/dynamomq/internal/clock"
+	"github.com/vvatanabe/dynamomq/internal/constant"
 	"github.com/vvatanabe/dynamomq/internal/mock"
 	"github.com/vvatanabe/dynamomq/internal/test"
 )
 
 func SetupDynamoDB(t *testing.T, initialData ...*types.PutRequest) (tableName string, client *dynamodb.Client, clean func()) {
 	client, clean = dynamotest.NewDynamoDB(t)
-	tableName = dynamomq.DefaultTableName + "-" + uuid.NewString()
+	tableName = constant.DefaultTableName + "-" + uuid.NewString()
 	dynamotest.PrepTable(t, client, dynamotest.InitialTableSetup{
 		Table: &dynamodb.CreateTableInput{
 			AttributeDefinitions: []types.AttributeDefinition{
@@ -322,7 +323,7 @@ func TestDynamoMQClientReceiveMessage(t *testing.T) {
 	runTestsParallel[any, *dynamomq.ReceiveMessageOutput[test.MessageData]](t, "ReceiveMessage()", tests,
 		func(client dynamomq.Client[test.MessageData], _ any) (*dynamomq.ReceiveMessageOutput[test.MessageData], error) {
 			return client.ReceiveMessage(context.Background(), &dynamomq.ReceiveMessageInput{
-				VisibilityTimeout: dynamomq.DefaultVisibilityTimeoutInSeconds,
+				VisibilityTimeout: constant.DefaultVisibilityTimeoutInSeconds,
 			})
 		})
 }
@@ -348,7 +349,7 @@ func testDynamoMQClientReceiveMessageSequence(t *testing.T, useFIFO bool) {
 	for i, want := range wants {
 		result, err := client.ReceiveMessage(ctx, &dynamomq.ReceiveMessageInput{
 			QueueType:         dynamomq.QueueTypeStandard,
-			VisibilityTimeout: dynamomq.DefaultVisibilityTimeoutInSeconds,
+			VisibilityTimeout: constant.DefaultVisibilityTimeoutInSeconds,
 		})
 		test.AssertError(t, err, nil, fmt.Sprintf("ReceiveMessage() [%d-1]", i))
 		test.AssertDeepEqual(t, result, want, fmt.Sprintf("ReceiveMessage() [%d-2]", i))
@@ -358,7 +359,7 @@ func testDynamoMQClientReceiveMessageSequence(t *testing.T, useFIFO bool) {
 		}
 
 		_, err = client.ReceiveMessage(ctx, &dynamomq.ReceiveMessageInput{
-			VisibilityTimeout: dynamomq.DefaultVisibilityTimeoutInSeconds,
+			VisibilityTimeout: constant.DefaultVisibilityTimeoutInSeconds,
 		})
 		test.AssertError(t, err, &dynamomq.EmptyQueueError{}, fmt.Sprintf("ReceiveMessage() [%d-3]", i))
 
@@ -369,7 +370,7 @@ func testDynamoMQClientReceiveMessageSequence(t *testing.T, useFIFO bool) {
 	}
 
 	_, err := client.ReceiveMessage(ctx, &dynamomq.ReceiveMessageInput{
-		VisibilityTimeout: dynamomq.DefaultVisibilityTimeoutInSeconds,
+		VisibilityTimeout: constant.DefaultVisibilityTimeoutInSeconds,
 	})
 	test.AssertError(t, err, &dynamomq.EmptyQueueError{}, "ReceiveMessage() [last]")
 }
@@ -840,12 +841,12 @@ func prepareTestClient(ctx context.Context, t *testing.T,
 	tableName, raw, clean := setupTable(t)
 	optFns := []func(*dynamomq.ClientOptions){
 		dynamomq.WithTableName(tableName),
-		dynamomq.WithQueueingIndexName(dynamomq.DefaultQueueingIndexName),
+		dynamomq.WithQueueingIndexName(constant.DefaultQueueingIndexName),
 		dynamomq.WithAWSBaseEndpoint(""),
 		dynamomq.WithAWSDynamoDBClient(raw),
 		mock.WithClock(sdkClock),
 		dynamomq.WithUseFIFO(useFIFO),
-		dynamomq.WithAWSRetryMaxAttempts(dynamomq.DefaultRetryMaxAttempts),
+		dynamomq.WithAWSRetryMaxAttempts(constant.DefaultRetryMaxAttempts),
 		WithUnmarshalMap(unmarshalMap),
 		WithMarshalMap(marshalMap),
 		WithUnmarshalListOfMaps(unmarshalListOfMaps),
@@ -994,7 +995,7 @@ func TestTestDynamoMQClientReturnUnmarshalingAttributeError(t *testing.T) {
 			name: "ListMessages should return UnmarshalingAttributeError",
 			operation: func() (any, error) {
 				return client.ListMessages(context.Background(), &dynamomq.ListMessagesInput{
-					Size: dynamomq.DefaultMaxListMessages,
+					Size: constant.DefaultMaxListMessages,
 				})
 			},
 		},
@@ -1097,7 +1098,7 @@ func TestTestDynamoMQClientReturnDynamoDBAPIError(t *testing.T) {
 			name: "ListMessages should return DynamoDBAPIError",
 			operation: func() (any, error) {
 				return client.ListMessages(context.Background(), &dynamomq.ListMessagesInput{
-					Size: dynamomq.DefaultMaxListMessages,
+					Size: constant.DefaultMaxListMessages,
 				})
 			},
 		},

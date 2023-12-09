@@ -8,6 +8,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/vvatanabe/dynamomq/internal/constant"
 )
 
 const (
@@ -86,7 +88,7 @@ func NewConsumer[T any](client Client[T], processor MessageProcessor[T], opts ..
 		PollingInterval:   defaultPollingInterval,
 		Concurrency:       defaultConcurrency,
 		MaximumReceives:   defaultMaximumReceives,
-		VisibilityTimeout: DefaultVisibilityTimeoutInSeconds,
+		VisibilityTimeout: constant.DefaultVisibilityTimeoutInSeconds,
 		RetryInterval:     defaultRetryIntervalInSeconds,
 		QueueType:         defaultQueueType,
 	}
