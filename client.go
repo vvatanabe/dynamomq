@@ -189,6 +189,8 @@ func NewFromConfig[T any](cfg aws.Config, optFns ...func(*ClientOptions)) (Clien
 	return c, nil
 }
 
+// ClientImpl is a concrete implementation of the dynamomq.Client interface.
+// Note: ClientImpl cannot be used directly. Always use the dynamomq.NewFromConfig function to create an instance.
 type ClientImpl[T any] struct {
 	dynamoDB            *dynamodb.Client
 	tableName           string
