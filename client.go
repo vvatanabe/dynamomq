@@ -165,7 +165,7 @@ func NewFromConfig[T any](cfg aws.Config, optFns ...func(*ClientOptions)) (Clien
 	for _, opt := range optFns {
 		opt(o)
 	}
-	c := &client[T]{
+	c := &ClientImpl[T]{
 		tableName:           o.TableName,
 		queueingIndexName:   o.QueueingIndexName,
 		maximumReceives:     o.MaximumReceives,
@@ -189,7 +189,7 @@ func NewFromConfig[T any](cfg aws.Config, optFns ...func(*ClientOptions)) (Clien
 	return c, nil
 }
 
-type client[T any] struct {
+type ClientImpl[T any] struct {
 	dynamoDB            *dynamodb.Client
 	tableName           string
 	queueingIndexName   string
@@ -217,7 +217,7 @@ type SendMessageOutput[T any] struct {
 // This function takes a context and a SendMessageInput parameter. SendMessageInput contains the message ID, data, and an optional delay in seconds.
 // If the message ID already exists in the queue, it returns an IDDuplicatedError. Otherwise, it adds the message to the queue.
 // The function also handles message delays. If DelaySeconds is greater than 0 in the input parameter, the message will be delayed accordingly before being sent.
-func (c *client[T]) SendMessage(ctx context.Context, params *SendMessageInput[T]) (*SendMessageOutput[T], error) {
+func (c *ClientImpl[T]) SendMessage(ctx context.Context, params *SendMessageInput[T]) (*SendMessageOutput[T], error) {
 	if params == nil {
 		params = &SendMessageInput[T]{}
 	}
@@ -266,7 +266,7 @@ type ReceiveMessageOutput[T any] struct {
 // The selection process involves constructing and executing a DynamoDB query based on the queue type and visibility timeout.
 // After a message is selected, its status, including visibility and version, is updated to ensure the message remains invisible and in processing for a defined period. This process is crucial for maintaining queue integrity and preventing duplicate message delivery.
 // If no messages are available for reception, an EmptyQueueError is returned. Additionally, when FIFO (First In, First Out) is enabled, the method guarantees that only one valid message is processed at a time.
-func (c *client[T]) ReceiveMessage(ctx context.Context, params *ReceiveMessageInput) (*ReceiveMessageOutput[T], error) {
+func (c *ClientImpl[T]) ReceiveMessage(ctx context.Context, params *ReceiveMessageInput) (*ReceiveMessageOutput[T], error) {
 	if params == nil {
 		params = &ReceiveMessageInput{}
 	}
@@ -299,7 +299,7 @@ func (c *client[T]) ReceiveMessage(ctx context.Context, params *ReceiveMessageIn
 	}, nil
 }
 
-func (c *client[T]) selectMessage(ctx context.Context, params *ReceiveMessageInput) (*Message[T], error) {
+func (c *ClientImpl[T]) selectMessage(ctx context.Context, params *ReceiveMessageInput) (*Message[T], error) {
 	builder := expression.NewBuilder().
 		WithKeyCondition(expression.Key("queue_type").Equal(expression.Value(params.QueueType)))
 	expr, err := c.buildExpression(builder)
@@ -318,7 +318,7 @@ func (c *client[T]) selectMessage(ctx context.Context, params *ReceiveMessageInp
 	return selected, nil
 }
 
-func (c *client[T]) executeQuery(ctx context.Context, params *ReceiveMessageInput, expr expression.Expression) (*Message[T], error) {
+func (c *ClientImpl[T]) executeQuery(ctx context.Context, params *ReceiveMessageInput, expr expression.Expression) (*Message[T], error) {
 	var exclusiveStartKey map[string]types.AttributeValue
 	var selectedItem *Message[T]
 	for {
@@ -349,7 +349,7 @@ func (c *client[T]) executeQuery(ctx context.Context, params *ReceiveMessageInpu
 	return selectedItem, nil
 }
 
-func (c *client[T]) processQueryResult(params *ReceiveMessageInput, queryResult *dynamodb.QueryOutput) (*Message[T], error) {
+func (c *ClientImpl[T]) processQueryResult(params *ReceiveMessageInput, queryResult *dynamodb.QueryOutput) (*Message[T], error) {
 	var selected *Message[T]
 	for _, itemMap := range queryResult.Items {
 		message := Message[T]{}
@@ -368,7 +368,7 @@ func (c *client[T]) processQueryResult(params *ReceiveMessageInput, queryResult 
 	return selected, nil
 }
 
-func (c *client[T]) processSelectedMessage(ctx context.Context, message *Message[T]) (*Message[T], error) {
+func (c *ClientImpl[T]) processSelectedMessage(ctx context.Context, message *Message[T]) (*Message[T], error) {
 	builder := expression.NewBuilder().
 		WithUpdate(expression.
 			Add(expression.Name("version"), expression.Value(1)).
@@ -402,7 +402,7 @@ type ChangeMessageVisibilityOutput[T any] struct {
 // ChangeMessageVisibility changes the visibility of a specific message in a DynamoDB-based queue.
 // It retrieves the message based on the specified message ID and alters its visibility timeout.
 // The visibility timeout specifies the duration during which the message, once retrieved from the queue, becomes invisible to other clients. Modifying this timeout value allows dynamic adjustment of the message processing time.
-func (c *client[T]) ChangeMessageVisibility(ctx context.Context, params *ChangeMessageVisibilityInput) (*ChangeMessageVisibilityOutput[T], error) {
+func (c *ClientImpl[T]) ChangeMessageVisibility(ctx context.Context, params *ChangeMessageVisibilityInput) (*ChangeMessageVisibilityOutput[T], error) {
 	if params == nil {
 		params = &ChangeMessageVisibilityInput{}
 	}
@@ -450,7 +450,7 @@ type DeleteMessageOutput struct{}
 
 // DeleteMessage deletes a specific message from a DynamoDB-based queue.
 // It directly deletes the message from DynamoDB based on the specified message ID.
-func (c *client[T]) DeleteMessage(ctx context.Context, params *DeleteMessageInput) (*DeleteMessageOutput, error) {
+func (c *ClientImpl[T]) DeleteMessage(ctx context.Context, params *DeleteMessageInput) (*DeleteMessageOutput, error) {
 	if params == nil {
 		params = &DeleteMessageInput{}
 	}
@@ -486,7 +486,7 @@ type MoveMessageToDLQOutput struct {
 // MoveMessageToDLQ moves a specific message from a DynamoDB-based queue to a Dead Letter Queue (DLQ).
 // It locates the message based on the specified message ID and marks it for the DLQ.
 // Moving a message to the DLQ allows for the isolation of failed message processing, facilitating later analysis and reprocessing.
-func (c *client[T]) MoveMessageToDLQ(ctx context.Context, params *MoveMessageToDLQInput) (*MoveMessageToDLQOutput, error) {
+func (c *ClientImpl[T]) MoveMessageToDLQ(ctx context.Context, params *MoveMessageToDLQInput) (*MoveMessageToDLQOutput, error) {
 	if params == nil {
 		params = &MoveMessageToDLQInput{}
 	}
@@ -549,7 +549,7 @@ type RedriveMessageOutput struct {
 // RedriveMessage restore a specific message from a DynamoDB-based Dead Letter Queue (DLQ).
 // It locates the message based on the specified message ID and marks it as restored from the DLQ to the standard queue.
 // This process is essential for reprocessing messages that have failed to be processed and is a crucial function in error handling within the message queue system.
-func (c *client[T]) RedriveMessage(ctx context.Context, params *RedriveMessageInput) (*RedriveMessageOutput, error) {
+func (c *ClientImpl[T]) RedriveMessage(ctx context.Context, params *RedriveMessageInput) (*RedriveMessageOutput, error) {
 	if params == nil {
 		params = &RedriveMessageInput{}
 	}
@@ -616,7 +616,7 @@ type GetQueueStatsOutput struct {
 // GetQueueStats get statistical information about a DynamoDB-based queue.
 // It provides statistics about the messages in the queue and their processing status. This includes the IDs of the first 100 messages in the queue, the first 100 IDs of messages selected for processing, the total number of records in the queue, the number of records currently in processing, and the number of records awaiting processing.
 // This function provides essential information for monitoring and analyzing the message queue system, aiding in understanding the status of the queue.
-func (c *client[T]) GetQueueStats(ctx context.Context, _ *GetQueueStatsInput) (*GetQueueStatsOutput, error) {
+func (c *ClientImpl[T]) GetQueueStats(ctx context.Context, _ *GetQueueStatsInput) (*GetQueueStatsOutput, error) {
 	builder := expression.NewBuilder().
 		WithKeyCondition(expression.KeyEqual(expression.Key("queue_type"), expression.Value(QueueTypeStandard)))
 	expr, err := c.buildExpression(builder)
@@ -632,7 +632,7 @@ func (c *client[T]) GetQueueStats(ctx context.Context, _ *GetQueueStatsInput) (*
 	return stats, nil
 }
 
-func (c *client[T]) queryAndCalculateQueueStats(ctx context.Context, expr expression.Expression) (*GetQueueStatsOutput, error) {
+func (c *ClientImpl[T]) queryAndCalculateQueueStats(ctx context.Context, expr expression.Expression) (*GetQueueStatsOutput, error) {
 	var (
 		stats = &GetQueueStatsOutput{
 			First100IDsInQueue:         make([]string, 0),
@@ -673,7 +673,7 @@ func (c *client[T]) queryAndCalculateQueueStats(ctx context.Context, expr expres
 	return stats, nil
 }
 
-func (c *client[T]) processQueryItemsForQueueStats(items []map[string]types.AttributeValue, stats *GetQueueStatsOutput) error {
+func (c *ClientImpl[T]) processQueryItemsForQueueStats(items []map[string]types.AttributeValue, stats *GetQueueStatsOutput) error {
 	for _, itemMap := range items {
 		stats.TotalRecordsInQueue++
 		item := Message[T]{}
@@ -689,7 +689,7 @@ func (c *client[T]) processQueryItemsForQueueStats(items []map[string]types.Attr
 
 const maxFirst100ItemsInQueue = 100
 
-func (c *client[T]) updateQueueStatsFromItem(message *Message[T], stats *GetQueueStatsOutput) {
+func (c *ClientImpl[T]) updateQueueStatsFromItem(message *Message[T], stats *GetQueueStatsOutput) {
 	if message.GetStatus(c.clock.Now()) == StatusProcessing {
 		stats.TotalRecordsInProcessing++
 		if len(stats.First100SelectedIDsInQueue) < maxFirst100ItemsInQueue {
@@ -712,7 +712,7 @@ type GetDLQStatsOutput struct {
 // GetDLQStats get statistical information about a DynamoDB-based Dead Letter Queue (DLQ).
 // It provides statistics on the messages within the DLQ. This includes the IDs of the first 100 messages in the queue and the total number of records in the DLQ.
 // This functions offers vital information for monitoring and analyzing the message queue system, aiding in understanding the status of the DLQ.
-func (c *client[T]) GetDLQStats(ctx context.Context, _ *GetDLQStatsInput) (*GetDLQStatsOutput, error) {
+func (c *ClientImpl[T]) GetDLQStats(ctx context.Context, _ *GetDLQStatsInput) (*GetDLQStatsOutput, error) {
 	builder := expression.NewBuilder().
 		WithKeyCondition(expression.KeyEqual(expression.Key("queue_type"), expression.Value(QueueTypeDLQ)))
 	expr, err := c.buildExpression(builder)
@@ -728,7 +728,7 @@ func (c *client[T]) GetDLQStats(ctx context.Context, _ *GetDLQStatsInput) (*GetD
 	return stats, nil
 }
 
-func (c *client[T]) queryAndCalculateDLQStats(ctx context.Context, expr expression.Expression) (*GetDLQStatsOutput, error) {
+func (c *ClientImpl[T]) queryAndCalculateDLQStats(ctx context.Context, expr expression.Expression) (*GetDLQStatsOutput, error) {
 	var (
 		stats = &GetDLQStatsOutput{
 			First100IDsInQueue: make([]string, 0),
@@ -764,7 +764,7 @@ func (c *client[T]) queryAndCalculateDLQStats(ctx context.Context, expr expressi
 	return stats, nil
 }
 
-func (c *client[T]) processQueryItemsForDLQStats(items []map[string]types.AttributeValue, stats *GetDLQStatsOutput) error {
+func (c *ClientImpl[T]) processQueryItemsForDLQStats(items []map[string]types.AttributeValue, stats *GetDLQStatsOutput) error {
 	for _, itemMap := range items {
 		stats.TotalRecordsInDLQ++
 		if len(stats.First100IDsInQueue) < maxFirst100ItemsInQueue {
@@ -789,7 +789,7 @@ type GetMessageOutput[T any] struct {
 
 // GetMessage get a specific message from a DynamoDB-based queue.
 // It retrieves the message from DynamoDB based on the specified message ID. The retrieved message is then unmarshaled into the specified generic type T.
-func (c *client[T]) GetMessage(ctx context.Context, params *GetMessageInput) (*GetMessageOutput[T], error) {
+func (c *ClientImpl[T]) GetMessage(ctx context.Context, params *GetMessageInput) (*GetMessageOutput[T], error) {
 	if params == nil {
 		params = &GetMessageInput{}
 	}
@@ -830,7 +830,7 @@ type ListMessagesOutput[T any] struct {
 // ListMessages get a list of messages from a DynamoDB-based queue.
 // It scans and retrieves messages from DynamoDB based on the specified size parameter. If the size is not specified or is zero or less, a default maximum list size of 10 is used.
 // The retrieved messages are unmarshaled into an array of the generic type T and are sorted based on the update time.
-func (c *client[T]) ListMessages(ctx context.Context, params *ListMessagesInput) (*ListMessagesOutput[T], error) {
+func (c *ClientImpl[T]) ListMessages(ctx context.Context, params *ListMessagesInput) (*ListMessagesOutput[T], error) {
 	if params == nil {
 		params = &ListMessagesInput{}
 	}
@@ -865,7 +865,7 @@ type ReplaceMessageOutput struct {
 // ReplaceMessage replace a specific message within a DynamoDB-based queue.
 // It searches for an existing message based on the specified message ID and deletes it if found. Then, a new message is added to the queue.
 // If a message with the specified ID does not exist, the new message is directly added to the queue.
-func (c *client[T]) ReplaceMessage(ctx context.Context, params *ReplaceMessageInput[T]) (*ReplaceMessageOutput, error) {
+func (c *ClientImpl[T]) ReplaceMessage(ctx context.Context, params *ReplaceMessageInput[T]) (*ReplaceMessageOutput, error) {
 	if params == nil {
 		params = &ReplaceMessageInput[T]{
 			Message: &Message[T]{},
@@ -891,7 +891,7 @@ func (c *client[T]) ReplaceMessage(ctx context.Context, params *ReplaceMessageIn
 	return &ReplaceMessageOutput{}, c.put(ctx, params.Message)
 }
 
-func (c *client[T]) put(ctx context.Context, message *Message[T]) error {
+func (c *ClientImpl[T]) put(ctx context.Context, message *Message[T]) error {
 	item, err := c.marshalMap(message)
 	if err != nil {
 		return MarshalingAttributeError{Cause: err}
@@ -906,7 +906,7 @@ func (c *client[T]) put(ctx context.Context, message *Message[T]) error {
 	return nil
 }
 
-func (c *client[T]) updateDynamoDBItem(ctx context.Context,
+func (c *ClientImpl[T]) updateDynamoDBItem(ctx context.Context,
 	id string, expr *expression.Expression) (*Message[T], error) {
 	outcome, err := c.dynamoDB.UpdateItem(ctx, &dynamodb.UpdateItemInput{
 		Key: map[string]types.AttributeValue{
