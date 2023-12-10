@@ -294,18 +294,15 @@ func NewClientForConsumerTest(queue, dlq chan *dynamomq.Message[test.MessageData
 			}
 			return &dynamomq.ChangeMessageVisibilityOutput[test.MessageData]{}, nil
 		},
-		MoveMessageToDLQFunc: func(ctx context.Context, params *dynamomq.MoveMessageToDLQInput) (*dynamomq.MoveMessageToDLQOutput, error) {
+		MoveMessageToDLQFunc: func(ctx context.Context, params *dynamomq.MoveMessageToDLQInput) (*dynamomq.MoveMessageToDLQOutput[test.MessageData], error) {
 			if cfg.SimulateMoveMessageToDLQError {
 				return nil, test.ErrTest
 			}
 			v, _ := store.Load(params.ID)
 			msg, _ := v.(*dynamomq.Message[test.MessageData])
 			dlq <- msg
-			return &dynamomq.MoveMessageToDLQOutput{
-				ID:        msg.ID,
-				Status:    dynamomq.StatusReady,
-				UpdatedAt: msg.UpdatedAt,
-				Version:   2,
+			return &dynamomq.MoveMessageToDLQOutput[test.MessageData]{
+				MovedMessage: msg,
 			}, nil
 		},
 	}

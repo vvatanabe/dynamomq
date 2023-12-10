@@ -438,20 +438,17 @@ func TestDynamoMQClientDeleteMessage(t *testing.T) {
 
 func TestDynamoMQClientMoveMessageToDLQ(t *testing.T) {
 	t.Parallel()
-	tests := []ClientTestCase[*dynamomq.MoveMessageToDLQInput, *dynamomq.MoveMessageToDLQOutput]{
+	tests := []ClientTestCase[*dynamomq.MoveMessageToDLQInput, *dynamomq.MoveMessageToDLQOutput[test.MessageData]]{
 		{
 			name:  "should succeed when id is found and queue type is standard",
 			setup: NewSetupFunc(newPutRequestWithDLQItem("A-101", test.DefaultTestDate)),
 			args: &dynamomq.MoveMessageToDLQInput{
 				ID: "A-101",
 			},
-			want: func() *dynamomq.MoveMessageToDLQOutput {
+			want: func() *dynamomq.MoveMessageToDLQOutput[test.MessageData] {
 				s := NewTestMessageItemAsDLQ("A-101", test.DefaultTestDate)
-				r := &dynamomq.MoveMessageToDLQOutput{
-					ID:        s.ID,
-					Status:    dynamomq.StatusReady,
-					UpdatedAt: s.UpdatedAt,
-					Version:   s.Version,
+				r := &dynamomq.MoveMessageToDLQOutput[test.MessageData]{
+					MovedMessage: s,
 				}
 				return r
 			}(),
@@ -466,23 +463,20 @@ func TestDynamoMQClientMoveMessageToDLQ(t *testing.T) {
 			args: &dynamomq.MoveMessageToDLQInput{
 				ID: "A-101",
 			},
-			want: func() *dynamomq.MoveMessageToDLQOutput {
+			want: func() *dynamomq.MoveMessageToDLQOutput[test.MessageData] {
 				m := NewTestMessageItemAsReady("A-101", test.DefaultTestDate)
 				MarkAsMovedToDLQ(m, test.DefaultTestDate.Add(10*time.Second))
 				m.Version = 2
-				r := &dynamomq.MoveMessageToDLQOutput{
-					ID:        m.ID,
-					Status:    dynamomq.StatusReady,
-					UpdatedAt: m.UpdatedAt,
-					Version:   m.Version,
+				r := &dynamomq.MoveMessageToDLQOutput[test.MessageData]{
+					MovedMessage: m,
 				}
 				return r
 			}(),
 			wantErr: nil,
 		},
 	}
-	runTestsParallel[*dynamomq.MoveMessageToDLQInput, *dynamomq.MoveMessageToDLQOutput](t, "MoveMessageToDLQ()", tests,
-		func(client dynamomq.Client[test.MessageData], args *dynamomq.MoveMessageToDLQInput) (*dynamomq.MoveMessageToDLQOutput, error) {
+	runTestsParallel[*dynamomq.MoveMessageToDLQInput, *dynamomq.MoveMessageToDLQOutput[test.MessageData]](t, "MoveMessageToDLQ()", tests,
+		func(client dynamomq.Client[test.MessageData], args *dynamomq.MoveMessageToDLQInput) (*dynamomq.MoveMessageToDLQOutput[test.MessageData], error) {
 			return client.MoveMessageToDLQ(context.Background(), args)
 		})
 }

@@ -32,7 +32,7 @@ type Client[T any] interface {
 	// DeleteMessage deletes a specific message from a DynamoDB-based queue.
 	DeleteMessage(ctx context.Context, params *DeleteMessageInput) (*DeleteMessageOutput, error)
 	// MoveMessageToDLQ moves a specific message from a DynamoDB-based queue to a Dead Letter Queue (DLQ).
-	MoveMessageToDLQ(ctx context.Context, params *MoveMessageToDLQInput) (*MoveMessageToDLQOutput, error)
+	MoveMessageToDLQ(ctx context.Context, params *MoveMessageToDLQInput) (*MoveMessageToDLQOutput[T], error)
 	// RedriveMessage restore a specific message from a DynamoDB-based Dead Letter Queue (DLQ).
 	RedriveMessage(ctx context.Context, params *RedriveMessageInput) (*RedriveMessageOutput, error)
 	// GetMessage get a specific message from a DynamoDB-based queue.
@@ -475,17 +475,14 @@ type MoveMessageToDLQInput struct {
 	ID string
 }
 
-type MoveMessageToDLQOutput struct {
-	ID        string `json:"id"`
-	Status    Status `json:"status"`
-	UpdatedAt string `json:"updated_at"`
-	Version   int    `json:"version"`
+type MoveMessageToDLQOutput[T any] struct {
+	MovedMessage *Message[T]
 }
 
 // MoveMessageToDLQ moves a specific message from a DynamoDB-based queue to a Dead Letter Queue (DLQ).
 // It locates the message based on the specified message ID and marks it for the DLQ.
 // Moving a message to the DLQ allows for the isolation of failed message processing, facilitating later analysis and reprocessing.
-func (c *ClientImpl[T]) MoveMessageToDLQ(ctx context.Context, params *MoveMessageToDLQInput) (*MoveMessageToDLQOutput, error) {
+func (c *ClientImpl[T]) MoveMessageToDLQ(ctx context.Context, params *MoveMessageToDLQInput) (*MoveMessageToDLQOutput[T], error) {
 	if params == nil {
 		params = &MoveMessageToDLQInput{}
 	}
@@ -493,19 +490,16 @@ func (c *ClientImpl[T]) MoveMessageToDLQ(ctx context.Context, params *MoveMessag
 		ID: params.ID,
 	})
 	if err != nil {
-		return &MoveMessageToDLQOutput{}, err
+		return &MoveMessageToDLQOutput[T]{}, err
 	}
 	if retrieved.Message == nil {
-		return &MoveMessageToDLQOutput{}, &IDNotFoundError{}
+		return &MoveMessageToDLQOutput[T]{}, &IDNotFoundError{}
 	}
 	message := retrieved.Message
 	if markedErr := message.markAsMovedToDLQ(c.clock.Now()); markedErr != nil {
 		//lint:ignore nilerr reason
-		return &MoveMessageToDLQOutput{
-			ID:        params.ID,
-			Status:    message.GetStatus(c.clock.Now()),
-			UpdatedAt: message.UpdatedAt,
-			Version:   message.Version,
+		return &MoveMessageToDLQOutput[T]{
+			MovedMessage: message,
 		}, nil
 	}
 	builder := expression.NewBuilder().
@@ -515,22 +509,19 @@ func (c *ClientImpl[T]) MoveMessageToDLQ(ctx context.Context, params *MoveMessag
 			Set(expression.Name("queue_type"), expression.Value(message.QueueType)).
 			Set(expression.Name("updated_at"), expression.Value(message.UpdatedAt)).
 			Set(expression.Name("sent_at"), expression.Value(message.SentAt)).
-			Set(expression.Name("received_at"), expression.Value(message.SentAt)).
+			Set(expression.Name("received_at"), expression.Value(message.ReceivedAt)).
 			Set(expression.Name("invisible_until_at"), expression.Value(message.InvisibleUntilAt))).
 		WithCondition(expression.Name("version").Equal(expression.Value(message.Version)))
 	expr, err := c.buildExpression(builder)
 	if err != nil {
-		return &MoveMessageToDLQOutput{}, BuildingExpressionError{Cause: err}
+		return &MoveMessageToDLQOutput[T]{}, BuildingExpressionError{Cause: err}
 	}
 	updated, err := c.updateDynamoDBItem(ctx, params.ID, &expr)
 	if err != nil {
-		return &MoveMessageToDLQOutput{}, err
+		return &MoveMessageToDLQOutput[T]{}, err
 	}
-	return &MoveMessageToDLQOutput{
-		ID:        params.ID,
-		Status:    updated.GetStatus(c.clock.Now()),
-		UpdatedAt: updated.UpdatedAt,
-		Version:   updated.Version,
+	return &MoveMessageToDLQOutput[T]{
+		MovedMessage: updated,
 	}, nil
 }
 

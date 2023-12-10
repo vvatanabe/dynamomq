@@ -431,8 +431,8 @@ func TestRunInteractiveFailReturnError(t *testing.T) {
 func TestRunInteractiveInvalidShouldReturnError(t *testing.T) {
 	c := &cmd.Interactive{
 		Client: mock.Client[any]{
-			MoveMessageToDLQFunc: func(ctx context.Context, params *dynamomq.MoveMessageToDLQInput) (*dynamomq.MoveMessageToDLQOutput, error) {
-				return &dynamomq.MoveMessageToDLQOutput{}, nil
+			MoveMessageToDLQFunc: func(ctx context.Context, params *dynamomq.MoveMessageToDLQInput) (*dynamomq.MoveMessageToDLQOutput[any], error) {
+				return &dynamomq.MoveMessageToDLQOutput[any]{}, nil
 			},
 			GetQueueStatsFunc: func(ctx context.Context, params *dynamomq.GetQueueStatsInput) (*dynamomq.GetQueueStatsOutput, error) {
 				return &dynamomq.GetQueueStatsOutput{}, test.ErrTest
