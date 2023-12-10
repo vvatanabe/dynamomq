@@ -56,6 +56,6 @@ func (c *Producer[T]) Produce(ctx context.Context, params *ProduceInput[T]) (*Pr
 		return &ProduceOutput[T]{}, err
 	}
 	return &ProduceOutput[T]{
-		Message: out.Message,
+		Message: out.SentMessage,
 	}, nil
 }

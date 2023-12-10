@@ -213,8 +213,8 @@ type SendMessageInput[T any] struct {
 // SendMessageOutput represents the result of a message sending operation.
 // This struct also uses the generic type T and contains information about the sent message.
 type SendMessageOutput[T any] struct {
-	// Message is a pointer to the Message type containing information about the sent message.
-	Message *Message[T]
+	// SentMessage is a pointer to the Message type containing information about the sent message.
+	SentMessage *Message[T]
 }
 
 // SendMessage sends a message to the DynamoDB-based message queue. It checks for message ID duplication and handles message delays if specified.
@@ -244,7 +244,7 @@ func (c *ClientImpl[T]) SendMessage(ctx context.Context, params *SendMessageInpu
 		return &SendMessageOutput[T]{}, err
 	}
 	return &SendMessageOutput[T]{
-		Message: message,
+		SentMessage: message,
 	}, nil
 }
 

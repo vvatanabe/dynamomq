@@ -26,7 +26,7 @@ func TestProducerProduce(t *testing.T) {
 		SendMessageFunc: func(ctx context.Context,
 			params *dynamomq.SendMessageInput[test.MessageData]) (*dynamomq.SendMessageOutput[test.MessageData], error) {
 			return &dynamomq.SendMessageOutput[test.MessageData]{
-				Message: &dynamomq.Message[test.MessageData]{
+				SentMessage: &dynamomq.Message[test.MessageData]{
 					ID:   params.ID,
 					Data: params.Data,
 				},

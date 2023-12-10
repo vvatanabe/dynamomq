@@ -218,7 +218,7 @@ func TestDynamoMQClientSendMessage(t *testing.T) {
 				Data: test.NewMessageData("A-101"),
 			},
 			want: &dynamomq.SendMessageOutput[test.MessageData]{
-				Message: func() *dynamomq.Message[test.MessageData] {
+				SentMessage: func() *dynamomq.Message[test.MessageData] {
 					s := NewTestMessageItemAsReady("A-101", test.DefaultTestDate)
 					return s
 				}(),
@@ -236,7 +236,7 @@ func TestDynamoMQClientSendMessage(t *testing.T) {
 				DelaySeconds: 10,
 			},
 			want: &dynamomq.SendMessageOutput[test.MessageData]{
-				Message: func() *dynamomq.Message[test.MessageData] {
+				SentMessage: func() *dynamomq.Message[test.MessageData] {
 					s := NewTestMessageItemAsReady("A-101", test.DefaultTestDate)
 					s.SentAt = clock.FormatRFC3339Nano(test.DefaultTestDate.Add(10 * time.Second))
 					return s
