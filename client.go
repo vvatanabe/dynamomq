@@ -199,14 +199,22 @@ type ClientImpl[T any] struct {
 	buildExpression     func(b expression.Builder) (expression.Expression, error)
 }
 
+// SendMessageInput represents the input parameters for sending a message to a DynamoDB-based queue.
+// This struct uses the generic type T, supporting messages of various data types.
 type SendMessageInput[T any] struct {
-	ID           string
-	Data         T
+	// ID is a unique identifier for the message.
+	ID string
+	// Data is the content of the message to be sent to the queue. The type T determines the format of the message.
+	Data T
+	// DelaySeconds is the delay time (in seconds) before the message is sent to the queue.
 	DelaySeconds int
 }
 
+// SendMessageOutput represents the result of a message sending operation.
+// This struct also uses the generic type T and contains information about the sent message.
 type SendMessageOutput[T any] struct {
-	Message *Message[T] `json:"-"`
+	// Message is a pointer to the Message type containing information about the sent message.
+	Message *Message[T]
 }
 
 // SendMessage sends a message to the DynamoDB-based message queue. It checks for message ID duplication and handles message delays if specified.
@@ -240,13 +248,19 @@ func (c *ClientImpl[T]) SendMessage(ctx context.Context, params *SendMessageInpu
 	}, nil
 }
 
+// ReceiveMessageInput represents the input parameters for receiving a message from a DynamoDB-based queue.
 type ReceiveMessageInput struct {
-	QueueType         QueueType
+	// QueueType is the type of queue from which the message is to be retrieved. QueueType specifies the kind of queue, such as STANDARD or DLQ.
+	QueueType QueueType
+	// VisibilityTimeout is the timeout in seconds during which the message becomes invisible to other receivers.
 	VisibilityTimeout int
 }
 
-// ReceiveMessageOutput represents the result for the ReceiveMessage() API call.
+// ReceiveMessageOutput represents the result of a message receiving operation.
+// This struct uses the generic type T and contains information about the received message.
 type ReceiveMessageOutput[T any] struct {
+	// ReceivedMessage is A pointer to the Message type containing information about the received message.
+	// The type T determines the format of the message content.
 	ReceivedMessage *Message[T]
 }
 
@@ -369,13 +383,20 @@ func (c *ClientImpl[T]) processSelectedMessage(ctx context.Context, message *Mes
 	return updated, nil
 }
 
+// ChangeMessageVisibilityInput represents the input parameters for changing the visibility timeout of a specific message in a DynamoDB-based queue.
 type ChangeMessageVisibilityInput struct {
-	ID                string
+	// ID is The unique identifier of the message for which visibility is to be changed.
+	ID string
+	// VisibilityTimeout is The new timeout in seconds during which the message becomes invisible to other receivers.
+	// After this time elapses, the message will become visible in the queue again
 	VisibilityTimeout int
 }
 
-// ChangeMessageVisibilityOutput represents the result for the ChangeMessageVisibility() API call.
+// ChangeMessageVisibilityOutput represents the result of the operation to change the visibility of a message.
+// This struct uses the generic type T and contains information about the message whose visibility has been changed.
 type ChangeMessageVisibilityOutput[T any] struct {
+	// Message is a pointer to the Message type containing information about the message with changed visibility.
+	// The type T determines the format of the message content.
 	Message *Message[T]
 }
 
@@ -416,10 +437,14 @@ func (c *ClientImpl[T]) ChangeMessageVisibility(ctx context.Context, params *Cha
 	}, nil
 }
 
+// DeleteMessageInput represents the input parameters for deleting a specific message from a DynamoDB-based queue.
 type DeleteMessageInput struct {
+	// ID is the unique identifier of the message to be deleted from the queue.
 	ID string
 }
 
+// DeleteMessageOutput represents the result of the delete message operation.
+// This struct is empty as the delete operation does not return any specific information.
 type DeleteMessageOutput struct{}
 
 // DeleteMessage deletes a specific message from a DynamoDB-based queue.
@@ -576,9 +601,11 @@ func (c *ClientImpl[T]) RedriveMessage(ctx context.Context, params *RedriveMessa
 	}, nil
 }
 
+// GetQueueStatsInput represents the input parameters for obtaining statistical information about a DynamoDB-based queue.
+// This struct does not contain any fields as it's used to request general queue statistics without the need for specific parameters.
 type GetQueueStatsInput struct{}
 
-// GetQueueStatsOutput represents the structure to store Queue depth statistics.
+// GetQueueStatsOutput represents the output containing statistical information about the queue.
 type GetQueueStatsOutput struct {
 	First100IDsInQueue         []string `json:"first_100_IDs_in_queue"`
 	First100SelectedIDsInQueue []string `json:"first_100_selected_IDs_in_queue"`
