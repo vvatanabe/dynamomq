@@ -286,7 +286,7 @@ func (c *Consumer[T]) closeDoneChanLocked() {
 		// It's already closed. Don't close it again.
 	default:
 		// We can safely close it here.
-		// We are the only closers and are protected by srv.mu."
+		// We are the only closers and are protected by srv.mu.
 		close(c.doneChan)
 	}
 }

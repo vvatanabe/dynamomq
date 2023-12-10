@@ -115,7 +115,7 @@ var SuccessfulMockClient = &Client[any]{
 	},
 	ChangeMessageVisibilityFunc: func(ctx context.Context, params *dynamomq.ChangeMessageVisibilityInput) (*dynamomq.ChangeMessageVisibilityOutput[any], error) {
 		return &dynamomq.ChangeMessageVisibilityOutput[any]{
-			Message: &dynamomq.Message[any]{},
+			ChangedMessage: &dynamomq.Message[any]{},
 		}, nil
 	},
 	DeleteMessageFunc: func(ctx context.Context, params *dynamomq.DeleteMessageInput) (*dynamomq.DeleteMessageOutput, error) {

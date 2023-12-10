@@ -395,9 +395,9 @@ type ChangeMessageVisibilityInput struct {
 // ChangeMessageVisibilityOutput represents the result of the operation to change the visibility of a message.
 // This struct uses the generic type T and contains information about the message whose visibility has been changed.
 type ChangeMessageVisibilityOutput[T any] struct {
-	// Message is a pointer to the Message type containing information about the message with changed visibility.
+	// ChangedMessage is a pointer to the Message type containing information about the message with changed visibility.
 	// The type T determines the format of the message content.
-	Message *Message[T]
+	ChangedMessage *Message[T]
 }
 
 // ChangeMessageVisibility changes the visibility of a specific message in a DynamoDB-based queue.
@@ -433,7 +433,7 @@ func (c *ClientImpl[T]) ChangeMessageVisibility(ctx context.Context, params *Cha
 		return &ChangeMessageVisibilityOutput[T]{}, err
 	}
 	return &ChangeMessageVisibilityOutput[T]{
-		Message: retried,
+		ChangedMessage: retried,
 	}, nil
 }
 

@@ -385,7 +385,7 @@ func TestDynamoMQClientChangeMessageVisibility(t *testing.T) {
 				visibilityTimeout: -1,
 			},
 			want: &dynamomq.ChangeMessageVisibilityOutput[test.MessageData]{
-				Message: func() *dynamomq.Message[test.MessageData] {
+				ChangedMessage: func() *dynamomq.Message[test.MessageData] {
 					m := NewTestMessageItemAsProcessing("A-101", now)
 					ts := clock.FormatRFC3339Nano(now)
 					m.UpdatedAt = ts
