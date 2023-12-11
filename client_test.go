@@ -559,33 +559,33 @@ func TestDynamoMQClientGetQueueStats(t *testing.T) {
 			name:  "should return empty items stats when no item in standard queue",
 			setup: NewSetupFunc(),
 			want: &dynamomq.GetQueueStatsOutput{
-				First100IDsInQueue:         []string{},
-				First100SelectedIDsInQueue: []string{},
-				TotalRecordsInQueue:        0,
-				TotalRecordsInProcessing:   0,
-				TotalRecordsNotStarted:     0,
+				First100IDsInQueue:             []string{},
+				First100IDsInQueueProcessing:   []string{},
+				TotalMessagesInQueue:           0,
+				TotalMessagesInQueueProcessing: 0,
+				TotalMessagesInQueueReady:      0,
 			},
 		},
 		{
 			name:  "should return one item stats when one item in standard queue",
 			setup: NewSetupFunc(newPutRequestWithReadyItem("A-101", clock.Now())),
 			want: &dynamomq.GetQueueStatsOutput{
-				First100IDsInQueue:         []string{"A-101"},
-				First100SelectedIDsInQueue: []string{},
-				TotalRecordsInQueue:        1,
-				TotalRecordsInProcessing:   0,
-				TotalRecordsNotStarted:     1,
+				First100IDsInQueue:             []string{"A-101"},
+				First100IDsInQueueProcessing:   []string{},
+				TotalMessagesInQueue:           1,
+				TotalMessagesInQueueProcessing: 0,
+				TotalMessagesInQueueReady:      1,
 			},
 		},
 		{
 			name:  "should return one processing item stats when one item in standard queue",
 			setup: NewSetupFunc(newPutRequestWithProcessingItem("A-101", clock.Now())),
 			want: &dynamomq.GetQueueStatsOutput{
-				First100IDsInQueue:         []string{"A-101"},
-				First100SelectedIDsInQueue: []string{"A-101"},
-				TotalRecordsInQueue:        1,
-				TotalRecordsInProcessing:   1,
-				TotalRecordsNotStarted:     0,
+				First100IDsInQueue:             []string{"A-101"},
+				First100IDsInQueueProcessing:   []string{"A-101"},
+				TotalMessagesInQueue:           1,
+				TotalMessagesInQueueProcessing: 1,
+				TotalMessagesInQueueReady:      0,
 			},
 		},
 		{
@@ -597,11 +597,11 @@ func TestDynamoMQClientGetQueueStats(t *testing.T) {
 				newPutRequestWithProcessingItem("D-404", clock.Now().Add(3*time.Second)),
 			),
 			want: &dynamomq.GetQueueStatsOutput{
-				First100IDsInQueue:         []string{"A-101", "B-202", "C-303", "D-404"},
-				First100SelectedIDsInQueue: []string{"C-303", "D-404"},
-				TotalRecordsInQueue:        4,
-				TotalRecordsInProcessing:   2,
-				TotalRecordsNotStarted:     2,
+				First100IDsInQueue:             []string{"A-101", "B-202", "C-303", "D-404"},
+				First100IDsInQueueProcessing:   []string{"C-303", "D-404"},
+				TotalMessagesInQueue:           4,
+				TotalMessagesInQueueProcessing: 2,
+				TotalMessagesInQueueReady:      2,
 			},
 		},
 	}
@@ -623,7 +623,7 @@ func TestDynamoMQClientGetDLQStats(t *testing.T) {
 			),
 			want: &dynamomq.GetDLQStatsOutput{
 				First100IDsInQueue: []string{},
-				TotalRecordsInDLQ:  0,
+				TotalMessagesInDLQ: 0,
 			},
 		},
 		{
@@ -638,7 +638,7 @@ func TestDynamoMQClientGetDLQStats(t *testing.T) {
 			),
 			want: &dynamomq.GetDLQStatsOutput{
 				First100IDsInQueue: []string{"D-404", "E-505", "F-606"},
-				TotalRecordsInDLQ:  3,
+				TotalMessagesInDLQ: 3,
 			},
 		},
 	}
