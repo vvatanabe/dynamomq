@@ -17,7 +17,7 @@ type Client[T any] struct {
 	ChangeMessageVisibilityFunc func(ctx context.Context, params *dynamomq.ChangeMessageVisibilityInput) (*dynamomq.ChangeMessageVisibilityOutput[T], error)
 	DeleteMessageFunc           func(ctx context.Context, params *dynamomq.DeleteMessageInput) (*dynamomq.DeleteMessageOutput, error)
 	MoveMessageToDLQFunc        func(ctx context.Context, params *dynamomq.MoveMessageToDLQInput) (*dynamomq.MoveMessageToDLQOutput[T], error)
-	RedriveMessageFunc          func(ctx context.Context, params *dynamomq.RedriveMessageInput) (*dynamomq.RedriveMessageOutput, error)
+	RedriveMessageFunc          func(ctx context.Context, params *dynamomq.RedriveMessageInput) (*dynamomq.RedriveMessageOutput[T], error)
 	GetMessageFunc              func(ctx context.Context, params *dynamomq.GetMessageInput) (*dynamomq.GetMessageOutput[T], error)
 	GetQueueStatsFunc           func(ctx context.Context, params *dynamomq.GetQueueStatsInput) (*dynamomq.GetQueueStatsOutput, error)
 	GetDLQStatsFunc             func(ctx context.Context, params *dynamomq.GetDLQStatsInput) (*dynamomq.GetDLQStatsOutput, error)
@@ -60,7 +60,7 @@ func (m Client[T]) MoveMessageToDLQ(ctx context.Context, params *dynamomq.MoveMe
 	return nil, ErrNotImplemented
 }
 
-func (m Client[T]) RedriveMessage(ctx context.Context, params *dynamomq.RedriveMessageInput) (*dynamomq.RedriveMessageOutput, error) {
+func (m Client[T]) RedriveMessage(ctx context.Context, params *dynamomq.RedriveMessageInput) (*dynamomq.RedriveMessageOutput[T], error) {
 	if m.RedriveMessageFunc != nil {
 		return m.RedriveMessageFunc(ctx, params)
 	}
@@ -124,8 +124,8 @@ var SuccessfulMockClient = &Client[any]{
 	MoveMessageToDLQFunc: func(ctx context.Context, params *dynamomq.MoveMessageToDLQInput) (*dynamomq.MoveMessageToDLQOutput[any], error) {
 		return &dynamomq.MoveMessageToDLQOutput[any]{}, nil
 	},
-	RedriveMessageFunc: func(ctx context.Context, params *dynamomq.RedriveMessageInput) (*dynamomq.RedriveMessageOutput, error) {
-		return &dynamomq.RedriveMessageOutput{}, nil
+	RedriveMessageFunc: func(ctx context.Context, params *dynamomq.RedriveMessageInput) (*dynamomq.RedriveMessageOutput[any], error) {
+		return &dynamomq.RedriveMessageOutput[any]{}, nil
 	},
 	GetMessageFunc: func(ctx context.Context, params *dynamomq.GetMessageInput) (*dynamomq.GetMessageOutput[any], error) {
 		return &dynamomq.GetMessageOutput[any]{

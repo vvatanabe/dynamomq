@@ -486,7 +486,7 @@ func TestDynamoMQClientRedriveMessage(t *testing.T) {
 	type args struct {
 		id string
 	}
-	tests := []ClientTestCase[args, *dynamomq.RedriveMessageOutput]{
+	tests := []ClientTestCase[args, *dynamomq.RedriveMessageOutput[test.MessageData]]{
 		{
 			name:  "should succeed when id is found and status is ready",
 			setup: NewSetupFunc(newPutRequestWithDLQItem("A-101", test.DefaultTestDate)),
@@ -496,11 +496,13 @@ func TestDynamoMQClientRedriveMessage(t *testing.T) {
 			args: args{
 				id: "A-101",
 			},
-			want: &dynamomq.RedriveMessageOutput{
-				ID:        "A-101",
-				Status:    dynamomq.StatusReady,
-				UpdatedAt: clock.FormatRFC3339Nano(test.DefaultTestDate.Add(10 * time.Second)),
-				Version:   2,
+			want: &dynamomq.RedriveMessageOutput[test.MessageData]{
+				RedroveMessage: func() *dynamomq.Message[test.MessageData] {
+					m := NewTestMessageItemAsDLQ("A-101", test.DefaultTestDate)
+					MarkAsRestoredFromDLQ(m, test.DefaultTestDate.Add(10*time.Second))
+					m.Version = 2
+					return m
+				}(),
 			},
 		},
 		{
@@ -512,7 +514,7 @@ func TestDynamoMQClientRedriveMessage(t *testing.T) {
 			args: args{
 				id: "A-101",
 			},
-			want: &dynamomq.RedriveMessageOutput{},
+			want: &dynamomq.RedriveMessageOutput[test.MessageData]{},
 			wantErr: dynamomq.InvalidStateTransitionError{
 				Msg:       "can only redrive messages from DLQ",
 				Operation: "mark as restored from DLQ",
@@ -534,7 +536,7 @@ func TestDynamoMQClientRedriveMessage(t *testing.T) {
 			args: args{
 				id: "A-101",
 			},
-			want: &dynamomq.RedriveMessageOutput{},
+			want: &dynamomq.RedriveMessageOutput[test.MessageData]{},
 			wantErr: dynamomq.InvalidStateTransitionError{
 				Msg:       "can only redrive messages from READY",
 				Operation: "mark as restored from DLQ",
@@ -542,8 +544,8 @@ func TestDynamoMQClientRedriveMessage(t *testing.T) {
 			},
 		},
 	}
-	runTestsParallel[args, *dynamomq.RedriveMessageOutput](t, "RedriveMessage()", tests,
-		func(client dynamomq.Client[test.MessageData], args args) (*dynamomq.RedriveMessageOutput, error) {
+	runTestsParallel[args, *dynamomq.RedriveMessageOutput[test.MessageData]](t, "RedriveMessage()", tests,
+		func(client dynamomq.Client[test.MessageData], args args) (*dynamomq.RedriveMessageOutput[test.MessageData], error) {
 			return client.RedriveMessage(context.Background(), &dynamomq.RedriveMessageInput{
 				ID: args.id,
 			})

@@ -34,7 +34,7 @@ type Client[T any] interface {
 	// MoveMessageToDLQ moves a specific message from a DynamoDB-based queue to a Dead Letter Queue (DLQ).
 	MoveMessageToDLQ(ctx context.Context, params *MoveMessageToDLQInput) (*MoveMessageToDLQOutput[T], error)
 	// RedriveMessage restore a specific message from a DynamoDB-based Dead Letter Queue (DLQ).
-	RedriveMessage(ctx context.Context, params *RedriveMessageInput) (*RedriveMessageOutput, error)
+	RedriveMessage(ctx context.Context, params *RedriveMessageInput) (*RedriveMessageOutput[T], error)
 	// GetMessage get a specific message from a DynamoDB-based queue.
 	GetMessage(ctx context.Context, params *GetMessageInput) (*GetMessageOutput[T], error)
 	// GetQueueStats is a method for obtaining statistical information about a DynamoDB-based queue.
@@ -529,17 +529,14 @@ type RedriveMessageInput struct {
 	ID string
 }
 
-type RedriveMessageOutput struct {
-	ID        string `json:"id"`
-	Status    Status `json:"status"`
-	UpdatedAt string `json:"updated_at"`
-	Version   int    `json:"version"`
+type RedriveMessageOutput[T any] struct {
+	RedroveMessage *Message[T]
 }
 
 // RedriveMessage restore a specific message from a DynamoDB-based Dead Letter Queue (DLQ).
 // It locates the message based on the specified message ID and marks it as restored from the DLQ to the standard queue.
 // This process is essential for reprocessing messages that have failed to be processed and is a crucial function in error handling within the message queue system.
-func (c *ClientImpl[T]) RedriveMessage(ctx context.Context, params *RedriveMessageInput) (*RedriveMessageOutput, error) {
+func (c *ClientImpl[T]) RedriveMessage(ctx context.Context, params *RedriveMessageInput) (*RedriveMessageOutput[T], error) {
 	if params == nil {
 		params = &RedriveMessageInput{}
 	}
@@ -547,15 +544,15 @@ func (c *ClientImpl[T]) RedriveMessage(ctx context.Context, params *RedriveMessa
 		ID: params.ID,
 	})
 	if err != nil {
-		return &RedriveMessageOutput{}, err
+		return &RedriveMessageOutput[T]{}, err
 	}
 	if retrieved.Message == nil {
-		return &RedriveMessageOutput{}, &IDNotFoundError{}
+		return &RedriveMessageOutput[T]{}, &IDNotFoundError{}
 	}
 	message := retrieved.Message
 	err = message.markAsRestoredFromDLQ(c.clock.Now())
 	if err != nil {
-		return &RedriveMessageOutput{}, err
+		return &RedriveMessageOutput[T]{}, err
 	}
 	builder := expression.NewBuilder().
 		WithUpdate(expression.Add(
@@ -582,13 +579,10 @@ func (c *ClientImpl[T]) RedriveMessage(ctx context.Context, params *RedriveMessa
 	}
 	updated, err := c.updateDynamoDBItem(ctx, params.ID, &expr)
 	if err != nil {
-		return &RedriveMessageOutput{}, err
+		return &RedriveMessageOutput[T]{}, err
 	}
-	return &RedriveMessageOutput{
-		ID:        updated.ID,
-		Status:    updated.GetStatus(c.clock.Now()),
-		UpdatedAt: updated.UpdatedAt,
-		Version:   updated.Version,
+	return &RedriveMessageOutput[T]{
+		RedroveMessage: updated,
 	}, nil
 }
 

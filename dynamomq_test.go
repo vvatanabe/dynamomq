@@ -26,6 +26,16 @@ func MarkAsMovedToDLQ[T any](m *dynamomq.Message[T], now time.Time) {
 	m.InvisibleUntilAt = ""
 }
 
+func MarkAsRestoredFromDLQ[T any](m *dynamomq.Message[T], now time.Time) {
+	ts := clock.FormatRFC3339Nano(now)
+	m.QueueType = dynamomq.QueueTypeStandard
+	m.ReceiveCount = 0
+	m.UpdatedAt = ts
+	m.SentAt = ts
+	m.ReceivedAt = ""
+	m.InvisibleUntilAt = ""
+}
+
 func NewTestMessageItemAsReady(id string, now time.Time) *dynamomq.Message[test.MessageData] {
 	return dynamomq.NewMessage[test.MessageData](id, test.NewMessageData(id), now)
 }
