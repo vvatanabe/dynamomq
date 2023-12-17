@@ -365,7 +365,7 @@ The DynamoDB table for the DynamoMQ message queue system is designed to efficien
 
 This data transition diagram serves as a map for developers and operators to understand how messages flow through the DynamoMQ system, providing insight into the mechanisms of message processing, failure handling, and retries within a DynamoDB-backed queue.
 
-![Data Transition](https://cacoo.com/diagrams/DjoA2pSKnhCghTYM-976F6.png)
+![Data Transition](https://cacoo.com/diagrams/DjoA2pSKnhCghTYM-DCE15.png)
 
 #### Initial State
 
