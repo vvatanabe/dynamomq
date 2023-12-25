@@ -303,7 +303,7 @@ func (c *Counter[T]) Process(msg *dynamomq.Message[T]) error {
 
 The state machine diagram below illustrates the key steps a message goes through as it traverses the system.
 
-![State Machine](https://cacoo.com/diagrams/DjoA2pSKnhCghTYM-4B362.png) 
+![State Machine](https://cacoo.com/diagrams/DjoA2pSKnhCghTYM-9383C.png) 
 
 #### Basic Flow
 
