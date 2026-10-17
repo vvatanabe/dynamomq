@@ -3,6 +3,7 @@ package dynamomq
 import (
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/vvatanabe/dynamomq/internal/clock"
 )
 
@@ -41,6 +42,7 @@ func NewMessage[T any](id string, data T, now time.Time) *Message[T] {
 		CreatedAt:        ts,
 		UpdatedAt:        ts,
 		SentAt:           ts,
+		SequenceKey:      ts,
 		ReceivedAt:       "",
 		InvisibleUntilAt: "",
 	}
@@ -66,6 +68,8 @@ type Message[T any] struct {
 	UpdatedAt string `json:"updated_at" dynamodbav:"updated_at"`
 	// SentAt is the timestamp when the message was sent to the queue.
 	SentAt string `json:"sent_at" dynamodbav:"sent_at"`
+	// SequenceKey is the sort key used by the queueing index.
+	SequenceKey string `json:"sequence_key" dynamodbav:"sequence_key"`
 	// ReceivedAt is the timestamp when the message was last received from the queue.
 	ReceivedAt string `json:"received_at" dynamodbav:"received_at"`
 	// InvisibleUntilAt: The deadline until which the message remains invisible in the queue.
@@ -104,6 +108,14 @@ func (m *Message[T]) changeVisibility(now time.Time, visibilityTimeout time.Dura
 func (m *Message[T]) delayToSentAt(delay time.Duration) {
 	delayed := clock.RFC3339NanoToTime(m.SentAt).Add(delay)
 	m.SentAt = clock.FormatRFC3339Nano(delayed)
+}
+
+func (m *Message[T]) setSequenceKey(useFIFO bool) {
+	if useFIFO {
+		m.SequenceKey = m.SentAt
+		return
+	}
+	m.SequenceKey = uuid.NewString()
 }
 
 func (m *Message[T]) markAsProcessing(now time.Time, visibilityTimeout time.Duration) error {

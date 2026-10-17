@@ -182,7 +182,7 @@ The `dynamomq` command-line interface provides a range of commands to interact w
 
 - `--endpoint-url`: Override the default URL for commands with a specified endpoint URL.
 - `-h`, `--help`: Display help information for `dynamomq`.
-- `--queueing-index-name`: Specify the name of the queueing index to use (default is `"dynamo-mq-index-queue_type-sent_at"`).
+- `--queueing-index-name`: Specify the name of the queueing index to use (default is `"dynamo-mq-index-queue_type-sequence_key"`).
 - `--table-name`: Define the name of the DynamoDB table to contain the items (default is `"dynamo-mq-table"`).
 
 To get more detailed information about a specific command, use `dynamomq [command] --help`.
@@ -321,7 +321,8 @@ Here's a diagram showing the table definition used by DynamoMQ to implement its 
 |       | version            | number | 1                                   |
 |       | created_at         | string | 2006-01-02T15:04:05.999999999Z07:00 |
 |       | updated_at         | string | 2006-01-02T15:04:05.999999999Z07:00 |
-| GSISK | sent_at            | string | 2006-01-02T15:04:05.999999999Z07:00 |
+|       | sent_at            | string | 2006-01-02T15:04:05.999999999Z07:00 |
+| GSISK | sequence_key       | string | UUID or ISO 8601 timestamp           |
 |       | received_at        | string | 2006-01-02T15:04:05.999999999Z07:00 |
 |       | invisible_until_at | string | 2006-01-02T15:04:05.999999999Z07:00 |
 
@@ -357,9 +358,13 @@ The timestamp when the message was created, recorded in ISO 8601 format.
 
 The timestamp when the message was last updated, recorded in ISO 8601 format.
 
-#### sent_at (Sort Key for GSI)
+#### sent_at
 
 The timestamp when the message was sent to the queue, recorded in ISO 8601 format.
+
+#### sequence_key (Sort Key for GSI)
+
+The queue index sort key. FIFO messages use their effective `sent_at` timestamp; standard-queue messages use a UUID and have no oldest-first ordering guarantee.
 
 #### received_at
 
@@ -371,7 +376,19 @@ The timestamp indicating when the message will next become visible in the queue.
 
 #### Global Secondary Index (GSI)
 
-A GSI with `queue_type` as the partition key and `sent_at` as the sort key is set up to receive messages in the order they are added to the queue.
+The GSI `dynamo-mq-index-queue_type-sequence_key` uses `queue_type` as its partition key and `sequence_key` as its sort key. FIFO queues use the effective `sent_at` timestamp for `sequence_key` and are received in timestamp order. Standard queues use UUID sort keys, so they do not guarantee oldest-first delivery.
+
+#### Migrating an existing table
+
+Changing the GSI sort key is a breaking schema change. Perform the cutover in a maintenance window:
+
+1. Stop all producers, consumers, and old-version clients.
+2. Backfill `sequence_key` on every existing item from its current `sent_at` value. This preserves timestamp ordering for the existing backlog and is required because items missing a GSI key are not indexed.
+3. Delete and recreate the GSI with `queue_type` and `sequence_key`, or create a separately named replacement GSI if your deployment requires it.
+4. Wait until the new index is `ACTIVE` and verify that the backfill is complete.
+5. Deploy all clients with the new index name and a consistent `UseFIFO` setting for each queue, then resume traffic.
+
+Do not run old and new client versions concurrently during the cutover. New standard-queue writes use UUID sort keys and are not oldest-first. FIFO producers and consumers for a queue must consistently enable FIFO mode.
 
 ### Message State Machine
 

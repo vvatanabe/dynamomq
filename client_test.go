@@ -38,7 +38,7 @@ func SetupDynamoDB(t *testing.T, initialData ...*types.PutRequest) (tableName st
 					AttributeType: types.ScalarAttributeTypeS,
 				},
 				{
-					AttributeName: aws.String("sent_at"),
+					AttributeName: aws.String("sequence_key"),
 					AttributeType: types.ScalarAttributeTypeS,
 				},
 			},
@@ -46,14 +46,14 @@ func SetupDynamoDB(t *testing.T, initialData ...*types.PutRequest) (tableName st
 			DeletionProtectionEnabled: aws.Bool(false),
 			GlobalSecondaryIndexes: []types.GlobalSecondaryIndex{
 				{
-					IndexName: aws.String("dynamo-mq-index-queue_type-sent_at"),
+					IndexName: aws.String("dynamo-mq-index-queue_type-sequence_key"),
 					KeySchema: []types.KeySchemaElement{
 						{
 							AttributeName: aws.String("queue_type"),
 							KeyType:       types.KeyTypeHash,
 						},
 						{
-							AttributeName: aws.String("sent_at"),
+							AttributeName: aws.String("sequence_key"),
 							KeyType:       types.KeyTypeRange,
 						},
 					},
@@ -220,6 +220,7 @@ func TestDynamoMQClientSendMessage(t *testing.T) {
 			want: &dynamomq.SendMessageOutput[test.MessageData]{
 				SentMessage: func() *dynamomq.Message[test.MessageData] {
 					s := NewTestMessageItemAsReady("A-101", test.DefaultTestDate)
+					s.SequenceKey = ""
 					return s
 				}(),
 			},
@@ -238,6 +239,7 @@ func TestDynamoMQClientSendMessage(t *testing.T) {
 			want: &dynamomq.SendMessageOutput[test.MessageData]{
 				SentMessage: func() *dynamomq.Message[test.MessageData] {
 					s := NewTestMessageItemAsReady("A-101", test.DefaultTestDate)
+					s.SequenceKey = ""
 					s.SentAt = clock.FormatRFC3339Nano(test.DefaultTestDate.Add(10 * time.Second))
 					return s
 				}(),
@@ -246,8 +248,118 @@ func TestDynamoMQClientSendMessage(t *testing.T) {
 	}
 	runTestsParallel[*dynamomq.SendMessageInput[test.MessageData], *dynamomq.SendMessageOutput[test.MessageData]](t, "SendMessage()", tests,
 		func(client dynamomq.Client[test.MessageData], args *dynamomq.SendMessageInput[test.MessageData]) (*dynamomq.SendMessageOutput[test.MessageData], error) {
-			return client.SendMessage(context.Background(), args)
+			output, err := client.SendMessage(context.Background(), args)
+			if output != nil && output.SentMessage != nil {
+				output.SentMessage.SequenceKey = ""
+			}
+			return output, err
 		})
+}
+
+func TestDynamoMQClientSequenceKey(t *testing.T) {
+	t.Run("standard queue uses UUID keys across writes", testStandardQueueSequenceKey)
+	t.Run("FIFO queue uses effective sent_at", testFIFOQueueSequenceKey)
+}
+
+func testStandardQueueSequenceKey(t *testing.T) {
+	client, clean := prepareTestClient(context.Background(), t, NewSetupFunc(), mock.Clock{T: test.DefaultTestDate}, false, nil, nil, nil)
+	defer clean()
+
+	sent, err := client.SendMessage(context.Background(), &dynamomq.SendMessageInput[test.MessageData]{
+		ID:           "A-101",
+		Data:         test.NewMessageData("A-101"),
+		DelaySeconds: 5,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertUUIDSequenceKey(t, sent.SentMessage.SequenceKey)
+	originalKey := sent.SentMessage.SequenceKey
+
+	if _, err = client.ReplaceMessage(context.Background(), &dynamomq.ReplaceMessageInput[test.MessageData]{
+		Message: sent.SentMessage,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	replaced, err := client.GetMessage(context.Background(), &dynamomq.GetMessageInput{ID: "A-101"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertUUIDSequenceKey(t, replaced.Message.SequenceKey)
+	if replaced.Message.SequenceKey == originalKey {
+		t.Fatal("replacement reused the previous sequence key")
+	}
+
+	moved, err := client.MoveMessageToDLQ(context.Background(), &dynamomq.MoveMessageToDLQInput{ID: "A-101"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertUUIDSequenceKey(t, moved.MovedMessage.SequenceKey)
+	if moved.MovedMessage.SequenceKey == replaced.Message.SequenceKey {
+		t.Fatal("DLQ move reused the previous sequence key")
+	}
+
+	redriven, err := client.RedriveMessage(context.Background(), &dynamomq.RedriveMessageInput{ID: "A-101"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertUUIDSequenceKey(t, redriven.RedroveMessage.SequenceKey)
+	if redriven.RedroveMessage.SequenceKey == moved.MovedMessage.SequenceKey {
+		t.Fatal("redrive reused the previous sequence key")
+	}
+}
+
+func testFIFOQueueSequenceKey(t *testing.T) {
+	client, clean := prepareTestClient(context.Background(), t, NewSetupFunc(), mock.Clock{T: test.DefaultTestDate}, true, nil, nil, nil)
+	defer clean()
+
+	sent, err := client.SendMessage(context.Background(), &dynamomq.SendMessageInput[test.MessageData]{
+		ID:           "B-202",
+		Data:         test.NewMessageData("B-202"),
+		DelaySeconds: 5,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sent.SentMessage.SequenceKey != sent.SentMessage.SentAt {
+		t.Fatalf("sequence key %q does not match sent_at %q", sent.SentMessage.SequenceKey, sent.SentMessage.SentAt)
+	}
+
+	if _, err = client.ReplaceMessage(context.Background(), &dynamomq.ReplaceMessageInput[test.MessageData]{
+		Message: sent.SentMessage,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	replaced, err := client.GetMessage(context.Background(), &dynamomq.GetMessageInput{ID: "B-202"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if replaced.Message.SequenceKey != replaced.Message.SentAt {
+		t.Fatalf("replacement sequence key %q does not match sent_at %q", replaced.Message.SequenceKey, replaced.Message.SentAt)
+	}
+
+	moved, err := client.MoveMessageToDLQ(context.Background(), &dynamomq.MoveMessageToDLQInput{ID: "B-202"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if moved.MovedMessage.SequenceKey != moved.MovedMessage.SentAt {
+		t.Fatalf("DLQ sequence key %q does not match sent_at %q", moved.MovedMessage.SequenceKey, moved.MovedMessage.SentAt)
+	}
+
+	redriven, err := client.RedriveMessage(context.Background(), &dynamomq.RedriveMessageInput{ID: "B-202"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if redriven.RedroveMessage.SequenceKey != redriven.RedroveMessage.SentAt {
+		t.Fatalf("redrive sequence key %q does not match sent_at %q", redriven.RedroveMessage.SequenceKey, redriven.RedroveMessage.SentAt)
+	}
+}
+
+func assertUUIDSequenceKey(t *testing.T, key string) {
+	t.Helper()
+	if _, err := uuid.Parse(key); err != nil {
+		t.Fatalf("sequence key %q is not a UUID: %v", key, err)
+	}
 }
 
 func TestDynamoMQClientReceiveMessage(t *testing.T) {
@@ -333,11 +445,13 @@ func testDynamoMQClientReceiveMessageSequence(t *testing.T, useFIFO bool) {
 			VisibilityTimeout: constant.DefaultVisibilityTimeoutInSeconds,
 		})
 		test.AssertError(t, err, nil, fmt.Sprintf("ReceiveMessage() [%d-1]", i))
-		test.AssertDeepEqual(t, result, want, fmt.Sprintf("ReceiveMessage() [%d-2]", i))
-
 		if !useFIFO {
+			if result == nil || result.ReceivedMessage == nil {
+				t.Fatalf("ReceiveMessage() [%d] returned no message", i)
+			}
 			return
 		}
+		test.AssertDeepEqual(t, result, want, fmt.Sprintf("ReceiveMessage() [%d-2]", i))
 
 		_, err = client.ReceiveMessage(ctx, &dynamomq.ReceiveMessageInput{
 			VisibilityTimeout: constant.DefaultVisibilityTimeoutInSeconds,
@@ -465,6 +579,7 @@ func TestDynamoMQClientMoveMessageToDLQ(t *testing.T) {
 			},
 			want: func() *dynamomq.MoveMessageToDLQOutput[test.MessageData] {
 				m := NewTestMessageItemAsReady("A-101", test.DefaultTestDate)
+				m.SequenceKey = ""
 				MarkAsMovedToDLQ(m, test.DefaultTestDate.Add(10*time.Second))
 				m.Version = 2
 				r := &dynamomq.MoveMessageToDLQOutput[test.MessageData]{
@@ -477,7 +592,11 @@ func TestDynamoMQClientMoveMessageToDLQ(t *testing.T) {
 	}
 	runTestsParallel[*dynamomq.MoveMessageToDLQInput, *dynamomq.MoveMessageToDLQOutput[test.MessageData]](t, "MoveMessageToDLQ()", tests,
 		func(client dynamomq.Client[test.MessageData], args *dynamomq.MoveMessageToDLQInput) (*dynamomq.MoveMessageToDLQOutput[test.MessageData], error) {
-			return client.MoveMessageToDLQ(context.Background(), args)
+			output, err := client.MoveMessageToDLQ(context.Background(), args)
+			if output != nil && output.MovedMessage != nil {
+				output.MovedMessage.SequenceKey = ""
+			}
+			return output, err
 		})
 }
 
@@ -499,6 +618,7 @@ func TestDynamoMQClientRedriveMessage(t *testing.T) {
 			want: &dynamomq.RedriveMessageOutput[test.MessageData]{
 				RedroveMessage: func() *dynamomq.Message[test.MessageData] {
 					m := NewTestMessageItemAsDLQ("A-101", test.DefaultTestDate)
+					m.SequenceKey = ""
 					MarkAsRestoredFromDLQ(m, test.DefaultTestDate.Add(10*time.Second))
 					m.Version = 2
 					return m
@@ -546,9 +666,13 @@ func TestDynamoMQClientRedriveMessage(t *testing.T) {
 	}
 	runTestsParallel[args, *dynamomq.RedriveMessageOutput[test.MessageData]](t, "RedriveMessage()", tests,
 		func(client dynamomq.Client[test.MessageData], args args) (*dynamomq.RedriveMessageOutput[test.MessageData], error) {
-			return client.RedriveMessage(context.Background(), &dynamomq.RedriveMessageInput{
+			output, err := client.RedriveMessage(context.Background(), &dynamomq.RedriveMessageInput{
 				ID: args.id,
 			})
+			if output != nil && output.RedroveMessage != nil {
+				output.RedroveMessage.SequenceKey = ""
+			}
+			return output, err
 		})
 }
 
@@ -697,7 +821,11 @@ func TestDynamoMQClientReplaceMessage(t *testing.T) {
 			args: args{
 				message: NewTestMessageItemAsReady("A-101", test.DefaultTestDate),
 			},
-			want:    NewTestMessageItemAsReady("A-101", test.DefaultTestDate),
+			want: func() *dynamomq.Message[test.MessageData] {
+				m := NewTestMessageItemAsReady("A-101", test.DefaultTestDate)
+				m.SequenceKey = ""
+				return m
+			}(),
 			wantErr: nil,
 		},
 		{
@@ -706,7 +834,11 @@ func TestDynamoMQClientReplaceMessage(t *testing.T) {
 			args: args{
 				message: NewTestMessageItemAsReady("B-202", test.DefaultTestDate),
 			},
-			want:    NewTestMessageItemAsReady("B-202", test.DefaultTestDate),
+			want: func() *dynamomq.Message[test.MessageData] {
+				m := NewTestMessageItemAsReady("B-202", test.DefaultTestDate)
+				m.SequenceKey = ""
+				return m
+			}(),
 			wantErr: nil,
 		},
 	}
@@ -725,6 +857,7 @@ func TestDynamoMQClientReplaceMessage(t *testing.T) {
 			if err != nil {
 				return nil, err
 			}
+			got.Message.SequenceKey = ""
 			return got.Message, err
 		})
 }

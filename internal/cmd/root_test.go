@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/spf13/cobra"
@@ -176,6 +177,22 @@ func TestRunAllCommandShouldDynamoMQClientSucceed(t *testing.T) {
 			return mock.SuccessfulMockClient, aws.Config{}, nil
 		},
 	}, nil)
+}
+
+func TestSystemInfoSequenceKey(t *testing.T) {
+	now := time.Date(2024, time.January, 2, 3, 4, 5, 0, time.UTC)
+	message := dynamomq.NewMessage("message-id", "payload", now)
+
+	info := cmd.GetSystemInfo(message)
+	if info.SequenceKey != message.SequenceKey {
+		t.Fatalf("GetSystemInfo() sequence_key = %q, want %q", info.SequenceKey, message.SequenceKey)
+	}
+
+	message.SequenceKey = "stale-key"
+	cmd.ResetSystemInfo(message, now.Add(time.Hour))
+	if message.SequenceKey != message.SentAt {
+		t.Fatalf("ResetSystemInfo() sequence_key = %q, want sent_at %q", message.SequenceKey, message.SentAt)
+	}
 }
 
 func TestParseInput(t *testing.T) {

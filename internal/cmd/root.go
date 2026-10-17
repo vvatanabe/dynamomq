@@ -126,6 +126,7 @@ type SystemInfo struct {
 	CreatedAt        string             `json:"created_at"`
 	UpdatedAt        string             `json:"updated_at"`
 	SentAt           string             `json:"sent_at"`
+	SequenceKey      string             `json:"sequence_key"`
 	ReceivedAt       string             `json:"received_at"`
 	InvisibleUntilAt string             `json:"invisible_until_at"`
 }
@@ -140,6 +141,7 @@ func GetSystemInfo[T any](m *dynamomq.Message[T]) *SystemInfo {
 		CreatedAt:        m.CreatedAt,
 		UpdatedAt:        m.UpdatedAt,
 		SentAt:           m.SentAt,
+		SequenceKey:      m.SequenceKey,
 		ReceivedAt:       m.ReceivedAt,
 		InvisibleUntilAt: m.InvisibleUntilAt,
 	}
@@ -153,6 +155,7 @@ func ResetSystemInfo[T any](m *dynamomq.Message[T], now time.Time) {
 	m.CreatedAt = msg.CreatedAt
 	m.UpdatedAt = msg.UpdatedAt
 	m.SentAt = msg.SentAt
+	m.SequenceKey = msg.SequenceKey
 	m.ReceivedAt = msg.ReceivedAt
 	m.InvisibleUntilAt = msg.InvisibleUntilAt
 }
