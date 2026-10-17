@@ -9,7 +9,7 @@
       "AttributeType": "S"
     },
     {
-      "AttributeName": "sent_at",
+      "AttributeName": "sequence_key",
       "AttributeType": "S"
     }
   ],
@@ -17,14 +17,14 @@
   "DeletionProtectionEnabled": true,
   "GlobalSecondaryIndexes": [
     {
-      "IndexName": "dynamo-mq-index-queue_type-sent_at",
+      "IndexName": "dynamo-mq-index-queue_type-sequence_key",
       "KeySchema": [
         {
           "AttributeName": "queue_type",
           "KeyType": "HASH"
         },
         {
-          "AttributeName": "sent_at",
+          "AttributeName": "sequence_key",
           "KeyType": "RANGE"
         }
       ],

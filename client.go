@@ -99,7 +99,7 @@ func WithTableName(tableName string) func(*ClientOptions) {
 
 // WithQueueingIndexName is an option function to set the queue index name for the DynamoMQ client.
 // This function allows defining a custom index name that the client will use for queue operations, optimizing message handling.
-// By default, the index name is set to "dynamo-mq-index-queue_type-sent_at".
+// By default, the index name is set to "dynamo-mq-index-queue_type-sequence_key".
 func WithQueueingIndexName(queueingIndexName string) func(*ClientOptions) {
 	return func(s *ClientOptions) {
 		s.QueueingIndexName = queueingIndexName
@@ -509,6 +509,7 @@ func (c *ClientImpl[T]) MoveMessageToDLQ(ctx context.Context, params *MoveMessag
 			MovedMessage: message,
 		}, nil
 	}
+	message.setSequenceKey(c.useFIFO)
 	builder := expression.NewBuilder().
 		WithUpdate(expression.
 			Add(expression.Name("version"), expression.Value(1)).
@@ -516,6 +517,7 @@ func (c *ClientImpl[T]) MoveMessageToDLQ(ctx context.Context, params *MoveMessag
 			Set(expression.Name("queue_type"), expression.Value(message.QueueType)).
 			Set(expression.Name("updated_at"), expression.Value(message.UpdatedAt)).
 			Set(expression.Name("sent_at"), expression.Value(message.SentAt)).
+			Set(expression.Name("sequence_key"), expression.Value(message.SequenceKey)).
 			Set(expression.Name("received_at"), expression.Value(message.ReceivedAt)).
 			Set(expression.Name("invisible_until_at"), expression.Value(message.InvisibleUntilAt))).
 		WithCondition(expression.Name("version").Equal(expression.Value(message.Version)))
@@ -567,6 +569,7 @@ func (c *ClientImpl[T]) RedriveMessage(ctx context.Context, params *RedriveMessa
 	if err != nil {
 		return &RedriveMessageOutput[T]{}, err
 	}
+	message.setSequenceKey(c.useFIFO)
 	builder := expression.NewBuilder().
 		WithUpdate(expression.Add(
 			expression.Name("version"),
@@ -580,6 +583,9 @@ func (c *ClientImpl[T]) RedriveMessage(ctx context.Context, params *RedriveMessa
 		).Set(
 			expression.Name("sent_at"),
 			expression.Value(message.SentAt),
+		).Set(
+			expression.Name("sequence_key"),
+			expression.Value(message.SequenceKey),
 		).Set(
 			expression.Name("invisible_until_at"),
 			expression.Value(message.InvisibleUntilAt),
@@ -916,6 +922,7 @@ func (c *ClientImpl[T]) ReplaceMessage(ctx context.Context, params *ReplaceMessa
 }
 
 func (c *ClientImpl[T]) put(ctx context.Context, message *Message[T]) error {
+	message.setSequenceKey(c.useFIFO)
 	item, err := c.marshalMap(message)
 	if err != nil {
 		return MarshalingAttributeError{Cause: err}
